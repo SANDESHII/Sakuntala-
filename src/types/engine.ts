@@ -19,7 +19,7 @@ export interface MarketData {
 
 export interface AnalysisConfidence {
     confidenceScore: number;
-    verdict: 'GOLD' | 'SILVER' | 'BRONZE' | 'VOID';
+    verdict: 'GOLD' | 'SILVER' | 'BRONZE' | 'VOLATILE';
 }
 
 export interface AnalysisResult {
@@ -31,7 +31,7 @@ export interface AnalysisResult {
     awayXG: number;
     minimumExpectancy: number;
     potentialCeiling: number;
-    predictionType: 'OVER_15' | 'UNDER_35' | 'VOID';
+    predictionType: 'OVER_15' | 'UNDER_35';
     predictionLabel: string;
     purity: number;
     signalStrength: number;

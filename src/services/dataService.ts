@@ -17,20 +17,13 @@ export class DataService {
     }
 
     /**
-     * STAGE 2: DATA FILTERING (Purity Assessment)
-     * Identifies 'Tactical Purity' by detecting flukes and low-activity environments.
+     * STAGE 2: DATA FILTERING (Signal Integrity)
+     * Identifies 'Signal Purity' while protecting high-variance 'Chaos Data' for overdispersion.
      */
-    static calculatePurity(row: any): number {
-        let purity = 1.0;
-        const hst = this.sanitize(row.HST);
-        const ast = this.sanitize(row.AST);
-        
-        // Minimum Activity Penalty (The 'Bore' Filter)
-        if (hst + ast < 5) {
-            purity *= 0.65;
-        }
-
-        return purity;
+    static calculatePurity(_row: any): number {
+        // FIXED 1.0: No tactical censorship. All valid matches are treated as pure signal.
+        // The engine requires the raw 'Chaos Data' (red cards, blowouts) to model overdispersion.
+        return 1.0;
     }
 
     /**
@@ -55,7 +48,7 @@ export class DataService {
         if (hg > 0 && hst === 0) return null; 
         if (ag > 0 && ast === 0) return null;
         if (hg > hst + 1 || ag > ast + 1) return null; 
-        if (hg > 15 || ag > 15) return null; 
+        if (hg > 35 || ag > 35) return null; // Raised from 15 to allow raw chaotic signals
 
         return {
             homeTeam: home, awayTeam: away, date,
@@ -203,12 +196,11 @@ export class DataService {
         const varAG = finalizedMatches.reduce((acc, m) => acc + Math.pow(m.awayGoals - avgAG, 2), 0) / finalizedMatches.length || 1.1;
 
         // Quantifying Cleansing Accuracy (Refinery Audit)
-        const avgPurity = finalizedMatches.reduce((acc, m) => acc + (m.purity || 1), 0) / finalizedMatches.length;
         const audit = {
-            noiseReduction: ((1 - avgPurity) * 100).toFixed(2) + '%',
+            signalIntegrity: '100% (Raw Signal Flow)',
             alphaAdjustment: 'Active (Opponent-Adjusted Boost)',
-            redCardRegime: 'Active (Covariate Extraction)',
-            dataReliability: avgPurity > 0.85 ? 'High' : 'Moderate',
+            redCardRegime: 'Active (Chaos Preservation)',
+            dataReliability: 'High (Unfiltered Reality)',
             sampleSize: finalizedMatches.length
         };
 

@@ -148,7 +148,7 @@ export const BacktestDisplay: React.FC = () => {
                                 </thead>
                                 <tbody className="divide-y divide-neutral-900">
                                     {summary.matches.map((item, i) => {
-                                        const predType = item.prediction.predictionType || 'VOID';
+                                        const predType = item.prediction.predictionType;
                                         const isCorrect = predType === 'OVER_15' ? item.isOver15Correct : item.isUnder35Correct;
                                         return (
                                             <tr key={i} className="hover:bg-neutral-950/30 transition-colors">

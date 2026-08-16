@@ -22,21 +22,19 @@ const StatCard: React.FC<{ label: string; value: string | number; subValue?: str
 );
 
 export const ResultGrid: React.FC<ResultGridProps> = ({ analysis, surety }) => {
-    const isInsufficient = analysis.predictionType === 'VOID';
-    
     return (
         <div className="space-y-16">
             {/* Header Status */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8 pb-12 border-b border-neutral-900">
                 <div className="space-y-4">
                     <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 rounded-full ${isInsufficient ? 'bg-red-500' : 'bg-emerald-500'} animate-pulse`} />
+                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                         <span className="text-xs font-bold tracking-widest text-neutral-500 uppercase">
                             {analysis.dataSource === 'LIVE' ? 'Live Neural Mode' : 'Tactical Archetype Mode'}
                         </span>
                     </div>
                     <h2 className="text-6xl font-bold text-white tracking-tighter leading-none uppercase">
-                        {analysis.predictionLabel || "Signal Void"}
+                        {analysis.predictionLabel}
                     </h2>
                 </div>
                 <div className="flex flex-col items-end gap-2">

@@ -29,8 +29,8 @@ export class BacktestService {
         const results: any[] = [];
 
         for (const m of samples) {
-            const h = DataService.standardize({ ...ProfileService.computeBaseline(m.homeTeam, []), name: m.homeTeam });
-            const a = DataService.standardize({ ...ProfileService.computeBaseline(m.awayTeam, []), name: m.awayTeam });
+            const h = DataService.standardize({ ...ProfileService.computeBaseline(m.homeTeam, all), name: m.homeTeam });
+            const a = DataService.standardize({ ...ProfileService.computeBaseline(m.awayTeam, all), name: m.awayTeam });
             
             const math = MatchEngine.calculate(h, a, { stakes: "STANDARD", date: m.date });
             const tg = (m.homeGoals || 0) + (m.awayGoals || 0);

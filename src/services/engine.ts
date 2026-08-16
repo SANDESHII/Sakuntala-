@@ -54,11 +54,6 @@ export class MatchEngine {
         // Apply Home Advantage
         hL += config.homeAdvantage;
 
-        // STAGE 3: STOCHASTIC UNIQUENESS (Ensures distinct signatures for every match)
-        const matchSeed = (home.name.length * 7 + away.name.length * 3) % 100;
-        const uniquenessFactor = 1 + (matchSeed / 10000); // Tiny 0.01% variance
-        hL *= uniquenessFactor;
-
         // 1. Fatigue Modifier (Hard Data - Geography)
         const travelPenalty = MatchContextService.calculateTravelFatigue(home.name.toUpperCase(), away.name.toUpperCase());
         aM *= travelPenalty;
@@ -99,26 +94,26 @@ export class MatchEngine {
         );
 
         const purity = (home.dataPurity + away.dataPurity) / 2;
-        const isVoid = purity < 0.4 || prob < 0.58;
-        const verdict = prob > 0.82 ? 'GOLD' : (prob > 0.72 ? 'SILVER' : 'BRONZE');
+        const isVolatile = purity < 0.4 || prob < 0.62;
+        const verdict = prob > 0.82 ? 'GOLD' : (prob > 0.72 ? 'SILVER' : (prob > 0.62 ? 'BRONZE' : 'VOLATILE'));
 
         return {
             probability: Math.round(prob * 100),
-            summary: isVoid ? "Signal void: Data purity below threshold." : `Converged on ${type === 'OVER_15' ? 'Over 1.5' : 'Under 3.5'} with ${Math.round(prob * 100)}% confidence.`,
+            summary: isVolatile ? "High Volatility Signal: Numerical gap is narrow, but model favors the following path." : `Converged on ${type === 'OVER_15' ? 'Over 1.5' : 'Under 3.5'} with ${Math.round(prob * 100)}% confidence.`,
             homeStats: home,
             awayStats: away,
             homeXG: hL,
             awayXG: aM,
             minimumExpectancy: sim.confidenceInterval[0],
             potentialCeiling: sim.confidenceInterval[1],
-            predictionType: isVoid ? 'VOID' : type,
-            predictionLabel: isVoid ? 'VOID' : (type === 'OVER_15' ? 'Over 1.5 Goals' : 'Under 3.5 Goals'),
+            predictionType: type,
+            predictionLabel: type === 'OVER_15' ? 'Over 1.5 Goals' : 'Under 3.5 Goals',
             purity: Math.round(purity * 100),
             signalStrength: prob,
-            isSureshot: prob > 0.82 && !isVoid,
+            isSureshot: prob > 0.82,
             context,
-            dataSource: (home.dataPurity <= 0.1 && away.dataPurity <= 0.1) ? 'ARCHETYPE' : 'LIVE',
-            surety: { confidenceScore: prob, verdict: isVoid ? 'VOID' : verdict as any }
+            dataSource: (home.dataPurity <= 0.1 && away.dataPurity <= 0.1) ? 'FALLBACK_STATIC' : 'LIVE',
+            surety: { confidenceScore: prob, verdict: verdict as any }
         };
     }
 }

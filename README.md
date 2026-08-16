@@ -1,11 +1,13 @@
-<div align="center">
+# Quantitative Football Intelligence (Atom-Level)
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+Professional-grade predictive engine using Dixon-Coles Poisson variance and Neural xG extraction.
 
-  <h1>Built with AI Studio</h2>
+## Core Architecture
+- **Neural xG Layer**: Real-time extraction of Season-to-Date xG and xGA from elite sources (FBRef/Opta).
+- **Match Engine**: 70/30 weighted blend of Performance Purity (xG) vs Outcome Reality (Goals).
+- **Tactical Grounding**: Positional cluster density checks and "Creative Void" calculations for missing personnel.
+- **Monte Carlo Variance**: 10,000 iteration simulation for probability convergence.
 
-  <p>The fastest path from prompt to production with Gemini.</p>
-
-  <a href="https://aistudio.google.com/apps">Start building</a>
-
-</div>
+## Specialized Markets
+- Europe Top 5 League Calibration (EPL, La Liga, Bundesliga, Serie A, Ligue 1).
+- Over 1.5 and Under 3.5 Goal Markets focus.

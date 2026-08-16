@@ -1,0 +1,101 @@
+{
+  "entities": {
+    "TeamState": {
+      "title": "Team State",
+      "description": "Tracks team latent ability over time",
+      "type": "object",
+      "properties": {
+        "estimatedNpxG": { "type": "number" },
+        "variance": { "type": "number" },
+        "lastUpdate": { "type": "string" },
+        "volatility": { "type": "number" }
+      },
+      "required": ["estimatedNpxG", "variance", "lastUpdate", "volatility"]
+    },
+    "ModelMetadata": {
+      "title": "Model Metadata",
+      "description": "Weights and stats for ensemble models",
+      "type": "object",
+      "properties": {
+        "weights": { "type": "array" },
+        "lastTrained": { "type": "string" },
+        "logLoss": { "type": "number" }
+      },
+      "required": ["weights", "lastTrained", "logLoss"]
+    },
+    "MatchData": {
+      "title": "Historical Match Data",
+      "description": "Historical results and stats for statistical modeling",
+      "type": "object",
+      "properties": {
+        "homeTeam": { "type": "string" },
+        "awayTeam": { "type": "string" },
+        "homeGoals": { "type": "number" },
+        "awayGoals": { "type": "number" },
+        "homeXG": { "type": "number" },
+        "awayXG": { "type": "number" },
+        "date": { "type": "string" },
+        "league": { "type": "string" },
+        "season": { "type": "string" },
+        "signature": { "type": "string" },
+        "closingOdds": {
+          "type": "object",
+          "properties": {
+            "home": { "type": "number" },
+            "draw": { "type": "number" },
+            "away": { "type": "number" }
+          }
+        }
+      },
+      "required": ["homeTeam", "awayTeam", "date", "league", "season", "signature"]
+    },
+    "RefereeProfile": {
+      "title": "Referee Profile",
+      "description": "Historical stats for referees",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "avgCardsPerGame": { "type": "number" },
+        "avgPenaltiesPerGame": { "type": "number" },
+        "tendency": { "type": "string" },
+        "lastUpdated": { "type": "string" }
+      },
+      "required": ["name", "avgCardsPerGame", "tendency"]
+    },
+    "TeamStyleProfile": {
+      "title": "Team Style Profile",
+      "description": "Tactical metrics for teams",
+      "type": "object",
+      "properties": {
+        "teamId": { "type": "string" },
+        "ppda": { "type": "number" },
+        "pressingSuccessRate": { "type": "number" },
+        "shotCreatingActions": { "type": "number" },
+        "lastUpdated": { "type": "string" }
+      },
+      "required": ["teamId", "ppda", "pressingSuccessRate"]
+    }
+  },
+  "firestore": {
+    "/teamStates/{teamId}": {
+      "schema": "TeamState",
+      "description": "Collection of team latent states"
+    },
+    "/modelMetadata/{modelId}": {
+      "schema": "ModelMetadata",
+      "description": "Collection of model weights and metadata"
+    },
+    "/historicalMatches/{matchId}": {
+      "schema": "MatchData",
+      "description": "Backlog of historical matches for trend analysis"
+    },
+    "/referee_profiles/{refId}": {
+      "schema": "RefereeProfile",
+      "description": "Database of referee statistical profiles"
+    },
+    "/team_style_profiles/{teamId}": {
+      "schema": "TeamStyleProfile",
+      "description": "Database of team tactical styles"
+    }
+  }
+}

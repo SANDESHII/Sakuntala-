@@ -9,8 +9,19 @@ export class FootballDataProvider {
         'EPL': 'E0', 'CHAMPIONSHIP': 'E1', 'LA_LIGA': 'SP1', 'SERIE_A': 'I1', 'BUNDESLIGA': 'D1'
     };
 
+    static normalizeLeague(league: string): string {
+        const l = (league || '').toUpperCase().trim();
+        if (l.includes('PREMIER') || l === 'EPL' || l === 'E0') return 'EPL';
+        if (l.includes('CHAMPION') || l === 'E1') return 'CHAMPIONSHIP';
+        if (l.includes('LIGA') || l === 'SP1') return 'LA_LIGA';
+        if (l.includes('SERIE') || l === 'I1') return 'SERIE_A';
+        if (l.includes('BUNDES') || l === 'D1') return 'BUNDESLIGA';
+        return l;
+    }
+
     static async fetchSeasonData(league: string, season: string): Promise<MatchHistory[]> {
-        const code = this.LEAGUE_MAP[league];
+        const normalized = this.normalizeLeague(league);
+        const code = this.LEAGUE_MAP[normalized];
         if (!code) return [];
         const s = season.replace('/', '');
         const url = `${this.BASE_URL}/${s}/${code}.csv`;
@@ -33,7 +44,7 @@ export class FootballDataProvider {
         });
     }
 
-    static async fetchBacklog(league: string, count = 3): Promise<MatchHistory[]> {
+    static async fetchBacklog(league: string, count = 5): Promise<MatchHistory[]> {
         const seasons = this.getBacklogSeasonStrings(count);
         const results = await Promise.all(seasons.map(s => this.fetchSeasonData(league, s)));
         return results.flat();

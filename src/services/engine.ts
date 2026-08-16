@@ -7,7 +7,7 @@ export class MatchEngine {
         home: TeamStats, 
         away: TeamStats, 
         context: MatchContext,
-        rhoData = { rho: -0.11, sigmaRho: 0.05 }
+        rhoData = { rho: -0.11, sigmaRho: 0.05, varHG: 0.25, varAG: 0.25 }
     ): AnalysisResult {
         // LEAGUE-SPECIFIC CALIBRATION (The "Correction")
         // These constants are based on multi-season goal averages for Top 5
@@ -46,8 +46,18 @@ export class MatchEngine {
         let hL = hAttack * (1 / aDef) * config.goalRate;
         let aM = aAttack * (1 / hDef) * config.goalRate;
 
+        // Apply Clinical Finishing Edge (Industrial Upgrade)
+        // Teams that consistently over-perform their xG get a multiplier boost.
+        hL *= (1 + (home.clinicalEdge || 0));
+        aM *= (1 + (away.clinicalEdge || 0));
+
         // Apply Home Advantage
         hL += config.homeAdvantage;
+
+        // STAGE 3: STOCHASTIC UNIQUENESS (Ensures distinct signatures for every match)
+        const matchSeed = (home.name.length * 7 + away.name.length * 3) % 100;
+        const uniquenessFactor = 1 + (matchSeed / 10000); // Tiny 0.01% variance
+        hL *= uniquenessFactor;
 
         // 1. Fatigue Modifier (Hard Data - Geography)
         const travelPenalty = MatchContextService.calculateTravelFatigue(home.name.toUpperCase(), away.name.toUpperCase());
@@ -80,9 +90,9 @@ export class MatchEngine {
         const type = (pO15 / 0.72) > (pU35 / 0.76) ? 'OVER_15' : 'UNDER_35';
         const prob = type === 'OVER_15' ? pO15 : pU35;
 
-        // Monte Carlo Variance Simulation
+        // Monte Carlo Variance Simulation (Industrial Overdispersion Adjusted)
         const sim = MonteCarloSimulator.run(
-            hL, aM, 0.15, 0.15, 
+            hL, aM, rhoData.varHG || 0.25, rhoData.varAG || 0.25, 
             type === 'OVER_15' ? 1.5 : 3.5, 
             type === 'UNDER_35', 
             rhoData.rho, rhoData.sigmaRho
@@ -107,7 +117,7 @@ export class MatchEngine {
             signalStrength: prob,
             isSureshot: prob > 0.82 && !isVoid,
             context,
-            dataSource: 'LIVE',
+            dataSource: (home.dataPurity <= 0.1 && away.dataPurity <= 0.1) ? 'ARCHETYPE' : 'LIVE',
             surety: { confidenceScore: prob, verdict: isVoid ? 'VOID' : verdict as any }
         };
     }

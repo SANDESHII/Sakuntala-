@@ -10,6 +10,8 @@ export interface TeamStats {
     form: number[];
     cleanSheets: number;
     dataPurity: number;
+    redCardPropensity: number;
+    clinicalEdge: number;
 }
 
 export interface RefereeProfile {
@@ -63,4 +65,5 @@ export interface MatchHistory {
     league?: string;
     purity?: number;
     weight?: number;
+    redCardMinutes?: { home: number[], away: number[] };
 }

@@ -32,7 +32,7 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis, surety }) => {
                     <div className="flex items-center gap-3">
                         <div className={`w-2 h-2 rounded-full ${isInsufficient ? 'bg-red-500' : 'bg-emerald-500'} animate-pulse`} />
                         <span className="text-xs font-bold tracking-widest text-neutral-500 uppercase">
-                            {analysis.dataSource === 'LIVE' ? 'Neural Signal Active' : 'Baseline Mode'}
+                            {analysis.dataSource === 'LIVE' ? 'Live Neural Mode' : 'Tactical Archetype Mode'}
                         </span>
                     </div>
                     <h2 className="text-6xl font-bold text-white tracking-tighter leading-none uppercase">
@@ -75,6 +75,10 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis, surety }) => {
                                         <div className="space-y-1">
                                             <span className="text-[10px] text-neutral-500 font-bold uppercase">Stability</span>
                                             <p className="text-2xl font-bold text-emerald-500">{item.team.defensiveStability.toFixed(2)}</p>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <span className="text-[10px] text-neutral-500 font-bold uppercase">Clinical Edge</span>
+                                            <p className="text-2xl font-bold text-white">{(item.team.clinicalEdge * 100).toFixed(1)}%</p>
                                         </div>
                                     </div>
                                 </div>

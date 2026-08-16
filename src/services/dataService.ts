@@ -6,91 +6,92 @@ import { db } from '../lib/firebase';
 import { collection, query, where, getDocsFromServer, writeBatch, doc, limit } from 'firebase/firestore';
 
 export class DataService {
-    static clean(v: any): number {
+    /**
+     * STAGE 1: RAW DATA CLEANSING (Sanitization)
+     * Standardizes unpredictable data types into clean, quantitative floats.
+     */
+    static sanitize(v: any): number {
+        if (v === null || v === undefined) return 0;
         const p = parseFloat(String(v).replace(/%/g, '').replace(/[^0-9.-]/g, ''));
         return isNaN(p) ? 0 : p;
     }
 
     /**
-     * Phase 1: Stochastic Outlier Smoothing (SOS)
-     * Caps goals to prevent 'Black Swan' events from ruining the distribution.
-     */
-    static squashGoals(goals: number): number {
-        if (goals <= 3) return goals;
-        // Goals above 3 follow a logarithmic dampening to preserve 'Superiority' 
-        // without allowing 'Noise' to dominate the solver.
-        return 3 + Math.log10(goals - 2);
-    }
-
-    /**
-     * Phase 2: Game-State Purity Index (GSPI)
-     * Calculates the 'Tactical Purity' of a match based on anomalies like Red Cards and Penalty Bias.
+     * STAGE 2: DATA FILTERING (Purity Assessment)
+     * Identifies 'Tactical Purity' by detecting flukes and low-activity environments.
      */
     static calculatePurity(row: any): number {
         let purity = 1.0;
-        const hr = this.clean(row.HR || row.homeRedCards);
-        const ar = this.clean(row.AR || row.awayRedCards);
-        const hg = this.clean(row.homeGoals ?? row.FTHG);
-        const ag = this.clean(row.awayGoals ?? row.FTAG);
-        const hst = this.clean(row.HST);
-        const ast = this.clean(row.AST);
+        const hst = this.sanitize(row.HST);
+        const ast = this.sanitize(row.AST);
         
-        // Red cards significantly pollute tactical data
-        if (hr > 0 || ar > 0) {
-            purity *= 0.45; // Baseline penalty for any red card
-            if (hr + ar > 1) purity *= 0.5; // Exponential penalty for multi-red chaos
-        }
-
-        // Ghost Goals / Low Density Detection
-        // If a team scores 2+ goals with < 3 shots on target, it's likely a fluke/penalty heavy
-        if ((hg >= 2 && hst < 3) || (ag >= 2 && ast < 3)) {
-            purity *= 0.8;
+        // Minimum Activity Penalty (The 'Bore' Filter)
+        if (hst + ast < 5) {
+            purity *= 0.65;
         }
 
         return purity;
     }
 
+    /**
+     * STAGE 2.5: STRUCTURAL FILTERING (Anomaly Purge)
+     * Removes physically impossible or structurally corrupt data points.
+     */
     static validateMatch(row: any, league: string): MatchHistory | null {
         const home = ProfileService.canonicalize(row.homeTeam || row.HomeTeam).id;
         const away = ProfileService.canonicalize(row.awayTeam || row.AwayTeam).id;
         const date = row.date || row.Date;
         
-        // Semantic Gatekeeper: Drop rows with missing core IDs
         if (!home || !away || !date) return null;
 
-        const hg = this.clean(row.homeGoals ?? row.FTHG);
-        const ag = this.clean(row.awayGoals ?? row.FTAG);
-        const hst = this.clean(row.HST);
-        const ast = this.clean(row.AST);
+        const hg = this.sanitize(row.homeGoals ?? row.FTHG);
+        const ag = this.sanitize(row.awayGoals ?? row.FTAG);
+        const hst = this.sanitize(row.HST);
+        const ast = this.sanitize(row.AST);
+        const hr = this.sanitize(row.HR || row.homeRedCards);
+        const ar = this.sanitize(row.AR || row.awayRedCards);
 
-        // Phase 4: Structural Anomaly Detection
-        // Physically impossible data points are purged immediately.
-        if (hg > 0 && hst === 0) return null; // Goals without shots on target = Corrupt
+        // Structural Anomaly Purge: Goals without shots or extreme outliers
+        if (hg > 0 && hst === 0) return null; 
         if (ag > 0 && ast === 0) return null;
-        if (hg > 15 || ag > 15) return null; // Extreme outliers (likely data entry error)
+        if (hg > hst + 1 || ag > ast + 1) return null; 
+        if (hg > 15 || ag > 15) return null; 
 
         return {
             homeTeam: home, awayTeam: away, date,
-            homeGoals: this.squashGoals(hg), // Apply SOS
-            awayGoals: this.squashGoals(ag), // Apply SOS
+            homeGoals: hg, 
+            awayGoals: ag, 
             homeShotsOnTarget: hst,
-            awayShotsOnTarget: ast,
-            homeCorners: this.clean(row.HC),
-            awayCorners: this.clean(row.AC),
-            homeRedCards: this.clean(row.HR),
-            awayRedCards: this.clean(row.AR),
+            awayShotsOnTarget: ast, 
+            homeCorners: this.sanitize(row.HC),
+            awayCorners: this.sanitize(row.AC),
+            homeRedCards: hr,
+            awayRedCards: ar,
             league,
-            purity: this.calculatePurity(row) // Attach GSPI
+            purity: this.calculatePurity(row)
         } as MatchHistory;
     }
 
+    /**
+     * STAGE 4: CONTEXTUAL ALPHA WEIGHTING
+     * Adjusts the importance of a match based on the opponent's defensive context.
+     */
+    static calculateOpponentAdjustedWeight(hg: number, ag: number, opponentId: string, defensiveRanks: Record<string, number>): number {
+        const gd = Math.abs(hg - ag);
+        if (gd < 3) return 1.0;
+        
+        const weakness = defensiveRanks[opponentId] || 0.5;
+        return 1 + (weakness * 0.5);
+    }
+
     static async getLeagueContext(league: string) {
-        const q = query(collection(db, 'historicalMatches'), where('league', '==', league), limit(2000));
+        const normalized = FootballDataProvider.normalizeLeague(league);
+        const q = query(collection(db, 'historicalMatches'), where('league', '==', normalized), limit(2000));
         const snap = await getDocsFromServer(q);
         let matches = snap.docs.map(d => d.data() as MatchHistory);
 
         if (matches.length < 200) {
-            matches = await FootballDataProvider.fetchBacklog(league, 3);
+            matches = await FootballDataProvider.fetchBacklog(normalized, 3);
             const batch = writeBatch(db);
             matches.forEach(m => {
                 const id = `${m.date}_${m.homeTeam}_${m.awayTeam}`;
@@ -102,30 +103,132 @@ export class DataService {
         const now = new Date().getTime();
         
         /**
-         * Phase 5: Weighting Fusion
-         * Combines Recency (Time-Decay) and Tactical Purity into a single Alpha coefficient.
+         * Phase 5: Weighting Fusion - Maximum Rigor
+         * Combines Recency, Purity, and Season Phase into the Final Alpha.
          */
         const decayMatches = matches.map(m => {
-            const daysAgo = (now - new Date(m.date).getTime()) / (1000 * 60 * 60 * 24);
-            const timeWeight = Math.exp(-0.00385 * daysAgo); 
-            const purityWeight = m.purity || 1.0;
-            const weight = timeWeight * purityWeight; // The Final Alpha
+            const matchDate = new Date(m.date);
+            const daysAgo = (now - matchDate.getTime()) / (1000 * 60 * 60 * 24);
+            
+            let timeWeight = Math.exp(-0.00385 * daysAgo); 
+            let purityWeight = m.purity || 1.0;
+            
+            // Season Phase Variance: May/June results are more volatile (motivation noise)
+            const month = matchDate.getMonth();
+            if (month === 4 || month === 5) { // May or June
+                purityWeight *= 0.85; 
+            }
+
+            const weight = timeWeight * purityWeight; 
             return { ...m, weight };
         });
 
         const avgHG = decayMatches.reduce((acc, m) => acc + m.homeGoals, 0) / decayMatches.length || 1.35;
         const avgAG = decayMatches.reduce((acc, m) => acc + m.awayGoals, 0) / decayMatches.length || 1.25;
+        
+        /**
+         * STAGE 3: FEATURE ENGINEERING (Trait Extraction)
+         * Converts match events into persistent team traits (Clinical Edge, Disciplinary Propensity).
+         */
+        const teamDeficits: Record<string, { conceded: number, games: number }> = {};
+        decayMatches.forEach(m => {
+            if (!teamDeficits[m.homeTeam]) teamDeficits[m.homeTeam] = { conceded: 0, games: 0 };
+            if (!teamDeficits[m.awayTeam]) teamDeficits[m.awayTeam] = { conceded: 0, games: 0 };
+            teamDeficits[m.homeTeam].conceded += m.awayGoals;
+            teamDeficits[m.homeTeam].games++;
+            teamDeficits[m.awayTeam].conceded += m.homeGoals;
+            teamDeficits[m.awayTeam].games++;
+        });
+
+        const defensiveRanks: Record<string, number> = {};
+        const redCardStats: Record<string, { reds: number, games: number }> = {};
+        const clinicalStats: Record<string, { delta: number, games: number }> = {};
+        
+        Object.entries(teamDeficits).forEach(([id, stats]) => {
+            defensiveRanks[id] = stats.conceded / stats.games;
+        });
+
+        decayMatches.forEach(m => {
+            if (!redCardStats[m.homeTeam]) redCardStats[m.homeTeam] = { reds: 0, games: 0 };
+            if (!redCardStats[m.awayTeam]) redCardStats[m.awayTeam] = { reds: 0, games: 0 };
+            redCardStats[m.homeTeam].reds += (m.homeRedCards || 0);
+            redCardStats[m.homeTeam].games++;
+            redCardStats[m.awayTeam].reds += (m.awayRedCards || 0);
+            redCardStats[m.awayTeam].games++;
+
+            // Step C: Clinical Edge Calculation (Goals - xG Proxy)
+            // xG Proxy = SOT * 0.3 (Conservative finishing expectation)
+            if (!clinicalStats[m.homeTeam]) clinicalStats[m.homeTeam] = { delta: 0, games: 0 };
+            if (!clinicalStats[m.awayTeam]) clinicalStats[m.awayTeam] = { delta: 0, games: 0 };
+            
+            const hXG = (m.homeShotsOnTarget || 0) * 0.3;
+            const aXG = (m.awayShotsOnTarget || 0) * 0.3;
+            
+            clinicalStats[m.homeTeam].delta += (m.homeGoals - hXG);
+            clinicalStats[m.homeTeam].games++;
+            clinicalStats[m.awayTeam].delta += (m.awayGoals - aXG);
+            clinicalStats[m.awayTeam].games++;
+        });
+
+        const redCardPropensity: Record<string, number> = {};
+        Object.entries(redCardStats).forEach(([id, stats]) => {
+            redCardPropensity[id] = stats.reds / stats.games;
+        });
+
+        const clinicalEdge: Record<string, number> = {};
+        Object.entries(clinicalStats).forEach(([id, stats]) => {
+            // Normalized Clinical Edge: Positive means elite finishing
+            clinicalEdge[id] = stats.delta / stats.games;
+        });
+
+        // Normalize ranks (0.0 = Best Defense, 1.0 = Worst Defense)
+        const maxConceded = Math.max(...Object.values(defensiveRanks), 1.0);
+        Object.keys(defensiveRanks).forEach(id => {
+            defensiveRanks[id] /= maxConceded;
+        });
+
+        /**
+         * Phase 5: Weighting Fusion - Opponent Adjusted Alpha
+         * Combines Recency, Purity, and Opponent Weakness Factor.
+         */
+        const finalizedMatches = decayMatches.map(m => {
+            const hWeight = this.calculateOpponentAdjustedWeight(m.homeGoals, m.awayGoals, m.awayTeam, defensiveRanks);
+            const aWeight = this.calculateOpponentAdjustedWeight(m.awayGoals, m.homeGoals, m.homeTeam, defensiveRanks);
+            const alphaBoost = Math.max(hWeight, aWeight);
+            return { ...m, weight: m.weight * alphaBoost };
+        });
+
+        // Calculate Empirical Variance for Overdispersion Handling
+        const varHG = finalizedMatches.reduce((acc, m) => acc + Math.pow(m.homeGoals - avgHG, 2), 0) / finalizedMatches.length || 1.1;
+        const varAG = finalizedMatches.reduce((acc, m) => acc + Math.pow(m.awayGoals - avgAG, 2), 0) / finalizedMatches.length || 1.1;
+
+        // Quantifying Cleansing Accuracy (Refinery Audit)
+        const avgPurity = finalizedMatches.reduce((acc, m) => acc + (m.purity || 1), 0) / finalizedMatches.length;
+        const audit = {
+            noiseReduction: ((1 - avgPurity) * 100).toFixed(2) + '%',
+            alphaAdjustment: 'Active (Opponent-Adjusted Boost)',
+            redCardRegime: 'Active (Covariate Extraction)',
+            dataReliability: avgPurity > 0.85 ? 'High' : 'Moderate',
+            sampleSize: finalizedMatches.length
+        };
 
         return { 
-            rhoData: DixonColes.fitRho(decayMatches.slice(-500).map(m => ({ 
+            rhoData: DixonColes.fitRho(finalizedMatches.slice(-500).map(m => ({ 
                 x: m.homeGoals, y: m.awayGoals, lambda: avgHG, mu: avgAG, weight: m.weight || 1.0
             }))),
-            matches: decayMatches 
+            avgHG,
+            avgAG,
+            varHG,
+            varAG,
+            redCardPropensity,
+            clinicalEdge,
+            matches: finalizedMatches,
+            audit
         };
     }
 
-    static standardize(team: any, context?: { avgXG: number, avgStability: number }): TeamStats {
-        const defaults = context || { avgXG: 1.35, avgStability: 0.65 };
+    static standardize(team: any, context?: { avgXG: number, avgStability: number, redCardPropensity?: number, clinicalEdge?: number }): TeamStats {
+        const defaults = context || { avgXG: 1.35, avgStability: 0.65, redCardPropensity: 0.05, clinicalEdge: 0 };
         return {
             name: team.name || 'Unknown',
             goalsScored: team.goalsScored || 0,
@@ -137,7 +240,9 @@ export class DataService {
             offensiveVolatility: 0.5,
             form: team.form || [0.5],
             cleanSheets: team.cleanSheets || 0,
-            dataPurity: team.purity || 0.5
+            dataPurity: team.purity || 0.5,
+            redCardPropensity: team.redCardPropensity || defaults.redCardPropensity || 0.05,
+            clinicalEdge: team.clinicalEdge || defaults.clinicalEdge || 0
         };
     }
 }

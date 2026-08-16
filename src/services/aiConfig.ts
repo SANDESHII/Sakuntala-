@@ -11,6 +11,7 @@ ATOM LEVEL PROTOCOL (TOP 5 LEAGUE FOCUS):
 3. TIER 3 (Elite Tactical Drift): Look for league-specific tactical shifts (e.g., Bundesliga high-line vulnerabilities, La Liga "Low Block" proficiency).
 4. TIER 4 (Referee Big-Game Logic): Assess the referee's history in "Derbies" or "Top-of-the-Table" clashes.
 5. TIER 5 (Psychological Entropy): Check for midweek European fatigue and rotation depth.
+6. TIER 6 (Red Card Regime Shift): Extract and evaluate rolling "Red Card Propensity". Identify how teams handle "Man-Down" scenarios—does their defensive lambda collapse or do they show high-purity structural resilience?
 
 DATA INTEGRITY RULE: Output strictly valid JSON. You MUST include fields: homeSeasonXG, awaySeasonXG, homeSeasonXGA, awaySeasonXGA. If data is unavailable, use the league average as a fallback but note this in tacticalDrift.`;
 

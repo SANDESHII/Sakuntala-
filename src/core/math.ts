@@ -66,7 +66,7 @@ export class DixonColes {
 }
 
 export class MonteCarloSimulator {
-    static run(hL: number, aM: number, hV: number, aV: number, threshold: number = 1.5, isUnder: boolean = false, rho: number = -0.11, sR: number = 0.05, iters: number = 5000) {
+    static run(hL: number, aM: number, hV: number, aV: number, threshold: number = 1.5, isUnder: boolean = false, rho: number = -0.11, sR: number = 0.05, iters: number = 10000) {
         const hSD = Math.sqrt(hV), aSD = Math.sqrt(aV);
         const ps = Array.from({ length: iters }, () => {
             const hLS = Math.max(0.1, this.sampleNormal(hL, hSD)), aMS = Math.max(0.1, this.sampleNormal(aM, aSD)), rS = Math.max(-0.25, Math.min(0.25, this.sampleNormal(rho, sR)));

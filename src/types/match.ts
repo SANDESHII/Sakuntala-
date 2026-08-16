@@ -61,4 +61,6 @@ export interface MatchHistory {
     awayXG?: number;
     date: string;
     league?: string;
+    purity?: number;
+    weight?: number;
 }

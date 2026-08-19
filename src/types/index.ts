@@ -42,6 +42,10 @@ export interface MatchContext {
     homeSeasonXGA?: number;
     awaySeasonXGA?: number;
     date?: string;
+    marketOdds?: {
+        pinnacleOver15?: number;
+        pinnacleUnder35?: number;
+    };
     audit?: {
         signalIntegrity: string;
         alphaAdjustment: string;
@@ -56,6 +60,8 @@ export interface MatchHistory {
     awayTeam: string;
     homeGoals: number;
     awayGoals: number;
+    homeXG?: number;
+    awayXG?: number;
     homeShotsOnTarget?: number;
     awayShotsOnTarget?: number;
     homeRedCards?: number;
@@ -67,7 +73,7 @@ export interface MatchHistory {
 
 export interface AnalysisConfidence {
     confidenceScore: number;
-    verdict: 'GOLD' | 'SILVER' | 'BRONZE' | 'VOLATILE';
+    edgeValue: number;
 }
 
 export interface AnalysisResult {
@@ -79,11 +85,10 @@ export interface AnalysisResult {
     awayXG: number;
     minimumExpectancy: number;
     potentialCeiling: number;
-    predictionType: 'OVER_15' | 'UNDER_35';
+    predictionType: 'OVER_15' | 'UNDER_35' | 'NO_BET';
     predictionLabel: string;
     purity: number;
     signalStrength: number;
-    isSureshot: boolean;
     context: MatchContext;
     surety: AnalysisConfidence;
     dataSource: 'LIVE' | 'FALLBACK_STATIC';

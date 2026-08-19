@@ -28,6 +28,13 @@ export class BacktestService {
         let totalB = 0, hpB = 0, hpC = 0, ovC = 0, unC = 0, ovT = 0, unT = 0;
         const results: any[] = [];
 
+        // EDGE SEGMENTATION LOGIC
+        const segments = [
+            { segment: 'Low Edge (0-3%)', min: 0, max: 3, count: 0, hits: 0 },
+            { segment: 'Mid Edge (3-7%)', min: 3, max: 7, count: 0, hits: 0 },
+            { segment: 'High Edge (7%+)', min: 7, max: 100, count: 0, hits: 0 }
+        ];
+
         for (const m of samples) {
             const h = DataService.standardize({ ...ProfileService.computeBaseline(m.homeTeam, all), name: m.homeTeam });
             const a = DataService.standardize({ ...ProfileService.computeBaseline(m.awayTeam, all), name: m.awayTeam });
@@ -43,11 +50,19 @@ export class BacktestService {
             if (math.predictionType === 'OVER_15') { ovT++; if (isO15) ovC++; }
             if (math.predictionType === 'UNDER_35') { unT++; if (isU35) unC++; }
 
+            const edge = math.surety.edgeValue;
+            const seg = segments.find(s => edge >= s.min && edge < s.max);
+            if (seg) {
+                seg.count++;
+                if (outcome) seg.hits++;
+            }
+
             results.push({ 
                 match: { ...m, actualScore: [m.homeGoals, m.awayGoals] }, 
                 prediction: math, 
                 isOver15Correct: isO15, 
-                isUnder35Correct: isU35 
+                isUnder35Correct: isU35,
+                marketEdge: edge
             });
         }
 
@@ -58,7 +73,12 @@ export class BacktestService {
             brierScore: totalB / samples.length,
             highPurityBrierScore: hpC > 0 ? hpB / hpC : 0,
             highPurityMatches: hpC,
-            edgeSegments: [],
+            edgeSegments: segments.map(s => ({
+                segment: s.segment,
+                count: s.count,
+                hitRate: s.count > 0 ? s.hits / s.count : 0,
+                avgEdge: s.min / 100 // Approximation for display
+            })),
             matches: results
         };
     }

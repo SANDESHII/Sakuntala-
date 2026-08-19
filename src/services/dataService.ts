@@ -24,6 +24,8 @@ export class DataService {
         const ag = this.sanitize(row.awayGoals ?? row.FTAG);
         const hst = this.sanitize(row.HST ?? row.homeShotsOnTarget);
         const ast = this.sanitize(row.AST ?? row.awayShotsOnTarget);
+        const hxg = row.homeXG ? this.sanitize(row.homeXG) : undefined;
+        const axg = row.awayXG ? this.sanitize(row.awayXG) : undefined;
 
         if ((hg > 0 && hst === 0) || (ag > 0 && ast === 0)) return null; 
         if (hg > hst + 1 || ag > ast + 1) return null; 
@@ -31,6 +33,7 @@ export class DataService {
         return {
             homeTeam: home, awayTeam: away, date,
             homeGoals: hg, awayGoals: ag, 
+            homeXG: hxg, awayXG: axg,
             homeShotsOnTarget: hst, awayShotsOnTarget: ast, 
             homeRedCards: this.sanitize(row.HR ?? row.homeRedCards),
             awayRedCards: this.sanitize(row.AR ?? row.awayRedCards),
@@ -120,19 +123,28 @@ export class DataService {
     private static extractTacticalTraits(matches: any[]) {
         const stats: Record<string, { conceded: number, reds: number, delta: number, games: number }> = {};
         
+        // LEAGUE CONVERSION CALIBRATION (SoT Fallback)
+        const CONVERSION: Record<string, number> = {
+            'EPL': 0.33, 'LA_LIGA': 0.31, 'SERIE_A': 0.29, 'BUNDESLIGA': 0.35, 'LIGUE_1': 0.30, 'STANDARD': 0.31
+        };
+
         matches.forEach(m => {
             [m.homeTeam, m.awayTeam].forEach(id => {
                 if (!stats[id]) stats[id] = { conceded: 0, reds: 0, delta: 0, games: 0 };
             });
 
+            const rate = CONVERSION[m.league] || CONVERSION.STANDARD;
+            const hXG = m.homeXG ?? (m.homeShotsOnTarget * rate);
+            const aXG = m.awayXG ?? (m.awayShotsOnTarget * rate);
+
             stats[m.homeTeam].conceded += m.awayGoals;
             stats[m.homeTeam].reds += (m.homeRedCards || 0);
-            stats[m.homeTeam].delta += (m.homeGoals - (m.homeShotsOnTarget * 0.3));
+            stats[m.homeTeam].delta += (m.homeGoals - hXG);
             stats[m.homeTeam].games++;
 
             stats[m.awayTeam].conceded += m.homeGoals;
             stats[m.awayTeam].reds += (m.awayRedCards || 0);
-            stats[m.awayTeam].delta += (m.awayGoals - (m.awayShotsOnTarget * 0.3));
+            stats[m.awayTeam].delta += (m.awayGoals - aXG);
             stats[m.awayTeam].games++;
         });
 

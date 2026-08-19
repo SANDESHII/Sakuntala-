@@ -97,18 +97,18 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis, surety }) => {
                 </div>
 
                 <div className="lg:col-span-4 space-y-8">
-                    {/* Verdict Card */}
-                    <div className="bg-emerald-500 p-10 rounded-2xl text-neutral-950 space-y-8">
+                    {/* Verdict Card: Edge Detection Mode */}
+                    <div className={`${analysis.predictionType === 'NO_BET' ? 'bg-neutral-800 text-neutral-400' : 'bg-emerald-500 text-neutral-950'} p-10 rounded-2xl space-y-8 transition-colors duration-500`}>
                         <div className="space-y-2">
-                            <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">System Verdict</span>
-                            <h2 className="text-5xl font-black tracking-tighter uppercase leading-none">
-                                {analysis.isSureshot ? 'Sureshot' : surety.verdict}
+                            <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Syndicate Alpha Audit</span>
+                            <h2 className={`text-5xl font-black tracking-tighter uppercase leading-none ${analysis.predictionType === 'NO_BET' ? 'text-white/20' : ''}`}>
+                                {surety.edgeValue > 0 ? `Edge: +${surety.edgeValue}%` : 'NO EDGE'}
                             </h2>
                         </div>
                         <p className="text-sm font-medium leading-relaxed">
-                            {analysis.isSureshot 
-                                ? "Mathematical convergence exceeds 82% threshold. High-fidelity signal detected."
-                                : "Standard statistical variance applies. Position sizing should remain disciplined."}
+                            {analysis.predictionType === 'NO_BET'
+                                ? "Market Efficiency Detected. Neural probability is within the variance threshold of Pinnacle/Betfair price. No statistical advantage present."
+                                : `Statistical Alpha detected. Model probability exceeds market efficiency baseline by ${surety.edgeValue}%.`}
                         </p>
                     </div>
 

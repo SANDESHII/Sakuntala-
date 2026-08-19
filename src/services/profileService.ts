@@ -52,6 +52,10 @@ export class ProfileService {
         let weightedGS = 0, weightedGA = 0, totalWeight = 0;
         let cleanSheets = 0, totalReds = 0, totalDelta = 0;
         
+        const CONVERSION: Record<string, number> = {
+            'EPL': 0.33, 'LA_LIGA': 0.31, 'SERIE_A': 0.29, 'BUNDESLIGA': 0.35, 'LIGUE_1': 0.30, 'STANDARD': 0.31
+        };
+
         rel.forEach(m => {
             const weight = (m as any).weight || 1.0;
             const isH = m.homeTeam === id;
@@ -59,14 +63,18 @@ export class ProfileService {
             const conceded = isH ? m.awayGoals : m.homeGoals;
             const reds = isH ? (m.homeRedCards || 0) : (m.awayRedCards || 0);
             const sot = isH ? (m.homeShotsOnTarget || 0) : (m.awayShotsOnTarget || 0);
+            const realXG = isH ? m.homeXG : m.awayXG;
             
+            const rate = CONVERSION[m.league || 'STANDARD'] || CONVERSION.STANDARD;
+            const xG = realXG ?? (sot * rate);
+
             weightedGS += scored * weight;
             weightedGA += conceded * weight;
             totalWeight += weight;
             
             totalReds += reds;
-            // Clinical Edge: Actual - (SOT * 0.3)
-            totalDelta += (scored - (sot * 0.3));
+            // Clinical Edge: Actual - Real xG (or calibrated proxy)
+            totalDelta += (scored - xG);
 
             if (conceded === 0) cleanSheets++;
         });

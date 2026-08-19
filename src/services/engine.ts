@@ -79,23 +79,51 @@ export class MatchEngine {
         const pO15 = DixonColes.calculateOverUnder(matrix, 1.5);
         const pU35 = 1 - DixonColes.calculateOverUnder(matrix, 3.5);
 
-        const type = (pO15 / 0.72) > (pU35 / 0.76) ? 'OVER_15' : 'UNDER_35';
-        const prob = type === 'OVER_15' ? pO15 : pU35;
+        // MARKET EDGE DETECTION (Pinnacle/Betfair tethering)
+        const marketProbO15 = context.marketOdds?.pinnacleOver15 ? (1 / context.marketOdds.pinnacleOver15) : 0.71;
+        const marketProbU35 = context.marketOdds?.pinnacleUnder35 ? (1 / context.marketOdds.pinnacleUnder35) : 0.75;
+
+        const edgeO15 = pO15 - marketProbO15;
+        const edgeU35 = pU35 - marketProbU35;
+
+        let type: 'OVER_15' | 'UNDER_35' | 'NO_BET' = 'NO_BET';
+        let edge = 0;
+        let prob = 0;
+
+        if (edgeO15 > 0.04 && edgeO15 > edgeU35) {
+            type = 'OVER_15';
+            edge = edgeO15;
+            prob = pO15;
+        } else if (edgeU35 > 0.04) {
+            type = 'UNDER_35';
+            edge = edgeU35;
+            prob = pU35;
+        } else {
+            prob = Math.max(pO15, pU35);
+            edge = 0;
+        }
 
         const sim = MonteCarloSimulator.run(
             hL, aM, rhoData.varHG || 0.25, rhoData.varAG || 0.25, 
-            type === 'OVER_15' ? 1.5 : 3.5, 
+            type === 'UNDER_35' ? 3.5 : 1.5, 
             type === 'UNDER_35', 
             rhoData.rho, rhoData.sigmaRho
         );
 
         const purity = (home.dataPurity + away.dataPurity) / 2;
         const isVolatile = purity < 0.4 || prob < 0.62;
-        const verdict = prob > 0.82 ? 'GOLD' : (prob > 0.72 ? 'SILVER' : (prob > 0.62 ? 'BRONZE' : 'VOLATILE'));
+        
+        let finalSummary = "";
+        if (type === 'NO_BET') {
+            finalSummary = "Market Efficiency Detected: Neural probability is within the variance threshold of Pinnacle/Betfair price. No statistical advantage present.";
+        } else {
+            const volatileNote = isVolatile ? " [VOLATILITY ALERT: Data purity is low] " : "";
+            finalSummary = `Syndicate Alpha Detected:${volatileNote} Model probability exceeds market baseline by ${Math.round(edge * 1000) / 10}%. Converged on ${type === 'OVER_15' ? 'Over 1.5' : 'Under 3.5'}.`;
+        }
 
         return {
             probability: Math.round(prob * 100),
-            summary: isVolatile ? "High Volatility Signal: Numerical gap is narrow, but model favors the following path." : `Bayesian Shrunk Momentum has converged on ${type === 'OVER_15' ? 'Over 1.5' : 'Under 3.5'} with ${Math.round(prob * 100)}% confidence.`,
+            summary: finalSummary,
             homeStats: home,
             awayStats: away,
             homeXG: hL,
@@ -103,13 +131,12 @@ export class MatchEngine {
             minimumExpectancy: sim.confidenceInterval[0],
             potentialCeiling: sim.confidenceInterval[1],
             predictionType: type,
-            predictionLabel: type === 'OVER_15' ? 'Over 1.5 Goals' : 'Under 3.5 Goals',
+            predictionLabel: type === 'NO_BET' ? 'Market Efficient (No Bet)' : (type === 'OVER_15' ? 'Over 1.5 Goals' : 'Under 3.5 Goals'),
             purity: Math.round(purity * 100),
             signalStrength: prob,
-            isSureshot: prob > 0.82,
             context,
             dataSource: (home.dataPurity <= 0.1 && away.dataPurity <= 0.1) ? 'FALLBACK_STATIC' : 'LIVE',
-            surety: { confidenceScore: prob, verdict: verdict as any }
+            surety: { confidenceScore: prob, edgeValue: Math.round(edge * 1000) / 10 }
         };
     }
 }

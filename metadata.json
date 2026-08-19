@@ -1,6 +1,6 @@
 {
-  "name": "Infallibility Pro",
-  "description": "Professional stochastic forecasting engine utilizing neural overdispersion and de-censored tactical data for high-fidelity football analytics.",
+    "name": "Alpha Terminal",
+    "description": "Probabilistic edge detection and market inefficiency hunting.",
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ],

@@ -13,13 +13,12 @@ YOUR MISSION: Perform an "Atom Level" rigorous Tactical Grounding research for T
 
 ATOM LEVEL PROTOCOL:
 1. TIER 1 (xG DATA MANDATE): Find Season-to-Date xG and xGA for both teams.
-2. TIER 2 (Personnel): Identify missing personnel impact.
-3. TIER 3 (Tactical Drift): Look for league-specific shifts.
-4. TIER 4 (Referee): Assess referee history.
-5. TIER 5 (Fatigue): Check midweek rotation.
-6. TIER 6 (Red Cards): Evaluate red card propensity and "Man-Down" resilience.
+2. TIER 2 (Market Intel): Find current live Pinnacle/Betfair odds for Over 1.5 and Under 3.5 Goals.
+3. TIER 3 (Personnel): Identify missing personnel impact.
+4. TIER 4 (Tactical Drift): Look for league-specific shifts.
+5. TIER 5 (Referee): Assess referee history.
 
-Output strictly valid JSON. Include fields: homeSeasonXG, awaySeasonXG, homeSeasonXGA, awaySeasonXGA.`;
+Output strictly valid JSON. Include fields: homeSeasonXG, awaySeasonXG, homeSeasonXGA, awaySeasonXGA, pinnacleOver15, pinnacleUnder35.`;
 
 const AI_SCHEMA = {
     type: Type.OBJECT,
@@ -35,6 +34,8 @@ const AI_SCHEMA = {
                 awaySeasonXG: { type: Type.NUMBER },
                 homeSeasonXGA: { type: Type.NUMBER },
                 awaySeasonXGA: { type: Type.NUMBER },
+                pinnacleOver15: { type: Type.NUMBER },
+                pinnacleUnder35: { type: Type.NUMBER },
                 referee: {
                     type: Type.OBJECT,
                     properties: {
@@ -128,7 +129,11 @@ export const performAnalysis = async (rawReq: any): Promise<AnalysisResult> => {
             homeSeasonXG: parsed.verifiedFacts?.homeSeasonXG,
             awaySeasonXG: parsed.verifiedFacts?.awaySeasonXG,
             homeSeasonXGA: parsed.verifiedFacts?.homeSeasonXGA,
-            awaySeasonXGA: parsed.verifiedFacts?.awaySeasonXGA
+            awaySeasonXGA: parsed.verifiedFacts?.awaySeasonXGA,
+            marketOdds: {
+                pinnacleOver15: parsed.verifiedFacts?.pinnacleOver15,
+                pinnacleUnder35: parsed.verifiedFacts?.pinnacleUnder35
+            }
         };
 
         const result = MatchEngine.calculate(home, away, ctx, (leagueContext as any).rhoData);

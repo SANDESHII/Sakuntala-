@@ -94,10 +94,10 @@ export const App: React.FC = () => {
                     >
                         <div className="flex flex-col items-center gap-12">
                             <h2 className="text-8xl md:text-9xl font-bold tracking-tight text-white leading-[0.9] text-balance">
-                                Infallibility <span className="text-emerald-500">Pro</span>
+                                Alpha <span className="text-emerald-500">Terminal</span>
                             </h2>
                             <p className="text-neutral-400 text-lg max-w-xl mx-auto leading-relaxed">
-                                High-fidelity stochastic forecasting utilizing neural overdispersion and de-censored tactical data for absolute precision.
+                                Probabilistic edge detection and market inefficiency hunting.
                             </p>
                         </div>
                     </motion.div>
@@ -149,7 +149,7 @@ export const App: React.FC = () => {
 
             <footer className="max-w-6xl mx-auto px-6 py-20 border-t border-neutral-900 text-xs text-neutral-600 font-medium tracking-tight">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-8">
-                    <span>&copy; 2025 INFALLIBILITY PRO.</span>
+                    <span>&copy; 2025 ALPHA TERMINAL.</span>
                     <div className="flex gap-8">
                         <a href="#" className="hover:text-emerald-500 transition-colors">Documentation</a>
                         <a href="#" className="hover:text-emerald-500 transition-colors">Methodology</a>

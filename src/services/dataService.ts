@@ -3,6 +3,7 @@ import { ProfileService } from './profileService';
 import { FootballDataProvider } from './data/footballDataProvider';
 import { DixonColes } from '../core/math';
 import { db } from '../lib/firebase';
+import { LEAGUE_CONVERSION_RATES, DATA_CONSTANTS } from '../core/constants';
 import { collection, query, where, getDocsFromServer, writeBatch, doc, limit } from 'firebase/firestore';
 
 export class DataService {
@@ -58,21 +59,25 @@ export class DataService {
             ...traits,
             matches: finalizedMatches,
             audit: {
-                signalIntegrity: '100% (Raw Signal Flow)',
-                alphaAdjustment: 'Active (Bayesian Shrinkage)',
-                redCardRegime: 'Active (Chaos Preservation)',
-                dataReliability: 'High (Shrunk Momentum Model)',
+                signalIntegrity: '100%',
+                alphaAdjustment: 'Active',
+                redCardRegime: 'Active',
+                dataReliability: 'High',
                 sampleSize: finalizedMatches.length
             }
         };
     }
 
     private static async fetchHistoricalData(league: string): Promise<MatchHistory[]> {
-        const q = query(collection(db, 'historicalMatches'), where('league', '==', league), limit(2000));
+        const q = query(
+            collection(db, 'historicalMatches'), 
+            where('league', '==', league), 
+            limit(DATA_CONSTANTS.MATCH_LIMIT)
+        );
         const snap = await getDocsFromServer(q);
         let matches = snap.docs.map(d => d.data() as MatchHistory);
 
-        if (matches.length < 200) {
+        if (matches.length < DATA_CONSTANTS.SYNC_THRESHOLD) {
             matches = await FootballDataProvider.fetchBacklog(league, 3);
             await this.persistNewMatches(matches);
         } else {
@@ -111,9 +116,9 @@ export class DataService {
             const matchDate = new Date(m.date);
             const daysAgo = (now - matchDate.getTime()) / (1000 * 60 * 60 * 24);
             
-            let timeWeight = Math.exp(-0.00385 * daysAgo); 
+            const timeWeight = Math.exp(-DATA_CONSTANTS.RECENCY_DECAY * daysAgo); 
             const month = matchDate.getMonth();
-            const purityWeight = (month === 4 || month === 5) ? 0.85 : 1.0; // Seasonal Volatility
+            const purityWeight = (month === 4 || month === 5) ? 0.85 : 1.0; 
 
             return { ...m, weight: timeWeight * purityWeight };
         });
@@ -122,18 +127,12 @@ export class DataService {
     private static extractTacticalTraits(matches: any[]) {
         const stats: Record<string, { conceded: number, reds: number, delta: number, games: number }> = {};
         
-        // HISTORICAL PROXY CALIBRATION
-        // Used only as a fallback for archival matches where raw xG is not provided by the primary data stream.
-        const CONVERSION: Record<string, number> = {
-            'EPL': 0.33, 'LA_LIGA': 0.31, 'SERIE_A': 0.29, 'BUNDESLIGA': 0.35, 'LIGUE_1': 0.30, 'STANDARD': 0.31
-        };
-
         matches.forEach(m => {
             [m.homeTeam, m.awayTeam].forEach(id => {
                 if (!stats[id]) stats[id] = { conceded: 0, reds: 0, delta: 0, games: 0 };
             });
 
-            const rate = CONVERSION[m.league] || CONVERSION.STANDARD;
+            const rate = LEAGUE_CONVERSION_RATES[m.league] || LEAGUE_CONVERSION_RATES.STANDARD;
             const hXG = m.homeXG ?? (m.homeShotsOnTarget * rate);
             const aXG = m.awayXG ?? (m.awayShotsOnTarget * rate);
 
@@ -152,36 +151,33 @@ export class DataService {
         const redCardPropensity: Record<string, number> = {};
         const clinicalEdge: Record<string, number> = {};
         
-        // BAYESIAN SHRINKAGE CONSTANT (The "Anchor")
-        // We assume it takes ~12 games for a "Clinical Edge" to be statistically significant.
-        // Smaller samples are pulled back toward 0.0 (League Mean).
-        const SHRINKAGE_K = 12;
+        const leagueAvg = matches.reduce((acc, m) => acc + m.homeGoals + m.awayGoals, 0) / (matches.length * 2) || DATA_CONSTANTS.DEFAULT_LEAGUE_AVG;
 
         Object.entries(stats).forEach(([id, s]) => {
-            defensiveRanks[id] = s.conceded / s.games;
+            const avgConceded = s.conceded / s.games;
+            const stability = Math.max(DATA_CONSTANTS.MIN_STABILITY, Math.min(DATA_CONSTANTS.MAX_STABILITY, 1 - (avgConceded / (leagueAvg * 2))));
+            defensiveRanks[id] = 1 - stability;
             redCardPropensity[id] = s.reds / s.games;
-            
-            // Bayesian Shrunk Edge: Delta / (Games + K)
-            clinicalEdge[id] = s.delta / (s.games + SHRINKAGE_K);
+            clinicalEdge[id] = s.delta / (s.games + DATA_CONSTANTS.SHRINKAGE_K);
         });
-
-        // Normalize defensive ranks (0.0 = Best, 1.0 = Worst)
-        const maxConceded = Math.max(...Object.values(defensiveRanks), 1.0);
-        Object.keys(defensiveRanks).forEach(id => defensiveRanks[id] /= maxConceded);
 
         return { defensiveRanks, redCardPropensity, clinicalEdge };
     }
 
     private static calculateGlobalBaselines(matches: any[]) {
-        const avgHG = matches.reduce((acc, m) => acc + m.homeGoals, 0) / matches.length || 1.35;
-        const avgAG = matches.reduce((acc, m) => acc + m.awayGoals, 0) / matches.length || 1.25;
+        const avgHG = matches.reduce((acc, m) => acc + m.homeGoals, 0) / matches.length || DATA_CONSTANTS.DEFAULT_LEAGUE_AVG;
+        const avgAG = matches.reduce((acc, m) => acc + m.awayGoals, 0) / matches.length || (DATA_CONSTANTS.DEFAULT_LEAGUE_AVG - 0.1);
         
         return {
             avgHG, avgAG,
             varHG: matches.reduce((acc, m) => acc + Math.pow(m.homeGoals - avgHG, 2), 0) / matches.length || 1.1,
             varAG: matches.reduce((acc, m) => acc + Math.pow(m.awayGoals - avgAG, 2), 0) / matches.length || 1.1,
-            rhoData: DixonColes.fitRho(matches.slice(-500).map(m => ({ 
-                x: m.homeGoals, y: m.awayGoals, lambda: avgHG, mu: avgAG, weight: m.weight || 1.0
+            rhoData: DixonColes.fitRho(matches.slice(-DATA_CONSTANTS.RHO_SAMPLE_SIZE).map(m => ({ 
+                x: m.homeGoals, 
+                y: m.awayGoals, 
+                lambda: m.homeXG || avgHG, 
+                mu: m.awayXG || avgAG, 
+                weight: m.weight || 1.0
             })))
         };
     }
@@ -192,7 +188,7 @@ export class DataService {
     }
 
     static standardize(team: any, context?: any): TeamStats {
-        const d = context || { avgXG: 1.35, avgStability: 0.65, redCardPropensity: 0.05, clinicalEdge: 0 };
+        const d = context || { avgXG: DATA_CONSTANTS.DEFAULT_LEAGUE_AVG, avgStability: 0.65, redCardPropensity: 0.05, clinicalEdge: 0 };
         return {
             name: team.name || 'Unknown',
             goalsScored: team.goalsScored || 0,

@@ -28,6 +28,13 @@ export interface TeamStyleProfile {
     purity: number;
 }
 
+export interface Citation {
+    source: string;
+    url: string;
+    value: number;
+    timestamp: string;
+}
+
 export interface MatchContext {
     weatherData?: {
         temperature: number;
@@ -45,6 +52,10 @@ export interface MatchContext {
     marketOdds?: {
         pinnacleOver15?: number;
         pinnacleUnder35?: number;
+    };
+    groundingLog?: {
+        citations: Citation[];
+        varianceAlerts: string[];
     };
     audit?: {
         signalIntegrity: string;
@@ -74,6 +85,7 @@ export interface MatchHistory {
 export interface AnalysisConfidence {
     confidenceScore: number;
     edgeValue: number;
+    groundingCitations?: Citation[];
 }
 
 export interface AnalysisResult {

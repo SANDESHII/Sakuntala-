@@ -1,6 +1,8 @@
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { TeamStyleProfile, MatchHistory } from '../types';
+import { LEAGUE_CONVERSION_RATES, DATA_CONSTANTS } from '../core/constants';
+import { ELITE_TEAMS, STRONG_TEAMS, ARCHETYPE_STATS } from '../core/archetypes';
 
 export class ProfileService {
     private static readonly CANONICAL_MAP: Record<string, string[]> = {
@@ -33,29 +35,26 @@ export class ProfileService {
         const rel = matches.filter(m => m.homeTeam === id || m.awayTeam === id);
         
         if (!rel.length) {
-            const isElite = ["MAN_CITY", "LIVERPOOL", "ARSENAL", "REAL_MADRID", "BARCELONA", "BAYERN_MUNICH"].includes(id);
-            const isStrong = ["CHELSEA", "TOTTENHAM", "MAN_UTD", "ATLETICO_MADRID", "B_DORTMUND"].includes(id);
+            const isElite = ELITE_TEAMS.includes(id);
+            const isStrong = STRONG_TEAMS.includes(id);
+            const stats = isElite ? ARCHETYPE_STATS.ELITE : (isStrong ? ARCHETYPE_STATS.STRONG : ARCHETYPE_STATS.STANDARD);
             
             return {
                 name: teamName,
-                npxG: isElite ? 2.15 : (isStrong ? 1.75 : 1.35),
-                avgXGA: isElite ? 0.85 : (isStrong ? 1.15 : 1.45),
-                defensiveStability: isElite ? 0.85 : (isStrong ? 0.75 : 0.6),
-                purity: 0.1, // Mark as low fidelity (Archetype)
+                npxG: stats.npxG,
+                avgXGA: stats.avgXGA,
+                defensiveStability: stats.defensiveStability,
+                purity: 0.1, 
                 form: [0.5, 0.5, 0.5, 0.5, 0.5],
-                cleanSheets: isElite ? 0.4 : 0.2,
+                cleanSheets: stats.cleanSheets,
                 redCardPropensity: 0.05,
-                clinicalEdge: isElite ? 0.15 : 0.05
+                clinicalEdge: stats.clinicalEdge
             };
         }
         
         let weightedGS = 0, weightedGA = 0, totalWeight = 0;
         let cleanSheets = 0, totalReds = 0, totalDelta = 0;
         
-        const CONVERSION: Record<string, number> = {
-            'EPL': 0.33, 'LA_LIGA': 0.31, 'SERIE_A': 0.29, 'BUNDESLIGA': 0.35, 'LIGUE_1': 0.30, 'STANDARD': 0.31
-        };
-
         rel.forEach(m => {
             const weight = (m as any).weight || 1.0;
             const isH = m.homeTeam === id;
@@ -65,7 +64,7 @@ export class ProfileService {
             const sot = isH ? (m.homeShotsOnTarget || 0) : (m.awayShotsOnTarget || 0);
             const realXG = isH ? m.homeXG : m.awayXG;
             
-            const rate = CONVERSION[m.league || 'STANDARD'] || CONVERSION.STANDARD;
+            const rate = LEAGUE_CONVERSION_RATES[m.league || 'STANDARD'] || LEAGUE_CONVERSION_RATES.STANDARD;
             const xG = realXG ?? (sot * rate);
 
             weightedGS += scored * weight;
@@ -73,15 +72,13 @@ export class ProfileService {
             totalWeight += weight;
             
             totalReds += reds;
-            // Clinical Edge: Actual - Real xG (or calibrated proxy)
             totalDelta += (scored - xG);
 
             if (conceded === 0) cleanSheets++;
         });
         
-        // Calculate League Baseline (to determine relative strength)
         const leagueGS = matches.reduce((acc, m) => acc + m.homeGoals + m.awayGoals, 0);
-        const leagueAvg = matches.length > 0 ? (leagueGS / (matches.length * 2)) : 1.35;
+        const leagueAvg = matches.length > 0 ? (leagueGS / (matches.length * 2)) : DATA_CONSTANTS.DEFAULT_LEAGUE_AVG;
 
         const avgScored = weightedGS / totalWeight;
         const avgConceded = weightedGA / totalWeight;
@@ -90,11 +87,10 @@ export class ProfileService {
             name: teamName, 
             npxG: avgScored, 
             avgXGA: avgConceded, 
-            // Defensive Stability is inverse of Conceded performance relative to league
             defensiveStability: Math.max(0.3, Math.min(0.9, 1 - (avgConceded / (leagueAvg * 2)))), 
             purity: 0.95,
             redCardPropensity: totalReds / rel.length,
-            clinicalEdge: totalDelta / rel.length,
+            clinicalEdge: totalDelta / (rel.length + DATA_CONSTANTS.SHRINKAGE_K),
             form: rel.slice(-5).map(m => {
                 const isH = m.homeTeam === id;
                 return (isH ? m.homeGoals : m.awayGoals) > (isH ? m.awayGoals : m.homeGoals) ? 1 : 

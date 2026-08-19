@@ -2,13 +2,9 @@ import Papa from 'papaparse';
 import { MatchHistory } from '../../types';
 import { DataService } from '../dataService';
 import { fetchWithTimeout, retry } from '../../utils';
+import { FOOTBALL_DATA_CONFIG } from '../../core/constants';
 
 export class FootballDataProvider {
-    private static BASE_URL = 'https://www.football-data.co.uk/mmz4281';
-    private static LEAGUE_MAP: Record<string, string> = {
-        'EPL': 'E0', 'CHAMPIONSHIP': 'E1', 'LA_LIGA': 'SP1', 'SERIE_A': 'I1', 'BUNDESLIGA': 'D1'
-    };
-
     static normalizeLeague(league: string): string {
         const l = (league || '').toUpperCase().trim();
         if (l.includes('PREMIER') || l === 'EPL' || l === 'E0') return 'EPL';
@@ -21,10 +17,10 @@ export class FootballDataProvider {
 
     static async fetchSeasonData(league: string, season: string): Promise<MatchHistory[]> {
         const normalized = this.normalizeLeague(league);
-        const code = this.LEAGUE_MAP[normalized];
+        const code = FOOTBALL_DATA_CONFIG.LEAGUE_MAP[normalized];
         if (!code) return [];
         const s = season.replace('/', '');
-        const url = `${this.BASE_URL}/${s}/${code}.csv`;
+        const url = `${FOOTBALL_DATA_CONFIG.BASE_URL}/${s}/${code}.csv`;
         try {
             return await retry(async () => {
                 const res = await fetchWithTimeout(url);

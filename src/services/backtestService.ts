@@ -2,6 +2,7 @@ import { ProfileService } from './profileService';
 import { MatchEngine } from './engine';
 import { DataService } from './dataService';
 import { AnalysisResult } from '../types';
+import { BACKTEST_CONFIG } from '../core/constants';
 
 export interface BacktestSummary {
     totalMatches: number;
@@ -23,17 +24,13 @@ export interface BacktestSummary {
 export class BacktestService {
     static async runBacktest(league: string = 'EPL'): Promise<BacktestSummary> {
         const { matches: all } = await DataService.getLeagueContext(league);
-        const samples = all.filter(m => m.homeGoals != null).slice(-150);
+        const samples = all.filter(m => m.homeGoals != null).slice(-BACKTEST_CONFIG.SAMPLE_SIZE);
         
         let totalB = 0, hpB = 0, hpC = 0, ovC = 0, unC = 0, ovT = 0, unT = 0;
         const results: any[] = [];
 
         // EDGE SEGMENTATION LOGIC
-        const segments = [
-            { segment: 'Low Edge (0-3%)', min: 0, max: 3, count: 0, hits: 0 },
-            { segment: 'Mid Edge (3-7%)', min: 3, max: 7, count: 0, hits: 0 },
-            { segment: 'High Edge (7%+)', min: 7, max: 100, count: 0, hits: 0 }
-        ];
+        const segments = BACKTEST_CONFIG.SEGMENTS.map(s => ({ ...s }));
 
         for (const m of samples) {
             const h = DataService.standardize({ ...ProfileService.computeBaseline(m.homeTeam, all), name: m.homeTeam });

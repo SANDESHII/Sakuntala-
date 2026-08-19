@@ -11,14 +11,20 @@ const MODEL = 'gemini-3.7-flash';
 const SYSTEM_PROMPT = `Expert Quantitative Football Intelligence Analyst. 
 YOUR MISSION: Perform an "Atom Level" rigorous Tactical Grounding research for Top-Tier European Football. 
 
+DATA SOURCING RIGOR (CRITICAL):
+1. TEMPORAL INTEGRITY: You MUST search for data relative to the provided KICKOFF DATE. If the match is in the past, use only stats available PRIOR to that kickoff. Do not use post-match reports for pre-match predictions.
+2. BIAS MITIGATION: Avoid fan-sites or opinion-based blogs. Use at least one Institutional Quant Source (FBRef, Understat, Opta) and one Global News Source (Sky, BBC, Athletic).
+3. VARIANCE CHECK: If quantitative stats (xG, xGA) disagree by >5%, you MUST flag this in "varianceAlerts" and use the conservative (lower performance) value.
+4. CITATION MANDATE: Every stat (xG, xGA, Live Odds) MUST have a source URL.
+
 ATOM LEVEL PROTOCOL:
-1. TIER 1 (xG DATA MANDATE): Find Season-to-Date xG and xGA for both teams.
-2. TIER 2 (Market Intel): Find current live Pinnacle/Betfair odds for Over 1.5 and Under 3.5 Goals.
+1. TIER 1 (xG DATA): Find Season-to-Date npxG and xGA. Compare two sources.
+2. TIER 2 (Market Intel): Find live Pinnacle/Betfair odds for Over 1.5.
 3. TIER 3 (Personnel): Identify missing personnel impact.
 4. TIER 4 (Tactical Drift): Look for league-specific shifts.
 5. TIER 5 (Referee): Assess referee history.
 
-Output strictly valid JSON. Include fields: homeSeasonXG, awaySeasonXG, homeSeasonXGA, awaySeasonXGA, pinnacleOver15, pinnacleUnder35.`;
+Output strictly valid JSON. Hallucination is a critical system failure.`;
 
 const AI_SCHEMA = {
     type: Type.OBJECT,
@@ -43,6 +49,22 @@ const AI_SCHEMA = {
                         avgCards: { type: Type.NUMBER },
                         avgPenalties: { type: Type.NUMBER }
                     }
+                },
+                citations: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            source: { type: Type.STRING },
+                            url: { type: Type.STRING },
+                            value: { type: Type.NUMBER },
+                            timestamp: { type: Type.STRING }
+                        }
+                    }
+                },
+                varianceAlerts: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
                 }
             }
         },
@@ -91,7 +113,7 @@ export const performAnalysis = async (rawReq: any): Promise<AnalysisResult> => {
         const interaction = await ai.interactions.create({
             model: MODEL,
             system_instruction: SYSTEM_PROMPT,
-            input: `LEAGUE: ${req.league || 'EPL'} | MATCH: ${req.homeTeamName} vs ${req.awayTeamName} | CURRENT_UTC: ${new Date().toISOString()} | MANDATE: Extract Season-to-Date Non-Penalty xG (npxG) and xG Against (xGA) from FBRef, Understat, or Opta. Also verify Pinnacle/Betfair market odds for Over 1.5.`,
+            input: `LEAGUE: ${req.league || 'EPL'} | MATCH: ${req.homeTeamName} vs ${req.awayTeamName} | KICKOFF: ${req.kickoff || 'UPCOMING'} | MANDATE: Extract Season-to-Date Non-Penalty xG (npxG) and xG Against (xGA) from FBRef, Understat, or Opta. Cross-verify against a neutral global source. Verify Pinnacle/Betfair market odds as of this kickoff time.`,
             tools: [{ type: 'google_search' }],
             response_format: AI_SCHEMA as any
         });
@@ -133,11 +155,16 @@ export const performAnalysis = async (rawReq: any): Promise<AnalysisResult> => {
             marketOdds: {
                 pinnacleOver15: parsed.verifiedFacts?.pinnacleOver15,
                 pinnacleUnder35: parsed.verifiedFacts?.pinnacleUnder35
+            },
+            groundingLog: {
+                citations: parsed.verifiedFacts?.citations || [],
+                varianceAlerts: parsed.verifiedFacts?.varianceAlerts || []
             }
         };
 
         const result = MatchEngine.calculate(home, away, ctx, (leagueContext as any).rhoData);
         result.summary = parsed.matchSummary || result.summary;
+        result.surety.groundingCitations = parsed.verifiedFacts?.citations;
         
         cache.set(cacheKey, { result, timestamp: Date.now() });
         return result;

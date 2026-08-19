@@ -7,6 +7,7 @@ import { Header } from './components/Header';
 import { LoadingOverlay } from './components/LoadingOverlay';
 import { AnalysisForm } from './components/AnalysisForm';
 import { ResultGrid } from './components/ResultDisplay';
+import { GroundingLog } from './components/GroundingLog';
 import { BacktestDisplay } from './components/BacktestDisplay';
 import { fetchWithTimeout } from './utils';
 
@@ -134,8 +135,10 @@ export const App: React.FC = () => {
                         initial={{ opacity: 0, y: 40 }} 
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                        className="space-y-16"
                     >
                         <ResultGrid analysis={analysis} surety={analysis.surety} />
+                        <GroundingLog context={analysis.context} />
                     </motion.div>
                 )}
 

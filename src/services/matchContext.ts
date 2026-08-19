@@ -1,20 +1,12 @@
 import { db } from '../lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { RefereeProfile } from '../types';
+import { VENUES, DEFAULT_VENUE } from '../core/venues';
+import { WEATHER_CONFIG, FATIGUE_CONFIG } from '../core/constants';
 
 export class MatchContextService {
     static getVenue(id: string) {
-        const venues: any = {
-            'MAN_CITY': { lat: 53.48, lon: -2.20, city: 'Manchester' },
-            'MAN_UTD': { lat: 53.46, lon: -2.29, city: 'Manchester' },
-            'LIVERPOOL': { lat: 53.43, lon: -2.96, city: 'Liverpool' },
-            'ARSENAL': { lat: 51.55, lon: -0.10, city: 'London' },
-            'CHELSEA': { lat: 51.48, lon: -0.19, city: 'London' },
-            'TOTTENHAM': { lat: 51.60, lon: -0.06, city: 'London' },
-            'ASTON_VILLA': { lat: 52.50, lon: -1.88, city: 'Birmingham' },
-            'NEWCASTLE': { lat: 54.97, lon: -1.62, city: 'Newcastle' }
-        };
-        return venues[id] || { lat: 51.50, lon: -0.12, city: 'London' };
+        return VENUES[id] || DEFAULT_VENUE;
     }
 
     static calculateTravelFatigue(homeId: string, awayId: string): number {
@@ -32,17 +24,18 @@ export class MatchContextService {
         const distance = R * c;
 
         // CONTINUOUS FATIGUE DECAY
-        const fatigue = 1.0 - (0.06 / (1 + Math.exp(-(distance - 350) / 100)));
-        return Math.max(0.94, Math.min(1.0, fatigue));
+        const fatigue = 1.0 - (FATIGUE_CONFIG.MAX_PENALTY / (1 + Math.exp(-(distance - FATIGUE_CONFIG.DISTANCE_THRESHOLD) / FATIGUE_CONFIG.DECAY_SCALE)));
+        return Math.max(FATIGUE_CONFIG.FLOOR, Math.min(1.0, fatigue));
     }
 
     static async getWeather(lat: number, lon: number) {
         try {
-            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code`);
+            const url = `${WEATHER_CONFIG.BASE_URL}?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code`;
+            const res = await fetch(url);
             const data = await res.json();
-            return { temperature: data.current.temperature_2m, condition: 'Stable' };
+            return { temperature: data.current.temperature_2m, condition: WEATHER_CONFIG.DEFAULT_CONDITION };
         } catch {
-            return { temperature: 15, condition: 'Stable' };
+            return { temperature: WEATHER_CONFIG.DEFAULT_TEMP, condition: WEATHER_CONFIG.DEFAULT_CONDITION };
         }
     }
 

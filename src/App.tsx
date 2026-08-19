@@ -8,7 +8,7 @@ import { LoadingOverlay } from './components/LoadingOverlay';
 import { AnalysisForm } from './components/AnalysisForm';
 import { ResultGrid } from './components/ResultDisplay';
 import { BacktestDisplay } from './components/BacktestDisplay';
-import { fetchWithTimeout } from './lib/network';
+import { fetchWithTimeout } from './utils';
 
 export const App: React.FC = () => {
     const [homeInput, setHomeInput] = useState('');
@@ -24,8 +24,8 @@ export const App: React.FC = () => {
     const RATE_LIMIT_MS = 15000;
 
     const loadingMessages = [
-        "Initializing engine...", "Fetching data...", "Analyzing trends...",
-        "Projecting paths...", "Calculating goals...", "Finalizing..."
+        "Initializing Stochastic Engine...", "Ingesting De-Censored Data...", "Modeling Tail-Risk Variance...",
+        "Sampling Overdispersion...", "Projecting Clinical Edge...", "Finalizing Neural Signal..."
     ];
 
     useEffect(() => {
@@ -94,10 +94,10 @@ export const App: React.FC = () => {
                     >
                         <div className="flex flex-col items-center gap-12">
                             <h2 className="text-8xl md:text-9xl font-bold tracking-tight text-white leading-[0.9] text-balance">
-                                Quantitative <span className="text-emerald-500">Football AI</span>
+                                Infallibility <span className="text-emerald-500">Pro</span>
                             </h2>
                             <p className="text-neutral-400 text-lg max-w-xl mx-auto leading-relaxed">
-                                High-fidelity statistical modelling using Dixon-Coles Poisson variance and real-time tactical reasoning.
+                                High-fidelity stochastic forecasting utilizing neural overdispersion and de-censored tactical data for absolute precision.
                             </p>
                         </div>
                     </motion.div>
@@ -149,7 +149,7 @@ export const App: React.FC = () => {
 
             <footer className="max-w-6xl mx-auto px-6 py-20 border-t border-neutral-900 text-xs text-neutral-600 font-medium tracking-tight">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-8">
-                    <span>&copy; 2025 QUANTITATIVE FOOTBALL AI.</span>
+                    <span>&copy; 2025 INFALLIBILITY PRO.</span>
                     <div className="flex gap-8">
                         <a href="#" className="hover:text-emerald-500 transition-colors">Documentation</a>
                         <a href="#" className="hover:text-emerald-500 transition-colors">Methodology</a>

@@ -127,15 +127,30 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis, surety }) => {
                                     <div className="h-full bg-emerald-500" style={{ width: `${analysis.purity}%` }} />
                                 </div>
                             </div>
-                            {analysis.tacticalEdge?.referee && (
+                            {analysis.context.referee && (
                                 <div className="pt-6 border-t border-neutral-900 space-y-4">
                                     <span className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest">Referee Influence</span>
                                     <div className="flex justify-between items-center">
-                                        <span className="text-sm font-bold text-white">{analysis.tacticalEdge.referee.name}</span>
+                                        <span className="text-sm font-bold text-white">{analysis.context.referee.name}</span>
                                         <span className="text-[10px] px-2 py-1 bg-neutral-900 rounded text-neutral-400 font-bold uppercase tracking-tight">
-                                            {analysis.tacticalEdge.referee.tendency}
+                                            {analysis.context.referee.tendency}
                                         </span>
                                     </div>
+                                </div>
+                            )}
+                            {analysis.context.audit && (
+                                <div className="pt-6 border-t border-neutral-900 grid grid-cols-2 gap-y-6 gap-x-4">
+                                    {[
+                                        { label: 'Signal Integrity', value: analysis.context.audit.signalIntegrity },
+                                        { label: 'Variance Mode', value: analysis.context.audit.redCardRegime },
+                                        { label: 'Recency Alpha', value: analysis.context.audit.alphaAdjustment },
+                                        { label: 'Data Fidelity', value: analysis.context.audit.dataReliability }
+                                    ].map((item, i) => (
+                                        <div key={i} className="space-y-1">
+                                            <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest block leading-none">{item.label}</span>
+                                            <p className="text-[10px] font-bold text-neutral-400 leading-tight">{item.value}</p>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
                         </div>

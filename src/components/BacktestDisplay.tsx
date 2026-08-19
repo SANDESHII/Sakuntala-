@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Activity, CheckCircle2, XCircle, BarChart3, Play } from 'lucide-react';
 import { BacktestSummary } from '../services/backtestService';
-import { fetchWithTimeout } from '../lib/network';
+import { fetchWithTimeout } from '../utils';
 
 export const BacktestDisplay: React.FC = () => {
     const [summary, setSummary] = useState<BacktestSummary | null>(null);
@@ -47,8 +47,8 @@ export const BacktestDisplay: React.FC = () => {
         <div className="space-y-12">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
                 <div className="space-y-2">
-                    <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-wider">Performance Audit</h3>
-                    <p className="text-3xl font-bold text-white tracking-tight uppercase">System Backtest</p>
+                    <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-wider">Neural Integrity Audit</h3>
+                    <p className="text-3xl font-bold text-white tracking-tight uppercase">Stochastic Audit</p>
                 </div>
                 <div className="flex flex-wrap gap-4 w-full md:w-auto">
                     <button 
@@ -87,9 +87,9 @@ export const BacktestDisplay: React.FC = () => {
                     >
                         {[
                             { label: 'Total Samples', value: summary.totalMatches, icon: Activity },
-                            { label: 'Overall Brier', value: summary.brierScore.toFixed(4), icon: BarChart3, detail: 'Mean Squared Error' },
-                            { label: 'Purity Brier', value: summary.highPurityBrierScore.toFixed(4), icon: CheckCircle2, detail: `N=${summary.highPurityMatches} High Purity` },
-                            { label: 'Signal Accuracy', value: `${((summary.over15Accuracy + summary.under35Accuracy) / 2).toFixed(1)}%`, icon: CheckCircle2 }
+                            { label: 'Brier Entropy', value: summary.brierScore.toFixed(4), icon: BarChart3, detail: 'Mean Squared Error' },
+                            { label: 'Purity Score', value: summary.highPurityBrierScore.toFixed(4), icon: CheckCircle2, detail: `N=${summary.highPurityMatches} High Purity` },
+                            { label: 'Convergence', value: `${((summary.over15Accuracy + summary.under35Accuracy) / 2).toFixed(1)}%`, icon: CheckCircle2 }
                         ].map((stat, i) => (
                             <div key={i} className="p-8 bg-neutral-900/50 border border-neutral-900 rounded-2xl space-y-4">
                                 <div className="flex items-center justify-between">

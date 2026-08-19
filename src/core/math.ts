@@ -32,14 +32,6 @@ export class DixonColes {
         return m.reduce((acc, row, h) => acc + row.reduce((ra, p, a) => ra + (h + a > t ? p : 0), 0), 0);
     }
 
-    static calculateMatchOutcomes(m: number[][]): { home: number; draw: number; away: number } {
-        const res = { home: 0, draw: 0, away: 0 };
-        m.forEach((row, h) => row.forEach((p, a) => {
-            if (h > a) res.home += p; else if (h === a) res.draw += p; else res.away += p;
-        }));
-        return res;
-    }
-
     static fitRho(matches: { x: number, y: number, lambda: number, mu: number, weight?: number }[]): { rho: number, sigmaRho: number } {
         let r = -0.11, fC = 0;
         for (let i = 0; i < 50; i++) {
@@ -142,24 +134,5 @@ export class MonteCarloSimulator {
     private static sampleNormal(m: number, sd: number): number {
         const u1 = Math.random(), u2 = Math.random();
         return m + sd * Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
-    }
-}
-
-export class EdgeCalculator {
-    static impliedProb = (o: number) => 1 / o;
-    static removeVig = (ps: number[]) => {
-        const sum = ps.reduce((a, b) => a + b, 0);
-        return ps.map(p => p / sum);
-    };
-    static calculateEdge = (mp: number, tp: number) => mp - tp;
-    static analyze(mO15: number, mU35: number, odds: any) {
-        const [tO15] = this.removeVig([this.impliedProb(odds.over15), this.impliedProb(odds.under15)]);
-        const [, tU35] = this.removeVig([this.impliedProb(odds.over35), this.impliedProb(odds.under35)]);
-        return {
-            odds, impliedProb: { over15: tO15, under35: tU35 },
-            edge: { over15: this.calculateEdge(mO15, tO15), under35: this.calculateEdge(mU35, tU35) },
-            source: 'Market',
-            isSimulated: !!odds.isSimulated
-        };
     }
 }

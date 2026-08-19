@@ -6,7 +6,6 @@ export interface TeamStats {
     avgXGA: number;
     npxG: number; 
     defensiveStability: number;
-    offensiveVolatility: number;
     form: number[];
     cleanSheets: number;
     dataPurity: number;
@@ -30,7 +29,6 @@ export interface TeamStyleProfile {
 }
 
 export interface MatchContext {
-    weather?: string;
     weatherData?: {
         temperature: number;
         condition: string;
@@ -38,14 +36,19 @@ export interface MatchContext {
     referee?: RefereeProfile;
     homeStyle?: TeamStyleProfile;
     awayStyle?: TeamStyleProfile;
-    stakes: string;
     league?: string;
     homeSeasonXG?: number;
     awaySeasonXG?: number;
     homeSeasonXGA?: number;
     awaySeasonXGA?: number;
-    tacticalDrift?: string;
     date?: string;
+    audit?: {
+        signalIntegrity: string;
+        alphaAdjustment: string;
+        redCardRegime: string;
+        dataReliability: string;
+        sampleSize: number;
+    };
 }
 
 export interface MatchHistory {
@@ -55,15 +58,33 @@ export interface MatchHistory {
     awayGoals: number;
     homeShotsOnTarget?: number;
     awayShotsOnTarget?: number;
-    homeCorners?: number;
-    awayCorners?: number;
     homeRedCards?: number;
     awayRedCards?: number;
-    homeXG?: number;
-    awayXG?: number;
     date: string;
     league?: string;
-    purity?: number;
     weight?: number;
-    redCardMinutes?: { home: number[], away: number[] };
+}
+
+export interface AnalysisConfidence {
+    confidenceScore: number;
+    verdict: 'GOLD' | 'SILVER' | 'BRONZE' | 'VOLATILE';
+}
+
+export interface AnalysisResult {
+    probability: number;
+    summary: string;
+    homeStats: TeamStats;
+    awayStats: TeamStats;
+    homeXG: number;
+    awayXG: number;
+    minimumExpectancy: number;
+    potentialCeiling: number;
+    predictionType: 'OVER_15' | 'UNDER_35';
+    predictionLabel: string;
+    purity: number;
+    signalStrength: number;
+    isSureshot: boolean;
+    context: MatchContext;
+    surety: AnalysisConfidence;
+    dataSource: 'LIVE' | 'FALLBACK_STATIC';
 }

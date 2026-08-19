@@ -32,7 +32,7 @@ export class BacktestService {
             const h = DataService.standardize({ ...ProfileService.computeBaseline(m.homeTeam, all), name: m.homeTeam });
             const a = DataService.standardize({ ...ProfileService.computeBaseline(m.awayTeam, all), name: m.awayTeam });
             
-            const math = MatchEngine.calculate(h, a, { stakes: "STANDARD", date: m.date });
+            const math = MatchEngine.calculate(h, a, { date: m.date });
             const tg = (m.homeGoals || 0) + (m.awayGoals || 0);
             const isO15 = tg > 1.5, isU35 = tg < 3.5;
             const outcome = math.predictionType === 'OVER_15' ? isO15 : isU35;

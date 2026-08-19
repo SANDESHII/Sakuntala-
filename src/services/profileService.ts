@@ -32,7 +32,6 @@ export class ProfileService {
         const { id } = this.canonicalize(teamName);
         const rel = matches.filter(m => m.homeTeam === id || m.awayTeam === id);
         
-        // STAGE 0: ARCHETYPE INJECTION (Prevents identical fallback results)
         if (!rel.length) {
             const isElite = ["MAN_CITY", "LIVERPOOL", "ARSENAL", "REAL_MADRID", "BARCELONA", "BAYERN_MUNICH"].includes(id);
             const isStrong = ["CHELSEA", "TOTTENHAM", "MAN_UTD", "ATLETICO_MADRID", "B_DORTMUND"].includes(id);
@@ -50,7 +49,6 @@ export class ProfileService {
             };
         }
         
-        // ATOM LEVEL: Weighted Aggregation
         let weightedGS = 0, weightedGA = 0, totalWeight = 0;
         let cleanSheets = 0, totalReds = 0, totalDelta = 0;
         

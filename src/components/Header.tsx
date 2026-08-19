@@ -9,7 +9,7 @@ export const Header: React.FC = () => (
                     <Activity className="w-5 h-5 text-black" />
                 </div>
                 <h1 className="text-sm font-bold tracking-tight text-white uppercase">
-                    Quantitative <span className="text-neutral-500 font-medium">Football AI</span>
+                    Infallibility <span className="text-neutral-500 font-medium">Pro</span>
                 </h1>
             </div>
             <div className="flex items-center gap-4">

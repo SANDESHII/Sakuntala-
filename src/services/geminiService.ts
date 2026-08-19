@@ -1,11 +1,61 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { MatchEngine } from "./engine";
 import { DataService } from "./dataService";
 import { ProfileService } from "./profileService";
 import { FootballDataProvider } from "./data/footballDataProvider";
 import { MatchContextService } from "./matchContext";
 import { AnalysisResult, MatchContext, RefereeProfile, TeamStyleProfile, MatchHistory } from "../types";
-import { MODEL, SYSTEM_PROMPT, AI_SCHEMA } from "./aiConfig";
+
+const MODEL = 'gemini-3.7-flash';
+
+const SYSTEM_PROMPT = `Expert Quantitative Football Intelligence Analyst. 
+YOUR MISSION: Perform an "Atom Level" rigorous Tactical Grounding research for Top-Tier European Football. 
+
+ATOM LEVEL PROTOCOL:
+1. TIER 1 (xG DATA MANDATE): Find Season-to-Date xG and xGA for both teams.
+2. TIER 2 (Personnel): Identify missing personnel impact.
+3. TIER 3 (Tactical Drift): Look for league-specific shifts.
+4. TIER 4 (Referee): Assess referee history.
+5. TIER 5 (Fatigue): Check midweek rotation.
+6. TIER 6 (Red Cards): Evaluate red card propensity and "Man-Down" resilience.
+
+Output strictly valid JSON. Include fields: homeSeasonXG, awaySeasonXG, homeSeasonXGA, awaySeasonXGA.`;
+
+const AI_SCHEMA = {
+    type: Type.OBJECT,
+    properties: {
+        groundingConfidence: { type: Type.NUMBER },
+        verifiedFacts: {
+            type: Type.OBJECT,
+            properties: {
+                matchContext: { type: Type.STRING },
+                tacticalDrift: { type: Type.STRING },
+                verifiedNewsSummary: { type: Type.STRING },
+                homeSeasonXG: { type: Type.NUMBER },
+                awaySeasonXG: { type: Type.NUMBER },
+                homeSeasonXGA: { type: Type.NUMBER },
+                awaySeasonXGA: { type: Type.NUMBER },
+                referee: {
+                    type: Type.OBJECT,
+                    properties: {
+                        name: { type: Type.STRING },
+                        avgCards: { type: Type.NUMBER },
+                        avgPenalties: { type: Type.NUMBER }
+                    }
+                }
+            }
+        },
+        styleMetrics: {
+            type: Type.OBJECT,
+            properties: {
+                home: { type: Type.OBJECT, properties: { ppda: { type: Type.NUMBER }, possessionFinalThird: { type: Type.NUMBER } } },
+                away: { type: Type.OBJECT, properties: { ppda: { type: Type.NUMBER }, possessionFinalThird: { type: Type.NUMBER } } }
+            }
+        },
+        matchSummary: { type: Type.STRING }
+    },
+    required: ["matchSummary", "groundingConfidence"]
+};
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 const cache = new Map<string, { result: AnalysisResult, timestamp: number }>();
@@ -13,7 +63,10 @@ const cache = new Map<string, { result: AnalysisResult, timestamp: number }>();
 const getFallback = async (req: any, matches: MatchHistory[], rhoData: any): Promise<AnalysisResult> => {
     const home = DataService.standardize({ ...ProfileService.computeBaseline(req.homeTeam, matches), name: req.homeTeamName });
     const away = DataService.standardize({ ...ProfileService.computeBaseline(req.awayTeam, matches), name: req.awayTeamName });
-    const ctx: MatchContext = { weather: "CLEAR", stakes: "STANDARD" };
+    const ctx: MatchContext = { 
+        weatherData: { temperature: 15, condition: 'Stable' },
+        league: req.league 
+    };
     return { ...MatchEngine.calculate(home, away, ctx, rhoData), dataSource: 'FALLBACK_STATIC' };
 };
 
@@ -43,8 +96,6 @@ export const performAnalysis = async (rawReq: any): Promise<AnalysisResult> => {
         });
 
         const parsed = JSON.parse(interaction.output_text || '{}');
-        const groundingScore = parsed.groundingConfidence || 0.5;
-        console.log(`[Neural Grounding] Confidence: ${groundingScore}`);
         const venue = MatchContextService.getVenue(req.homeTeam);
         const [weather, hS, aS] = await Promise.all([
             MatchContextService.getWeather(venue.lat, venue.lon),
@@ -70,15 +121,14 @@ export const performAnalysis = async (rawReq: any): Promise<AnalysisResult> => {
         const away = DataService.standardize({ ...ProfileService.computeBaseline(req.awayTeam, matches), name: req.awayTeamName });
 
         const ctx: MatchContext = { 
-            weather: weather.condition, 
+            weatherData: weather,
             referee: ref, 
             homeStyle, awayStyle, 
             league: req.league,
             homeSeasonXG: parsed.verifiedFacts?.homeSeasonXG,
             awaySeasonXG: parsed.verifiedFacts?.awaySeasonXG,
             homeSeasonXGA: parsed.verifiedFacts?.homeSeasonXGA,
-            awaySeasonXGA: parsed.verifiedFacts?.awaySeasonXGA,
-            stakes: parsed.verifiedFacts?.matchContext || 'Standard' 
+            awaySeasonXGA: parsed.verifiedFacts?.awaySeasonXGA
         };
 
         const result = MatchEngine.calculate(home, away, ctx, (leagueContext as any).rhoData);

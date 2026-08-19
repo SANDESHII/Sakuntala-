@@ -1,7 +1,7 @@
 import Papa from 'papaparse';
 import { MatchHistory } from '../../types';
 import { DataService } from '../dataService';
-import { fetchWithTimeout, retry } from '../../lib/network';
+import { fetchWithTimeout, retry } from '../../utils';
 
 export class FootballDataProvider {
     private static BASE_URL = 'https://www.football-data.co.uk/mmz4281';

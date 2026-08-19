@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Zap, Shield, Target, Activity, TrendingUp, LucideIcon, Binary } from 'lucide-react';
+import { Zap, Shield, Target, Activity, LucideIcon, Binary } from 'lucide-react';
 import { AnalysisResult, AnalysisConfidence } from '../types';
 
 interface ResultGridProps {
@@ -21,7 +21,7 @@ const StatCard: React.FC<{ label: string; value: string | number; subValue?: str
     </div>
 );
 
-export const ResultGrid: React.FC<ResultGridProps> = ({ analysis, surety }) => {
+export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
     return (
         <div className="space-y-16">
             {/* Header Status */}
@@ -47,9 +47,9 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis, surety }) => {
                 <div className="lg:col-span-8 space-y-12">
                     {/* Primary Metrics */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <StatCard label="Min Expectancy" value={analysis.minimumExpectancy?.toFixed(2) || '0.00'} subValue="Conservative Floor" icon={Shield} />
-                        <StatCard label="Max Expectancy" value={analysis.potentialCeiling?.toFixed(2) || '0.00'} subValue="Theoretical Ceiling" icon={TrendingUp} />
-                        <StatCard label="Signal Strength" value={`${(analysis.signalStrength * 100).toFixed(0)}%`} subValue="Data Purity" icon={Zap} />
+                        <StatCard label="Edge Detected" value={`${analysis.edge > 0 ? '+' : ''}${analysis.edge}%`} subValue="vs Market Implied" icon={Zap} />
+                        <StatCard label="Kelly Stake" value={`${analysis.recommendedStake}%`} subValue="Quarter-Kelly Risk" icon={Shield} />
+                        <StatCard label="Market Price" value={analysis.marketOdds.toFixed(2)} subValue="Pinnacle/Betfair" icon={Target} />
                     </div>
 
                     {/* Team Deep Dive */}
@@ -97,19 +97,32 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis, surety }) => {
                 </div>
 
                 <div className="lg:col-span-4 space-y-8">
-                    {/* Verdict Card: Edge Detection Mode */}
-                    <div className={`${analysis.predictionType === 'NO_BET' ? 'bg-neutral-800 text-neutral-400' : 'bg-emerald-500 text-neutral-950'} p-10 rounded-2xl space-y-8 transition-colors duration-500`}>
+                    {/* Verdict Card: Syndicate Trading Mode */}
+                    <div className="bg-emerald-500 p-10 rounded-2xl text-neutral-950 space-y-8">
                         <div className="space-y-2">
-                            <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Syndicate Alpha Audit</span>
-                            <h2 className={`text-5xl font-black tracking-tighter uppercase leading-none ${analysis.predictionType === 'NO_BET' ? 'text-white/20' : ''}`}>
-                                {surety.edgeValue > 0 ? `Edge: +${surety.edgeValue}%` : 'NO EDGE'}
+                            <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Trading Signal</span>
+                            <h2 className="text-5xl font-black tracking-tighter uppercase leading-none">
+                                {analysis.verdict === 'EXECUTE_BET' ? 'EXECUTE BET' : 'NO BET'}
                             </h2>
                         </div>
                         <p className="text-sm font-medium leading-relaxed">
-                            {analysis.predictionType === 'NO_BET'
-                                ? "Market Efficiency Detected. Neural probability is within the variance threshold of Pinnacle/Betfair price. No statistical advantage present."
-                                : `Statistical Alpha detected. Model probability exceeds market efficiency baseline by ${surety.edgeValue}%.`}
+                            {analysis.verdict === 'EXECUTE_BET' 
+                                ? `Positive Expected Value (+EV) identified. Recommended risk: ${analysis.recommendedStake}% of bankroll.`
+                                : "Market is efficient. No mathematical edge exists. Preserve capital."}
                         </p>
+                        
+                        {analysis.verdict === 'EXECUTE_BET' && (
+                            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-neutral-950/20">
+                                <div>
+                                    <span className="text-[10px] font-bold uppercase opacity-60">Model Edge</span>
+                                    <p className="text-2xl font-black">+{analysis.edge}%</p>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-bold uppercase opacity-60">Target Odds</span>
+                                    <p className="text-2xl font-black">{analysis.marketOdds?.toFixed(2)}</p>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Audit Info */}

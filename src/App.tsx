@@ -97,7 +97,7 @@ export const App: React.FC = () => {
                                 Alpha <span className="text-emerald-500">Terminal</span>
                             </h2>
                             <p className="text-neutral-400 text-lg max-w-xl mx-auto leading-relaxed">
-                                Probabilistic edge detection and market inefficiency hunting.
+                                Probabilistic edge detection and market inefficiency hunting for the Over 1.5 market.
                             </p>
                         </div>
                     </motion.div>

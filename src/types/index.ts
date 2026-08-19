@@ -89,6 +89,14 @@ export interface AnalysisResult {
     predictionLabel: string;
     purity: number;
     signalStrength: number;
+    
+    // TRADING METRICS
+    marketOdds: number;
+    marketImpliedProb: number;
+    edge: number;
+    recommendedStake: number;
+    verdict: 'EXECUTE_BET' | 'NO_BET';
+
     context: MatchContext;
     surety: AnalysisConfidence;
     dataSource: 'LIVE' | 'FALLBACK_STATIC';

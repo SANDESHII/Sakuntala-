@@ -79,29 +79,27 @@ export class MatchEngine {
         const pO15 = DixonColes.calculateOverUnder(matrix, 1.5);
         const pU35 = 1 - DixonColes.calculateOverUnder(matrix, 3.5);
 
-        // MARKET EDGE DETECTION (Pinnacle/Betfair tethering)
-        const marketProbO15 = context.marketOdds?.pinnacleOver15 ? (1 / context.marketOdds.pinnacleOver15) : 0.71;
-        const marketProbU35 = context.marketOdds?.pinnacleUnder35 ? (1 / context.marketOdds.pinnacleUnder35) : 0.75;
+        // MARKET SELECTION LOGIC
+        const type = pO15 > 0.65 ? 'OVER_15' : 'UNDER_35';
+        const modelProb = type === 'OVER_15' ? pO15 : pU35;
 
-        const edgeO15 = pO15 - marketProbO15;
-        const edgeU35 = pU35 - marketProbU35;
+        // MARKET EDGE CALCULATION
+        const oddsRaw = type === 'OVER_15' ? context.marketOdds?.pinnacleOver15 : context.marketOdds?.pinnacleUnder35;
+        const marketOdds = oddsRaw || 1.50; 
+        const marketImpliedProb = 1 / marketOdds;
+        const edge = modelProb - marketImpliedProb;
 
-        let type: 'OVER_15' | 'UNDER_35' | 'NO_BET' = 'NO_BET';
-        let edge = 0;
-        let prob = 0;
+        // KELLY CRITERION (Risk Management)
+        // Formula: (BP - Q) / B. We use Quarter-Kelly (0.25) for bankroll safety.
+        const b = marketOdds - 1;
+        const p = modelProb;
+        const q = 1 - p;
+        const rawKelly = Math.max(0, (b * p - q) / b);
+        const recommendedStake = rawKelly * 0.25; 
 
-        if (edgeO15 > 0.04 && edgeO15 > edgeU35) {
-            type = 'OVER_15';
-            edge = edgeO15;
-            prob = pO15;
-        } else if (edgeU35 > 0.04) {
-            type = 'UNDER_35';
-            edge = edgeU35;
-            prob = pU35;
-        } else {
-            prob = Math.max(pO15, pU35);
-            edge = 0;
-        }
+        // VERDICT BASED ON EDGE, NOT PROBABILITY
+        const hasEdge = edge > 0.04; // Only bet if we have a 4% edge over the bookie
+        const verdict = hasEdge ? 'EXECUTE_BET' : 'NO_BET';
 
         const sim = MonteCarloSimulator.run(
             hL, aM, rhoData.varHG || 0.25, rhoData.varAG || 0.25, 
@@ -111,19 +109,12 @@ export class MatchEngine {
         );
 
         const purity = (home.dataPurity + away.dataPurity) / 2;
-        const isVolatile = purity < 0.4 || prob < 0.62;
         
-        let finalSummary = "";
-        if (type === 'NO_BET') {
-            finalSummary = "Market Efficiency Detected: Neural probability is within the variance threshold of Pinnacle/Betfair price. No statistical advantage present.";
-        } else {
-            const volatileNote = isVolatile ? " [VOLATILITY ALERT: Data purity is low] " : "";
-            finalSummary = `Syndicate Alpha Detected:${volatileNote} Model probability exceeds market baseline by ${Math.round(edge * 1000) / 10}%. Converged on ${type === 'OVER_15' ? 'Over 1.5' : 'Under 3.5'}.`;
-        }
-
         return {
-            probability: Math.round(prob * 100),
-            summary: finalSummary,
+            probability: Math.round(modelProb * 100),
+            summary: hasEdge 
+                ? `Edge detected. Model sees ${Math.round(modelProb * 100)}% true probability. Market implies ${Math.round(marketImpliedProb * 100)}%.` 
+                : `No Edge. Market odds (${marketOdds.toFixed(2)}) are efficient. Stay flat.`,
             homeStats: home,
             awayStats: away,
             homeXG: hL,
@@ -131,12 +122,20 @@ export class MatchEngine {
             minimumExpectancy: sim.confidenceInterval[0],
             potentialCeiling: sim.confidenceInterval[1],
             predictionType: type,
-            predictionLabel: type === 'NO_BET' ? 'Market Efficient (No Bet)' : (type === 'OVER_15' ? 'Over 1.5 Goals' : 'Under 3.5 Goals'),
+            predictionLabel: type === 'OVER_15' ? 'Over 1.5 Goals' : 'Under 3.5 Goals',
+            
+            // NEW TRADING METRICS
+            marketOdds: marketOdds,
+            marketImpliedProb: Math.round(marketImpliedProb * 100),
+            edge: Math.round(edge * 100), 
+            recommendedStake: Math.round(recommendedStake * 1000) / 10, 
+            verdict: verdict,
+            
             purity: Math.round(purity * 100),
-            signalStrength: prob,
+            signalStrength: modelProb,
             context,
             dataSource: (home.dataPurity <= 0.1 && away.dataPurity <= 0.1) ? 'FALLBACK_STATIC' : 'LIVE',
-            surety: { confidenceScore: prob, edgeValue: Math.round(edge * 1000) / 10 }
+            surety: { confidenceScore: modelProb, edgeValue: Math.round(edge * 100) }
         };
     }
 }

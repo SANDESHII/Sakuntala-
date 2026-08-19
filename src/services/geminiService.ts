@@ -91,7 +91,7 @@ export const performAnalysis = async (rawReq: any): Promise<AnalysisResult> => {
         const interaction = await ai.interactions.create({
             model: MODEL,
             system_instruction: SYSTEM_PROMPT,
-            input: `LEAGUE: ${req.league || 'EPL'} | MATCH: ${req.homeTeamName} vs ${req.awayTeamName} | CURRENT_UTC: ${new Date().toISOString()} | ANALYZE: Verify late team news, lineups, referee assigned, and betting market shifts for this fixture.`,
+            input: `LEAGUE: ${req.league || 'EPL'} | MATCH: ${req.homeTeamName} vs ${req.awayTeamName} | CURRENT_UTC: ${new Date().toISOString()} | MANDATE: Extract Season-to-Date Non-Penalty xG (npxG) and xG Against (xGA) from FBRef, Understat, or Opta. Also verify Pinnacle/Betfair market odds for Over 1.5.`,
             tools: [{ type: 'google_search' }],
             response_format: AI_SCHEMA as any
         });

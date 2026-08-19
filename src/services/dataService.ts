@@ -89,7 +89,6 @@ export class DataService {
             const deltaMatches = liveMatches.filter(m => new Date(m.date) > latestDate);
 
             if (deltaMatches.length > 0) {
-                console.log(`[DataSync] Ingesting ${deltaMatches.length} new matches for ${league}`);
                 await this.persistNewMatches(deltaMatches);
                 matches = [...matches, ...deltaMatches];
             }
@@ -123,7 +122,8 @@ export class DataService {
     private static extractTacticalTraits(matches: any[]) {
         const stats: Record<string, { conceded: number, reds: number, delta: number, games: number }> = {};
         
-        // LEAGUE CONVERSION CALIBRATION (SoT Fallback)
+        // HISTORICAL PROXY CALIBRATION
+        // Used only as a fallback for archival matches where raw xG is not provided by the primary data stream.
         const CONVERSION: Record<string, number> = {
             'EPL': 0.33, 'LA_LIGA': 0.31, 'SERIE_A': 0.29, 'BUNDESLIGA': 0.35, 'LIGUE_1': 0.30, 'STANDARD': 0.31
         };

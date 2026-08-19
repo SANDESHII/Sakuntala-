@@ -2,6 +2,11 @@ import { TeamStats, MatchContext, AnalysisResult } from '../types';
 import { DixonColes, MonteCarloSimulator } from '../core/math';
 import { MatchContextService } from './matchContext';
 
+interface LeagueConfig {
+    goalRate: number;
+    homeAdvantage: number;
+}
+
 export class MatchEngine {
     static calculate(
         home: TeamStats, 
@@ -9,7 +14,7 @@ export class MatchEngine {
         context: MatchContext,
         rhoData = { rho: -0.11, sigmaRho: 0.05, varHG: 0.25, varAG: 0.25 }
     ): AnalysisResult {
-        const LEAGUE_CONSTANTS: any = {
+        const LEAGUE_CONSTANTS: Record<string, LeagueConfig> = {
             'EPL': { goalRate: 1.02, homeAdvantage: 0.28 },
             'LA_LIGA': { goalRate: 0.94, homeAdvantage: 0.32 },
             'SERIE_A': { goalRate: 0.98, homeAdvantage: 0.26 },
@@ -24,21 +29,36 @@ export class MatchEngine {
         let hDef = home.defensiveStability;
         let aDef = away.defensiveStability;
 
-        if (context.homeSeasonXG) hAttack = (hAttack * 0.3) + (context.homeSeasonXG * 0.7);
-        if (context.awaySeasonXG) aAttack = (aAttack * 0.3) + (context.awaySeasonXG * 0.7);
+        // TACTICAL GROUNDING OVERRIDE (Absolute Priority)
+        // If real season xG is provided by the Tactical Research Phase, it overrides historical proxies.
+        if (context.homeSeasonXG) hAttack = context.homeSeasonXG;
+        if (context.awaySeasonXG) aAttack = context.awaySeasonXG;
         
         if (context.homeSeasonXGA) {
-            const xgaStability = Math.max(0.3, Math.min(0.9, 1 - (context.homeSeasonXGA / 2.7)));
-            hDef = (hDef * 0.4) + (xgaStability * 0.6);
+            // Convert xGA to a Stability metric (0.0 to 1.0)
+            // League average xGA is typically ~1.35. Lower is better (more stable).
+            hDef = Math.max(0.1, Math.min(0.95, 1 - (context.homeSeasonXGA / 3.0)));
         }
         if (context.awaySeasonXGA) {
-            const xgaStability = Math.max(0.3, Math.min(0.9, 1 - (context.awaySeasonXGA / 2.7)));
-            aDef = (aDef * 0.4) + (xgaStability * 0.6);
+            aDef = Math.max(0.1, Math.min(0.95, 1 - (context.awaySeasonXGA / 3.0)));
         }
 
-        // Scoring Expectations
-        let hL = hAttack * (1 / aDef) * config.goalRate;
-        let aM = aAttack * (1 / hDef) * config.goalRate;
+        // DIMENSIONAL RATIO CALCULATION (The Fix)
+        // We ground all calculations in the League Average Baseline to prevent inflationary drift.
+        const leagueAvgXG = 1.35; 
+
+        // Attack Strength (Ratio to League Average)
+        const hAttackStrength = hAttack / leagueAvgXG;
+        const aAttackStrength = aAttack / leagueAvgXG;
+
+        // Defensive Weakness (Ratio to League Average)
+        // High xGA relative to league average = High Weakness (>1.0)
+        const hDefWeakness = (context.homeSeasonXGA || home.avgXGA) / leagueAvgXG;
+        const aDefWeakness = (context.awaySeasonXGA || away.avgXGA) / leagueAvgXG;
+
+        // Lambdas = League Avg * Attack Strength * Opponent Weakness
+        let hL = leagueAvgXG * hAttackStrength * aDefWeakness * config.goalRate;
+        let aM = leagueAvgXG * aAttackStrength * hDefWeakness * config.goalRate;
 
         // BAYESIAN MOMENTUM WEIGHTING
         // We apply the clinical edge but cap its influence to prevent 90%+ saturation.
@@ -124,7 +144,7 @@ export class MatchEngine {
             predictionType: type,
             predictionLabel: type === 'OVER_15' ? 'Over 1.5 Goals' : 'Under 3.5 Goals',
             
-            // NEW TRADING METRICS
+            // TRADING METRICS
             marketOdds: marketOdds,
             marketImpliedProb: Math.round(marketImpliedProb * 100),
             edge: Math.round(edge * 100), 

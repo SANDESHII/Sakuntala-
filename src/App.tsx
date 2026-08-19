@@ -92,14 +92,17 @@ export const App: React.FC = () => {
                         transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
                         className="max-w-4xl mx-auto text-center space-y-12 py-20"
                     >
-                        <div className="flex flex-col items-center gap-12">
+                    <div className="flex flex-col items-center gap-12">
+                        <div className="space-y-4">
+                            <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-[0.3em]">Institutional Grade</span>
                             <h2 className="text-8xl md:text-9xl font-bold tracking-tight text-white leading-[0.9] text-balance">
                                 Alpha <span className="text-emerald-500">Terminal</span>
                             </h2>
-                            <p className="text-neutral-400 text-lg max-w-xl mx-auto leading-relaxed">
-                                Probabilistic edge detection and market inefficiency hunting for the Over 1.5 market.
-                            </p>
                         </div>
+                        <p className="text-neutral-400 text-lg max-w-xl mx-auto leading-relaxed">
+                            Probabilistic edge detection and market inefficiency hunting for the Over 1.5 market.
+                        </p>
+                    </div>
                     </motion.div>
                 )}
 

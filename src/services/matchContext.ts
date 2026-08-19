@@ -31,10 +31,9 @@ export class MatchContextService {
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         const distance = R * c;
 
-        // Return a penalty factor (1.0 = no fatigue, 0.95 = high fatigue for long distance)
-        if (distance > 400) return 0.96; // Long haul (e.g. London to Newcastle)
-        if (distance > 200) return 0.98; // Mid range
-        return 1.0; // Local derby or short trip
+        // CONTINUOUS FATIGUE DECAY
+        const fatigue = 1.0 - (0.06 / (1 + Math.exp(-(distance - 350) / 100)));
+        return Math.max(0.94, Math.min(1.0, fatigue));
     }
 
     static async getWeather(lat: number, lon: number) {

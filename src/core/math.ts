@@ -67,26 +67,18 @@ export class MonteCarloSimulator {
         const aPhi = aV > aM ? (aM * aM) / (aV - aM) : 100;
 
         const ps = Array.from({ length: iters }, () => {
-            // Sample Latent Strength from Gamma-Normal distribution (Industrial Overdispersion)
+            // Sample Latent Strength from Gamma-Normal distribution
             const hLS_Base = Math.max(0.1, this.sampleNormal(hL, hSD));
             const aMS_Base = Math.max(0.1, this.sampleNormal(aM, aSD));
-            const rS = Math.max(-0.25, Math.min(0.25, this.sampleNormal(rho, sR)));
             
-            // Step B: Negative Binomial Upgrade (Gamma Mixture)
-            // We sample the actual intensity from a Gamma distribution to handle overdispersion
+            // Negative Binomial Mixture
             const hLS = this.sampleGamma(hPhi, hLS_Base / hPhi);
             const aMS = this.sampleGamma(aPhi, aMS_Base / aPhi);
 
-            // Sample actual goals (Poisson process on the latent intensity)
+            // Poisson process
             const hG = this.samplePoisson(hLS);
             const aG = this.samplePoisson(aMS);
             
-            // Apply Dixon-Coles Correlation Adjustment
-            let prob = DixonColes.tau(hG, aG, hLS, aMS, rS);
-            if (Math.random() > prob) {
-                // Adjustment logic - for simulation simplicity we accept the base mixture
-            }
-
             const total = hG + aG;
             return isUnder ? total < threshold : total > threshold;
         });

@@ -9,14 +9,14 @@ interface ResultGridProps {
 }
 
 const StatCard: React.FC<{ label: string; value: string | number; subValue?: string; icon: LucideIcon }> = ({ label, value, subValue, icon: Icon }) => (
-    <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 flex flex-col justify-between space-y-4 group transition-all hover:border-emerald-500/30">
+    <div className="bg-neutral-950 p-8 border border-neutral-900 flex flex-col justify-between space-y-6 hover:bg-neutral-900 transition-all group">
         <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-neutral-500">{label}</span>
-            <Icon className="w-4 h-4 text-neutral-600 group-hover:text-emerald-500 transition-colors" />
+            <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">{label}</span>
+            <Icon className="w-3.5 h-3.5 text-neutral-700 group-hover:text-emerald-500 transition-colors" />
         </div>
         <div className="space-y-1">
-            <h4 className="text-3xl font-bold text-white tracking-tight">{value}</h4>
-            <p className="text-[10px] font-bold text-neutral-600 uppercase tracking-tight">{subValue}</p>
+            <h4 className="text-4xl font-bold text-white tracking-tighter tabular-nums">{value}</h4>
+            <p className="text-[9px] font-black text-neutral-600 uppercase tracking-widest leading-none">{subValue}</p>
         </div>
     </div>
 );
@@ -53,30 +53,30 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
                     </div>
 
                     {/* Team Deep Dive */}
-                    <div className="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-10">
-                        <div className="flex items-center gap-2 mb-10">
+                    <div className="bg-neutral-950 border border-neutral-900 rounded-3xl p-12">
+                        <div className="flex items-center gap-3 mb-12">
                             <Binary className="w-4 h-4 text-emerald-500" />
-                            <h3 className="text-sm font-bold text-white uppercase tracking-wider">Scoring Baselines</h3>
+                            <h3 className="text-[10px] font-black text-white uppercase tracking-[0.2em]">Scoring Baselines</h3>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
                             {[
                                 { team: analysis.homeStats, xG: analysis.homeXG },
                                 { team: analysis.awayStats, xG: analysis.awayXG }
                             ].map((item, idx) => (
-                                <div key={idx} className="space-y-8">
-                                    <h4 className="text-lg font-bold text-white">{item.team.name}</h4>
-                                    <div className="grid grid-cols-2 gap-8">
-                                        <div className="space-y-1">
-                                            <span className="text-[10px] text-neutral-500 font-bold uppercase">Adjusted xG</span>
-                                            <p className="text-2xl font-bold text-white">{item.xG.toFixed(2)}</p>
+                                <div key={idx} className="space-y-10">
+                                    <h4 className="text-2xl font-black text-white tracking-tighter uppercase">{item.team.name}</h4>
+                                    <div className="grid grid-cols-2 gap-10">
+                                        <div className="space-y-2">
+                                            <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Adjusted xG</span>
+                                            <p className="text-3xl font-bold text-white tabular-nums tracking-tighter">{item.xG.toFixed(2)}</p>
                                         </div>
-                                        <div className="space-y-1">
-                                            <span className="text-[10px] text-neutral-500 font-bold uppercase">Stability</span>
-                                            <p className="text-2xl font-bold text-emerald-500">{item.team.defensiveStability.toFixed(2)}</p>
+                                        <div className="space-y-2">
+                                            <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Stability</span>
+                                            <p className="text-3xl font-bold text-emerald-500 tabular-nums tracking-tighter">{item.team.defensiveStability.toFixed(2)}</p>
                                         </div>
-                                        <div className="space-y-1">
-                                            <span className="text-[10px] text-neutral-500 font-bold uppercase">Clinical Edge</span>
-                                            <p className="text-2xl font-bold text-white">{(item.team.clinicalEdge * 100).toFixed(1)}%</p>
+                                        <div className="space-y-2">
+                                            <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Clinical Edge</span>
+                                            <p className="text-3xl font-bold text-white tabular-nums tracking-tighter">{(item.team.clinicalEdge * 100).toFixed(1)}%</p>
                                         </div>
                                     </div>
                                 </div>

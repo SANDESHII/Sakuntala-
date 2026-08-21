@@ -5,11 +5,8 @@ import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 
-// Use initializeFirestore with experimentalForceLongPolling to avoid idle stream errors in iframe environments
-export const db = initializeFirestore(app, {
-    experimentalForceLongPolling: true,
-}, (firebaseConfig as any).firestoreDatabaseId);
+// Mandatory for iframe environments to avoid idle stream errors
+export const db = initializeFirestore(app, { experimentalForceLongPolling: true }, (firebaseConfig as any).firestoreDatabaseId);
 
 setLogLevel('error');
-
 export const auth = getAuth(app);

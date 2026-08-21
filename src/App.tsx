@@ -12,10 +12,7 @@ import { BacktestDisplay } from './components/BacktestDisplay';
 import { fetchWithTimeout } from './utils';
 
 export const App: React.FC = () => {
-    const [homeInput, setHomeInput] = useState('');
-    const [awayInput, setAwayInput] = useState('');
-    const [leagueInput, setLeagueInput] = useState('');
-    const [timeInput, setTimeInput] = useState('');
+    const [inputs, setInputs] = useState({ home: '', away: '', league: '', time: '' });
     const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
     const [isSearchEnabled, setIsSearchEnabled] = useState<boolean>(true);
     const [loadingAnalysis, setLoadingAnalysis] = useState(false);
@@ -42,7 +39,7 @@ export const App: React.FC = () => {
     }, [loadingAnalysis]);
 
     const handleAnalyze = async () => {
-        if (loadingAnalysis || !homeInput || !awayInput) return;
+        if (loadingAnalysis || !inputs.home || !inputs.away) return;
         
         const now = Date.now();
         if (now - lastRequestTime < RATE_LIMIT_MS) {
@@ -61,8 +58,8 @@ export const App: React.FC = () => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    homeTeam: homeInput, awayTeam: awayInput,
-                    league: leagueInput || 'STANDARD', kickoff: timeInput || 'UPCOMING',
+                    homeTeam: inputs.home, awayTeam: inputs.away,
+                    league: inputs.league || 'STANDARD', kickoff: inputs.time || 'UPCOMING',
                     isSearchEnabled
                 })
             }, 60000);
@@ -109,10 +106,10 @@ export const App: React.FC = () => {
 
                 <div className="relative z-10">
                     <AnalysisForm 
-                        home={homeInput} setHome={setHomeInput}
-                        away={awayInput} setAway={setAwayInput}
-                        league={leagueInput} setLeague={setLeagueInput}
-                        time={timeInput} setTime={setTimeInput}
+                        home={inputs.home} setHome={(v) => setInputs(prev => ({ ...prev, home: v }))}
+                        away={inputs.away} setAway={(v) => setInputs(prev => ({ ...prev, away: v }))}
+                        league={inputs.league} setLeague={(v) => setInputs(prev => ({ ...prev, league: v }))}
+                        time={inputs.time} setTime={(v) => setInputs(prev => ({ ...prev, time: v }))}
                         isSearchEnabled={isSearchEnabled} setIsSearchEnabled={setIsSearchEnabled}
                         onAnalyze={handleAnalyze} loading={loadingAnalysis}
                     />

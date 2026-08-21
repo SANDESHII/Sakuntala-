@@ -91,44 +91,44 @@ export const BacktestDisplay: React.FC = () => {
                             { label: 'Purity Score', value: summary.highPurityBrierScore.toFixed(4), icon: CheckCircle2, detail: `N=${summary.highPurityMatches} High Purity` },
                             { label: 'Convergence', value: `${((summary.over15Accuracy + summary.under35Accuracy) / 2).toFixed(1)}%`, icon: CheckCircle2 }
                         ].map((stat, i) => (
-                            <div key={i} className="p-8 bg-neutral-900/50 border border-neutral-900 rounded-2xl space-y-4">
+                            <div key={i} className="p-10 bg-neutral-950 border border-neutral-900 rounded-3xl space-y-6 hover:bg-neutral-900 transition-all">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">{stat.label}</span>
+                                    <span className="text-[10px] font-black uppercase text-neutral-500 tracking-[0.2em]">{stat.label}</span>
                                     <stat.icon className="w-4 h-4 text-emerald-500" />
                                 </div>
                                 <div className="space-y-1">
-                                    <p className="text-3xl font-bold text-white tracking-tighter">{stat.value}</p>
-                                    {stat.detail && <span className="text-[10px] text-neutral-600 font-medium uppercase">{stat.detail}</span>}
+                                    <p className="text-4xl font-black text-white tracking-tighter tabular-nums leading-none">{stat.value}</p>
+                                    {stat.detail && <span className="text-[10px] text-neutral-600 font-bold uppercase tracking-tight">{stat.detail}</span>}
                                 </div>
                             </div>
                         ))}
 
-                        <div className="md:col-span-4 p-8 bg-neutral-900/50 border border-neutral-900 rounded-2xl">
-                            <h4 className="text-xs font-bold uppercase tracking-widest text-neutral-500 mb-8">Edge Distribution (Over 2.5)</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div className="md:col-span-4 p-12 bg-neutral-950 border border-neutral-900 rounded-3xl">
+                            <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500 mb-12">Edge Distribution (Over 2.5)</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-1">
                                 {summary.edgeSegments.map((seg, i) => (
-                                    <div key={i} className="space-y-6 p-6 bg-neutral-950/50 rounded-xl border border-neutral-900 group transition-all hover:border-emerald-500/20">
+                                    <div key={i} className="space-y-8 p-10 bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 transition-all group">
                                         <div className="flex justify-between items-start">
-                                            <span className="text-[10px] font-bold text-white uppercase tracking-widest">{seg.segment}</span>
-                                            <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded ${seg.hitRate > 0.5 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-neutral-800 text-neutral-500'}`}>
+                                            <span className="text-[10px] font-black text-white uppercase tracking-widest">{seg.segment}</span>
+                                            <span className="text-[10px] font-bold uppercase px-3 py-1 bg-neutral-950 border border-neutral-800 text-emerald-500 rounded-lg">
                                                 Win: {(seg.hitRate * 100).toFixed(1)}%
                                             </span>
                                         </div>
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between text-[10px] text-neutral-600 font-bold uppercase">
+                                        <div className="space-y-3">
+                                            <div className="flex justify-between text-[10px] text-neutral-500 font-bold uppercase tracking-tighter">
                                                 <span>Sample Size</span>
                                                 <span>{seg.count}</span>
                                             </div>
-                                            <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
+                                            <div className="h-1 bg-neutral-950 rounded-full overflow-hidden">
                                                 <div 
-                                                    className="h-full bg-neutral-700 transition-all duration-1000 group-hover:bg-emerald-500/50" 
+                                                    className="h-full bg-emerald-500/30 transition-all duration-1000 group-hover:bg-emerald-500" 
                                                     style={{ width: `${(seg.count / summary.totalMatches) * 100}%` }}
                                                 />
                                             </div>
                                         </div>
-                                        <div className="flex items-center justify-between pt-4 border-t border-neutral-900">
+                                        <div className="flex items-center justify-between pt-6 border-t border-neutral-800/50">
                                             <span className="text-[10px] text-neutral-600 font-bold uppercase">Avg Edge</span>
-                                            <span className="text-lg font-bold text-white">+{(seg.avgEdge * 100).toFixed(2)} pts</span>
+                                            <span className="text-xl font-bold text-white tabular-nums tracking-tighter">+{(seg.avgEdge * 100).toFixed(2)} pts</span>
                                         </div>
                                     </div>
                                 ))}

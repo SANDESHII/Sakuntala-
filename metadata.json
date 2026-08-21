@@ -1,8 +1,1 @@
-{
-    "name": "Alpha Terminal",
-    "description": "Probabilistic edge detection and market inefficiency hunting.",
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ],
-  "requestFramePermissions": []
-}
+{"name":"Alpha Terminal","description":"Probabilistic edge detection and market inefficiency hunting.","majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"],"requestFramePermissions":[]}

@@ -1,69 +1,16 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Global safety net: default deny
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Common Helpers
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    // Match Data Validation
-    function isValidMatchData(data) {
-      return data.keys().hasAll(['homeTeam', 'awayTeam', 'date', 'league', 'season', 'signature']) &&
-             data.keys().size() <= 12 && // Allow for optional fields like xG
-             data.homeTeam is string && data.homeTeam.size() <= 100 &&
-             data.awayTeam is string && data.awayTeam.size() <= 100 &&
-             data.homeGoals is number && data.homeGoals >= 0 &&
-             data.awayGoals is number && data.awayGoals >= 0 &&
-             data.date is string && data.date.size() <= 20;
-    }
-
-    // Historical Matches: Read for all, Write only for Admins
-    match /historicalMatches/{matchId} {
-      allow read: if true; // Public data
-      allow create: if (isSignedIn() || true) && isValidMatchData(request.resource.data) && isValidId(matchId);
-      allow update, delete: if isAdmin();
-    }
-
-    // Team Style Profiles: Public Read/Write for now to support server-side ingestion via client SDK
-    match /team_style_profiles/{teamId} {
-      allow read, write: if true;
-    }
-
-    // Referee Profiles: Public Read/Write
-    match /referee_profiles/{refId} {
-      allow read, write: if true;
-    }
-
-    // Team States: Read for all, Write only for Admins
-    match /teamStates/{teamId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    // Model Metadata: Read for all, Write only for Admins
-    match /modelMetadata/{modelId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-    
-    // Admins collection: strictly restricted
-    match /admins/{userId} {
-      allow read: if isSignedIn() && request.auth.uid == userId;
-      allow write: if false; // Only manageable via Firebase Console or special script
-    }
+    match /{document=**} { allow read, write: if false; }
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function isValidMatchData(data) { return data.keys().hasAll(['homeTeam','awayTeam','date','league','season','signature']) && data.keys().size() <= 12 && data.homeTeam is string && data.homeTeam.size() <= 100 && data.awayTeam is string && data.awayTeam.size() <= 100 && data.homeGoals is number && data.homeGoals >= 0 && data.awayGoals is number && data.awayGoals >= 0 && data.date is string && data.date.size() <= 20; }
+    match /historicalMatches/{matchId} { allow read: if true; allow create: if (isSignedIn() || true) && isValidMatchData(request.resource.data) && isValidId(matchId); allow update, delete: if isAdmin(); }
+    match /team_style_profiles/{teamId} { allow read, write: if true; }
+    match /referee_profiles/{refId} { allow read, write: if true; }
+    match /teamStates/{teamId} { allow read: if true; allow write: if isAdmin(); }
+    match /modelMetadata/{modelId} { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /admins/{userId} { allow read: if isSignedIn() && request.auth.uid == userId; allow write: if false; }
   }
 }

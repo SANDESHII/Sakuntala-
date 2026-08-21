@@ -19,8 +19,7 @@ export class FootballDataProvider {
         const normalized = this.normalizeLeague(league);
         const code = FOOTBALL_DATA_CONFIG.LEAGUE_MAP[normalized];
         if (!code) return [];
-        const s = season.replace('/', '');
-        const url = `${FOOTBALL_DATA_CONFIG.BASE_URL}/${s}/${code}.csv`;
+        const url = `${FOOTBALL_DATA_CONFIG.BASE_URL}/${season.replace('/', '')}/${code}.csv`;
         try {
             return await retry(async () => {
                 const res = await fetchWithTimeout(url);
@@ -35,14 +34,12 @@ export class FootballDataProvider {
         const yr = new Date().getFullYear();
         return Array.from({ length: count }, (_, i) => {
             const y = yr - i - 1;
-            const y1 = y + 1;
-            return `${String(y).slice(-2)}${String(y1).slice(-2)}`;
+            return `${String(y).slice(-2)}${String(y + 1).slice(-2)}`;
         });
     }
 
     static async fetchBacklog(league: string, count = 5): Promise<MatchHistory[]> {
-        const seasons = this.getBacklogSeasonStrings(count);
-        const results = await Promise.all(seasons.map(s => this.fetchSeasonData(league, s)));
-        return results.flat();
+        const res = await Promise.all(this.getBacklogSeasonStrings(count).map(s => this.fetchSeasonData(league, s)));
+        return res.flat();
     }
 }

@@ -6,169 +6,62 @@ import { FootballDataProvider } from "./data/footballDataProvider";
 import { MatchContextService } from "./matchContext";
 import { AnalysisResult, MatchContext, RefereeProfile, TeamStyleProfile, MatchHistory } from "../types";
 
-const MODEL = 'gemini-3.7-flash';
-
-const SYSTEM_PROMPT = `Expert Quantitative Football Intelligence Analyst. 
-YOUR MISSION: Perform an "Atom Level" rigorous Tactical Grounding research for Top-Tier European Football. 
-
-DATA SOURCING RIGOR (CRITICAL):
-1. TEMPORAL INTEGRITY: You MUST search for data relative to the provided KICKOFF DATE. If the match is in the past, use only stats available PRIOR to that kickoff. Do not use post-match reports for pre-match predictions.
-2. BIAS MITIGATION: Avoid fan-sites or opinion-based blogs. Use at least one Institutional Quant Source (FBRef, Understat, Opta) and one Global News Source (Sky, BBC, Athletic).
-3. VARIANCE CHECK: If quantitative stats (xG, xGA) disagree by >5%, you MUST flag this in "varianceAlerts" and use the conservative (lower performance) value.
-4. CITATION MANDATE: Every stat (xG, xGA, Live Odds) MUST have a source URL.
-
-ATOM LEVEL PROTOCOL:
-1. TIER 1 (xG DATA): Find Season-to-Date npxG and xGA. Compare two sources.
-2. TIER 2 (Market Intel): Find live Pinnacle/Betfair odds for Over 1.5.
-3. TIER 3 (Personnel): Identify missing personnel impact.
-4. TIER 4 (Tactical Drift): Look for league-specific shifts.
-5. TIER 5 (Referee): Assess referee history.
-
-Output strictly valid JSON. Hallucination is a critical system failure.`;
+const MODEL = 'gemini-3.7-flash', SYSTEM_PROMPT = `Expert Quantitative Football Intelligence Analyst. MISSION: Rigorous Tactical Grounding. 1. OUTLIER JAIL: Discard stats outside reality ranges (npxG/xGA 0.4-3.5). 2. CHECKSUM: Verify (Season Goals / Matches). 3. ADVERSARIAL: Compare FBRef vs Understat. Discard if >10% variance. 4. MARKET SYNC: Sync with Pinnacle/Betfair. 5. NO NARRATIVE: Atoms only. Output strictly valid JSON.`;
 
 const AI_SCHEMA = {
-    type: Type.OBJECT,
-    properties: {
+    type: Type.OBJECT, properties: {
         groundingConfidence: { type: Type.NUMBER },
-        verifiedFacts: {
-            type: Type.OBJECT,
-            properties: {
-                matchContext: { type: Type.STRING },
-                tacticalDrift: { type: Type.STRING },
-                verifiedNewsSummary: { type: Type.STRING },
-                homeSeasonXG: { type: Type.NUMBER },
-                awaySeasonXG: { type: Type.NUMBER },
-                homeSeasonXGA: { type: Type.NUMBER },
-                awaySeasonXGA: { type: Type.NUMBER },
-                pinnacleOver15: { type: Type.NUMBER },
-                pinnacleUnder35: { type: Type.NUMBER },
-                referee: {
-                    type: Type.OBJECT,
-                    properties: {
-                        name: { type: Type.STRING },
-                        avgCards: { type: Type.NUMBER },
-                        avgPenalties: { type: Type.NUMBER }
-                    }
-                },
-                citations: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            source: { type: Type.STRING },
-                            url: { type: Type.STRING },
-                            value: { type: Type.NUMBER },
-                            timestamp: { type: Type.STRING }
-                        }
-                    }
-                },
-                varianceAlerts: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                }
-            }
-        },
-        styleMetrics: {
-            type: Type.OBJECT,
-            properties: {
-                home: { type: Type.OBJECT, properties: { ppda: { type: Type.NUMBER }, possessionFinalThird: { type: Type.NUMBER } } },
-                away: { type: Type.OBJECT, properties: { ppda: { type: Type.NUMBER }, possessionFinalThird: { type: Type.NUMBER } } }
-            }
-        },
-        matchSummary: { type: Type.STRING }
-    },
-    required: ["matchSummary", "groundingConfidence"]
+        verifiedFacts: { type: Type.OBJECT, properties: {
+            matchContext: { type: Type.STRING }, tacticalDrift: { type: Type.STRING }, verifiedNewsSummary: { type: Type.STRING },
+            homeSeasonXG: { type: Type.NUMBER }, awaySeasonXG: { type: Type.NUMBER }, homeSeasonXGA: { type: Type.NUMBER }, awaySeasonXGA: { type: Type.NUMBER },
+            pinnacleOver15: { type: Type.NUMBER }, pinnacleUnder35: { type: Type.NUMBER },
+            referee: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, avgCards: { type: Type.NUMBER }, avgPenalties: { type: Type.NUMBER } } },
+            citations: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { source: { type: Type.STRING }, url: { type: Type.STRING }, value: { type: Type.NUMBER }, timestamp: { type: Type.STRING } } } },
+            varianceAlerts: { type: Type.ARRAY, items: { type: Type.STRING } }
+        }},
+        styleMetrics: { type: Type.OBJECT, properties: {
+            home: { type: Type.OBJECT, properties: { ppda: { type: Type.NUMBER }, possessionFinalThird: { type: Type.NUMBER } } },
+            away: { type: Type.OBJECT, properties: { ppda: { type: Type.NUMBER }, possessionFinalThird: { type: Type.NUMBER } } }
+        }}, matchSummary: { type: Type.STRING }
+    }, required: ["matchSummary", "groundingConfidence"]
 };
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-const cache = new Map<string, { result: AnalysisResult, timestamp: number }>();
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' }), cache = new Map<string, { result: AnalysisResult, timestamp: number }>();
 
-const getFallback = async (req: any, matches: MatchHistory[], rhoData: any): Promise<AnalysisResult> => {
-    const home = DataService.standardize({ ...ProfileService.computeBaseline(req.homeTeam, matches), name: req.homeTeamName });
-    const away = DataService.standardize({ ...ProfileService.computeBaseline(req.awayTeam, matches), name: req.awayTeamName });
-    const ctx: MatchContext = { 
-        weatherData: { temperature: 15, condition: 'Stable' },
-        league: req.league 
-    };
-    return { ...MatchEngine.calculate(home, away, ctx, rhoData), dataSource: 'FALLBACK_STATIC' };
-};
+const getFallback = async (req: any, matches: MatchHistory[], rho: any): Promise<AnalysisResult> => ({ 
+    ...MatchEngine.calculate(DataService.standardize({ ...ProfileService.computeBaseline(req.homeTeam, matches), name: req.homeTeamName }), DataService.standardize({ ...ProfileService.computeBaseline(req.awayTeam, matches), name: req.awayTeamName }), { weatherData: { temperature: 15, condition: 'Stable' }, league: req.league }, rho), 
+    dataSource: 'FALLBACK_STATIC' 
+});
 
-export const performAnalysis = async (rawReq: any): Promise<AnalysisResult> => {
-    const league = FootballDataProvider.normalizeLeague(rawReq.league);
-    const hM = ProfileService.canonicalize(rawReq.homeTeam);
-    const aM = ProfileService.canonicalize(rawReq.awayTeam);
-    const req = { ...rawReq, league, homeTeam: hM.id, awayTeam: aM.id, homeTeamName: ProfileService.getDisplayName(hM.id), awayTeamName: ProfileService.getDisplayName(aM.id) };
-
-    const cacheKey = `${req.homeTeam}-${req.awayTeam}-${req.league}`.toLowerCase();
-    const cached = cache.get(cacheKey);
+export const performAnalysis = async (raw: any): Promise<AnalysisResult> => {
+    const l = FootballDataProvider.normalizeLeague(raw.league), hM = ProfileService.canonicalize(raw.homeTeam), aM = ProfileService.canonicalize(raw.awayTeam);
+    const req = { ...raw, league: l, homeTeam: hM.id, awayTeam: aM.id, homeTeamName: ProfileService.getDisplayName(hM.id), awayTeamName: ProfileService.getDisplayName(aM.id) };
+    const key = `${req.homeTeam}-${req.awayTeam}-${req.league}`.toLowerCase(), cached = cache.get(key);
     if (cached && (Date.now() - cached.timestamp < 30000)) return cached.result;
 
-    const [leagueContext] = await Promise.all([
-        DataService.getLeagueContext(req.league || 'EPL').catch(() => ({ matches: [], rhoData: { rho: -0.11, sigmaRho: 0.05 } }))
-    ]);
-
-    const matches = (leagueContext as any).matches || [];
+    const ctx = await DataService.getLeagueContext(req.league || 'EPL').catch(() => ({ matches: [], rhoData: { rho: -0.11, sigmaRho: 0.05 } }));
+    const matches = (ctx as any).matches || [], rho = (ctx as any).rhoData;
 
     try {
         const interaction = await ai.interactions.create({
-            model: MODEL,
-            system_instruction: SYSTEM_PROMPT,
-            input: `LEAGUE: ${req.league || 'EPL'} | MATCH: ${req.homeTeamName} vs ${req.awayTeamName} | KICKOFF: ${req.kickoff || 'UPCOMING'} | MANDATE: Extract Season-to-Date Non-Penalty xG (npxG) and xG Against (xGA) from FBRef, Understat, or Opta. Cross-verify against a neutral global source. Verify Pinnacle/Betfair market odds as of this kickoff time.`,
-            tools: [{ type: 'google_search' }],
-            response_format: AI_SCHEMA as any
+            model: MODEL, system_instruction: SYSTEM_PROMPT,
+            input: `MATCH: ${req.homeTeamName} vs ${req.awayTeamName} | KICKOFF: ${req.kickoff || 'UPCOMING'} | MANDATE: CLEAN DATA. Checksum Goals/Matches. FBRef/Understat npxG. Outlier Jail. Market Sync. JSON ONLY.`,
+            tools: [{ type: 'google_search' }], response_format: AI_SCHEMA as any
         });
+        const p = JSON.parse(interaction.output_text || '{}'), v = MatchContextService.getVenue(req.homeTeam);
+        const [w, hS, aS] = await Promise.all([MatchContextService.getWeather(v.lat, v.lon), ProfileService.getStyle(req.homeTeam), ProfileService.getStyle(req.awayTeam)]);
+        const ref = p.verifiedFacts?.referee?.name ? { name: p.verifiedFacts.referee.name, avgCardsPerGame: p.verifiedFacts.referee.avgCards || 3.8, avgPenaltiesPerGame: p.verifiedFacts.referee.avgPenalties || 0.2, homeWinRate: 0.45, tendency: (p.verifiedFacts.referee.avgCards > 4) ? 'STRICT' : 'AVERAGE' } : undefined;
 
-        const parsed = JSON.parse(interaction.output_text || '{}');
-        const venue = MatchContextService.getVenue(req.homeTeam);
-        const [weather, hS, aS] = await Promise.all([
-            MatchContextService.getWeather(venue.lat, venue.lon),
-            ProfileService.getStyle(req.homeTeam),
-            ProfileService.getStyle(req.awayTeam)
-        ]);
+        const res = MatchEngine.calculate(DataService.standardize({ ...ProfileService.computeBaseline(req.homeTeam, matches), name: req.homeTeamName }), DataService.standardize({ ...ProfileService.computeBaseline(req.awayTeam, matches), name: req.awayTeamName }), { 
+            weatherData: w, referee: ref, homeStyle: { ...(hS || {}), ...(p.styleMetrics?.home || {}), teamId: req.homeTeam, purity: 0.9 }, awayStyle: { ...(aS || {}), ...(p.styleMetrics?.away || {}), teamId: req.awayTeam, purity: 0.9 }, league: req.league,
+            homeSeasonXG: p.verifiedFacts?.homeSeasonXG, awaySeasonXG: p.verifiedFacts?.awaySeasonXG, homeSeasonXGA: p.verifiedFacts?.homeSeasonXGA, awaySeasonXGA: p.verifiedFacts?.awaySeasonXGA,
+            marketOdds: { pinnacleOver15: p.verifiedFacts?.pinnacleOver15, pinnacleUnder35: p.verifiedFacts?.pinnacleUnder35 },
+            groundingLog: { citations: p.verifiedFacts?.citations || [], varianceAlerts: p.verifiedFacts?.varianceAlerts || [] }
+        }, rho);
 
-        let ref: RefereeProfile | undefined;
-        if (parsed.verifiedFacts?.referee?.name) {
-            ref = { 
-                name: parsed.verifiedFacts.referee.name, 
-                avgCardsPerGame: parsed.verifiedFacts.referee.avgCards || 3.8, 
-                avgPenaltiesPerGame: parsed.verifiedFacts.referee.avgPenalties || 0.2,
-                homeWinRate: 0.45,
-                tendency: (parsed.verifiedFacts.referee.avgCards > 4) ? 'STRICT' : 'AVERAGE'
-            };
-        }
-
-        const homeStyle: TeamStyleProfile = { ...(hS || {}), ...(parsed.styleMetrics?.home || {}), teamId: req.homeTeam, purity: 0.9 };
-        const awayStyle: TeamStyleProfile = { ...(aS || {}), ...(parsed.styleMetrics?.away || {}), teamId: req.awayTeam, purity: 0.9 };
-
-        const home = DataService.standardize({ ...ProfileService.computeBaseline(req.homeTeam, matches), name: req.homeTeamName });
-        const away = DataService.standardize({ ...ProfileService.computeBaseline(req.awayTeam, matches), name: req.awayTeamName });
-
-        const ctx: MatchContext = { 
-            weatherData: weather,
-            referee: ref, 
-            homeStyle, awayStyle, 
-            league: req.league,
-            homeSeasonXG: parsed.verifiedFacts?.homeSeasonXG,
-            awaySeasonXG: parsed.verifiedFacts?.awaySeasonXG,
-            homeSeasonXGA: parsed.verifiedFacts?.homeSeasonXGA,
-            awaySeasonXGA: parsed.verifiedFacts?.awaySeasonXGA,
-            marketOdds: {
-                pinnacleOver15: parsed.verifiedFacts?.pinnacleOver15,
-                pinnacleUnder35: parsed.verifiedFacts?.pinnacleUnder35
-            },
-            groundingLog: {
-                citations: parsed.verifiedFacts?.citations || [],
-                varianceAlerts: parsed.verifiedFacts?.varianceAlerts || []
-            }
-        };
-
-        const result = MatchEngine.calculate(home, away, ctx, (leagueContext as any).rhoData);
-        result.summary = parsed.matchSummary || result.summary;
-        result.surety.groundingCitations = parsed.verifiedFacts?.citations;
-        
-        cache.set(cacheKey, { result, timestamp: Date.now() });
-        return result;
-    } catch (e) {
-        return getFallback(req, matches, (leagueContext as any).rhoData);
-    }
+        res.summary = p.matchSummary || res.summary; res.surety.groundingCitations = p.verifiedFacts?.citations;
+        cache.set(key, { result: res, timestamp: Date.now() }); return res;
+    } catch (e) { return getFallback(req, matches, rho); }
 };
+
+

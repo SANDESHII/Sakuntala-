@@ -22,7 +22,7 @@ export const AnalysisForm: React.FC<AnalysisFormProps> = ({
 }) => (
     <form 
         onSubmit={(e) => { e.preventDefault(); if (!loading && home && away) onAnalyze(); }} 
-        className="bg-neutral-900/50 p-12 rounded-3xl border border-neutral-800 shadow-2xl max-w-5xl mx-auto backdrop-blur-xl"
+        className="bg-neutral-950 p-12 lg:p-16 border border-neutral-900 max-w-5xl mx-auto"
     >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-12">
             {[
@@ -43,25 +43,25 @@ export const AnalysisForm: React.FC<AnalysisFormProps> = ({
                 </div>
             ))}
         </div>
-        <div className="mt-16 flex items-center justify-between p-6 bg-neutral-950/50 rounded-2xl border border-neutral-800">
+        <div className="mt-16 flex items-center justify-between p-8 bg-neutral-900 border border-neutral-800">
             <div className="space-y-1">
-                <span className="text-xs font-bold text-white uppercase tracking-tight">AI Neural Research</span>
-                <p className="text-[10px] text-neutral-500 font-medium uppercase">Enable real-time tactical signal grounding</p>
+                <span className="text-xs font-black text-white uppercase tracking-widest">Neural Research Protocol</span>
+                <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-tight">Real-time tactical signal grounding active</p>
             </div>
             <button 
                 type="button" 
                 onClick={() => setIsSearchEnabled(!isSearchEnabled)} 
-                className={`relative w-11 h-6 rounded-full transition-all duration-300 ${isSearchEnabled ? 'bg-emerald-500' : 'bg-neutral-800'}`}
+                className={`relative w-12 h-6 transition-all duration-300 ${isSearchEnabled ? 'bg-emerald-500' : 'bg-neutral-800'}`}
             >
-                <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${isSearchEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                <div className={`absolute top-1 left-1 w-4 h-4 bg-white transition-all duration-300 ${isSearchEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
             </button>
         </div>
         <button 
             type="submit" 
             disabled={loading || !home || !away} 
-            className={`w-full mt-16 py-8 rounded-2xl font-bold tracking-tight text-lg transition-all ${loading || !home || !away ? 'bg-neutral-800 text-neutral-600' : 'bg-white text-black hover:bg-emerald-500 hover:text-black'}`}
+            className={`w-full mt-12 py-10 font-black tracking-[0.2em] text-sm uppercase transition-all ${loading || !home || !away ? 'bg-neutral-900 text-neutral-700' : 'bg-white text-black hover:bg-emerald-500'}`}
         >
-            {loading ? 'CALCULATING VARIANCES...' : 'GENERATE REPORT'}
+            {loading ? 'CALCULATING VARIANCES...' : 'GENERATE SANCTIFIED REPORT'}
         </button>
     </form>
 );

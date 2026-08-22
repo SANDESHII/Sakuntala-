@@ -4,7 +4,7 @@ import { FootballDataProvider } from './data/footballDataProvider';
 import { DixonColes } from '../core/math';
 import { db } from '../lib/firebase';
 import { LEAGUE_CONVERSION_RATES, DATA_CONSTANTS } from '../core/constants';
-import { collection, query, where, getDocsFromServer, writeBatch, doc, limit } from 'firebase/firestore';
+import { collection, query, where, getDocsFromServer, writeBatch, doc, limit, orderBy } from 'firebase/firestore';
 
 export class DataService {
     static sanitize(v: string | number | null | undefined): number {
@@ -54,21 +54,21 @@ export class DataService {
     }
 
     private static async fetchHistoricalData(league: string): Promise<MatchHistory[]> {
-        const q = query(collection(db, 'historicalMatches'), where('league', '==', league), limit(DATA_CONSTANTS.MATCH_LIMIT));
+        const q = query(collection(db, 'historicalMatches'), where('league', '==', league), orderBy('date', 'desc'), limit(DATA_CONSTANTS.MATCH_LIMIT));
         const snap = await getDocsFromServer(q);
-            const verifiedMatches = snap.docs.map(d => ({ ...d.data(), isVerified: true } as MatchHistory));
+        const verifiedMatches = snap.docs.map(d => ({ ...d.data(), isVerified: true } as MatchHistory));
 
         if (verifiedMatches.length < DATA_CONSTANTS.SYNC_THRESHOLD) {
             const externalMatches = await FootballDataProvider.fetchBacklog(league, 2);
             const verifiedKeys = new Set(verifiedMatches.map(m => `${m.date}_${m.homeTeam}_${m.awayTeam}`));
-            const delta = externalMatches.filter(m => !verifiedKeys.has(`${m.date}_${m.homeTeam}_${m.awayTeam}`));
+            const delta = externalMatches.filter(m => !verifiedKeys.has(`${m.date}_${m.homeTeam}_${m.awayTeam}`)).map(m => ({ ...m, isVerified: true }));
             if (delta.length > 0) { await this.persistNewMatches(delta); }
             return [...verifiedMatches, ...delta];
         } else {
             const latestStr = verifiedMatches.reduce((max, m) => new Date(m.date) > new Date(max) ? m.date : max, verifiedMatches[0]?.date || '1900-01-01');
             const currentSeason = FootballDataProvider.getCurrentSeasonString();
             const live = await FootballDataProvider.fetchSeasonData(league, currentSeason);
-            const delta = live.filter(m => new Date(m.date) > new Date(latestStr));
+            const delta = live.filter(m => new Date(m.date) > new Date(latestStr)).map(m => ({ ...m, isVerified: true }));
             if (delta.length > 0) { await this.persistNewMatches(delta); return [...verifiedMatches, ...delta]; }
         }
         return verifiedMatches;
@@ -136,7 +136,7 @@ export class DataService {
     }
 
     static calculateOpponentAdjustedWeight(hg: number, ag: number, oId: string, ranks: Record<string, number>): number {
-        return Math.abs(hg - ag) < 3 ? 1.0 : 1 + ((ranks[oId] || 0.5) * 0.5);
+        return Math.abs(hg - ag) < 3 ? 1.0 : 1 - ((ranks[oId] || 0.5) * 0.5);
     }
 
     static standardize(team: Partial<TeamStats> & { name: string; purity?: number }, context?: any): TeamStats {

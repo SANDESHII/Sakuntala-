@@ -19,13 +19,11 @@ export class ProfileService {
     static getDisplayName(id: string) { return this.MAP[id]?.[0] || id; }
     static computeBaseline(name: string, matches: MatchHistory[], asOfDate?: string) {
         const { id } = this.canonicalize(name);
-        const rel = matches.filter(m => {
+        const history = asOfDate ? matches.filter(m => new Date(m.date) < new Date(asOfDate)) : matches;
+        const rel = history.filter(m => {
             const hId = this.canonicalize(m.homeTeam).id;
             const aId = this.canonicalize(m.awayTeam).id;
-            const isMatch = hId === id || aId === id;
-            if (!isMatch) return false;
-            if (asOfDate) return new Date(m.date) < new Date(asOfDate);
-            return true;
+            return hId === id || aId === id;
         });
         if (!rel.length) {
             const e = ELITE_TEAMS.includes(id), s = STRONG_TEAMS.includes(id), st = e ? ARCHETYPE_STATS.ELITE : (s ? ARCHETYPE_STATS.STRONG : ARCHETYPE_STATS.STANDARD);
@@ -38,13 +36,19 @@ export class ProfileService {
             wGS += sc * w; wGA += co * w; tW += w; tR += r; tD += (sc - xG); if (co === 0) cs++;
         });
         const isVerified = rel.some((m: any) => m.isVerified);
-        const lAvg = matches.length ? (matches.reduce((a, m) => a + m.homeGoals + m.awayGoals, 0) / (matches.length * 2)) : DATA_CONSTANTS.DEFAULT_LEAGUE_AVG;
+        const lAvg = history.length ? (history.reduce((a, m) => a + m.homeGoals + m.awayGoals, 0) / (history.length * 2)) : DATA_CONSTANTS.DEFAULT_LEAGUE_AVG;
         const avgS = wGS / tW, avgC = wGA / tW;
         return { 
             name, npxG: avgS, avgXGA: avgC, defensiveStability: Math.max(0.3, Math.min(0.9, 1 - (avgC / (lAvg * 2)))), purity: isVerified ? 0.98 : 0.45, redCardPropensity: tR / rel.length, clinicalEdge: tD / (rel.length + DATA_CONSTANTS.SHRINKAGE_K),
             form: rel.slice(-5).map(m => {
-                const h = m.homeTeam === id, sc = h ? m.homeGoals : m.awayGoals, co = h ? m.awayGoals : m.homeGoals;
-                return sc > co ? 1 : sc === co ? 0.5 : 0;
+                const h = m.homeTeam === id;
+                const rate = LEAGUE_CONVERSION_RATES[m.league || 'STANDARD'] || LEAGUE_CONVERSION_RATES.STANDARD;
+                const tXG = (h ? m.homeXG : m.awayXG) ?? ((h ? m.homeShotsOnTarget : m.awayShotsOnTarget) || 0) * rate;
+                const oXG = (h ? m.awayXG : m.homeXG) ?? ((h ? m.awayShotsOnTarget : m.homeShotsOnTarget) || 0) * rate;
+                // Quantitative form: Dominance in expected goals creation/suppression
+                if (tXG > oXG + 0.5) return 1.0;
+                if (tXG < oXG - 0.5) return 0.0;
+                return 0.5;
             }), cleanSheets: cs / rel.length
         };
     }

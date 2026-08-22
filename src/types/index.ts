@@ -7,15 +7,6 @@ export interface MatchHistory { homeTeam:string; awayTeam:string; homeGoals:numb
 export interface AnalysisConfidence { confidenceScore:number; edgeValue:number; groundingCitations?:Citation[]; }
 export interface AnalysisResult { probability:number; summary:string; homeStats:TeamStats; awayStats:TeamStats; homeXG:number; awayXG:number; minimumExpectancy:number; potentialCeiling:number; predictionType:'OVER_15'|'UNDER_35'|'NO_BET'; predictionLabel:string; purity:number; signalStrength:number; marketOdds:number; marketImpliedProb:number; edge:number; recommendedStake:number; verdict:'EXECUTE_BET'|'NO_BET'; context:MatchContext; surety:AnalysisConfidence; dataSource:'LIVE'|'FALLBACK_STATIC'; }
 
-export interface Fixture {
-    homeTeam: string;
-    awayTeam: string;
-    league: string;
-    kickoff: string;
-    analysis?: AnalysisResult;
-    status?: 'IDLE' | 'PENDING' | 'COMPLETED' | 'FAILED';
-}
-
 export interface RhoData {
     rho: number;
     sigmaRho: number;

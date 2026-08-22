@@ -1,7 +1,11 @@
 export class DixonColes {
     static poisson(k:number, l:number):number { if (l <= 0) return k === 0 ? 1 : 0; if (k < 0) return 0; let logFact = 0; for (let i = 2; i <= k; i++) logFact += Math.log(i); return Math.exp(k * Math.log(l) - l - logFact); }
     static tau(x:number, y:number, l:number, m:number, r:number):number { let v = 1; if (x === 0 && y === 0) v = 1 - (l * m * r); else if (x === 0 && y === 1) v = 1 + (l * r); else if (x === 1 && y === 0) v = 1 + (m * r); else if (x === 1 && y === 1) v = 1 - r; return Math.max(0.0001, v); }
-    static calculateScoreMatrix(hL:number, aM:number, r:number = -0.11, max:number = 8):number[][] { return Array.from({ length: max + 1 }, (_, h) => Array.from({ length: max + 1 }, (_, a) => this.poisson(h, hL) * this.poisson(a, aM) * this.tau(h, a, hL, aM, r))); }
+    static calculateScoreMatrix(hL:number, aM:number, r:number = -0.11, max:number = 8):number[][] { 
+        const m = Array.from({ length: max + 1 }, (_, h) => Array.from({ length: max + 1 }, (_, a) => this.poisson(h, hL) * this.poisson(a, aM) * this.tau(h, a, hL, aM, r))); 
+        const s = m.reduce((acc, row) => acc + row.reduce((ra, p) => ra + p, 0), 0);
+        return m.map(row => row.map(p => p / (s || 1)));
+    }
     static calculateOverUnder(m:number[][], t:number):number { return m.reduce((acc, row, h) => acc + row.reduce((ra, p, a) => ra + (h + a > t ? p : 0), 0), 0); }
     static fitRho(matches:{x:number, y:number, lambda:number, mu:number, weight?:number}[]):{rho:number, sigmaRho:number} {
         let r = -0.11, fC = 0;
@@ -18,23 +22,25 @@ export class DixonColes {
     }
 }
 export class MonteCarloSimulator {
-    static run(hL:number, aM:number, hV:number, aV:number, threshold:number = 1.5, isUnder:boolean = false, rho:number = -0.11, iters:number = 10000) {
-        const hPhi = hV > hL ? (hL * hL) / (hV - hL) : 100, aPhi = aV > aM ? (aM * aM) / (aV - aM) : 100;
-        const ps = Array.from({ length: iters }, () => {
-            const hLS = this.sampleGamma(hPhi, hL / hPhi), aMS = this.sampleGamma(aPhi, aM / aPhi);
-            let hG, aG, accepted = false, attempts = 0; const maxTau = 1.5;
-            do { hG = this.samplePoisson(hLS); aG = this.samplePoisson(aMS); if (Math.random() < (DixonColes.tau(hG, aG, hLS, aMS, rho) / maxTau)) accepted = true; attempts++; } while (!accepted && attempts < 5);
-            const total = hG + aG; return isUnder ? total < threshold : total > threshold;
-        });
-        const m = ps.reduce((acc, v) => acc + (v ? 1 : 0), 0) / iters; const ci95 = 1.96 * Math.sqrt((m * (1 - m)) / iters);
+    static run(hL:number, aM:number, _hV:number, _aV:number, threshold:number = 1.5, isUnder:boolean = false, rho:number = -0.11, iters:number = 10000) {
+        const matrix = DixonColes.calculateScoreMatrix(hL, aM, rho);
+        const flat: { hit: boolean, p: number }[] = [];
+        for (let h = 0; h <= 8; h++) {
+            for (let a = 0; a <= 8; a++) {
+                flat.push({ hit: isUnder ? (h + a < threshold) : (h + a > threshold), p: matrix[h][a] });
+            }
+        }
+        let hits = 0;
+        for (let i = 0; i < iters; i++) {
+            const r = Math.random(); let c = 0;
+            for (const cell of flat) {
+                c += cell.p;
+                if (r <= c) { if (cell.hit) hits++; break; }
+            }
+        }
+        const m = hits / iters;
+        const ci95 = 1.96 * Math.sqrt((m * (1 - m)) / iters);
         return { mean: m, median: m, confidenceInterval: [m - ci95, m + ci95] };
     }
-    private static sampleGamma(k:number, theta:number):number {
-        const s = Math.max(0.0001, k); if (s < 1) return this.sampleGamma(1 + s, theta) * Math.pow(Math.random(), 1 / s);
-        const d = s - 1 / 3, c = 1 / Math.sqrt(9 * d);
-        while (true) { let x, v, u; do { x = this.sampleNormal(0, 1); v = 1 + c * x; } while (v <= 0); v = v * v * v; u = Math.random(); if (u < 1 - 0.0331 * x * x * x * x || Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v * theta; }
-    }
-    private static samplePoisson(l:number):number { let L = Math.exp(-l), p = 1.0, k = 0; do { k++; p *= Math.random(); } while (p > L); return k - 1; }
-    private static sampleNormal(m:number, sd:number):number { const u1 = Math.random(), u2 = Math.random(); return m + sd * Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2); }
 }
 

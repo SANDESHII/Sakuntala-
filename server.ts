@@ -1,13 +1,31 @@
 import express from "express"; import path from "path"; import { createServer as createViteServer } from "vite"; import { BacktestService } from "./src/services/backtestService"; import { DataService } from "./src/services/dataService";
-import { AnalysisPipeline } from "./src/services/pipeline";
-import { fetchUpcomingFixtures } from "./src/services/geminiService";
+import { performAnalysis } from "./src/services/geminiService";
+import rateLimit from "express-rate-limit";
+
 async function startServer() {
   const app = express(), PORT = 3000; app.use(express.json());
+  
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 50,
+    message: { error: "Tactical override: Rate limit exceeded to protect quotas." }
+  });
+
+  const auth = (req: any, res: any, next: any) => {
+    const key = req.headers['x-api-key'];
+    const expected = process.env.INTERNAL_API_KEY || process.env.VITE_INTERNAL_API_KEY;
+    if (expected && key !== expected) {
+      return res.status(401).json({ error: "Unauthorized: Invalid API Key" });
+    }
+    next();
+  };
+
   app.get("/api/health", (_, res) => res.json({ status: "ok" }));
-  app.get("/api/fixtures", async (req, res) => { try { res.json(await fetchUpcomingFixtures(req.query.league as string)); } catch (e) { res.status(500).json({ error: "Discovery Failed" }); } });
-  app.post("/api/ingest", async (req, res) => { try { const { league } = req.body; const { matches } = await DataService.getLeagueContext(league || 'EPL'); res.json({ success: true, count: matches.length }); } catch (e) { res.status(500).json({ error: "Sync Failed" }); } });
-  app.post("/api/analyze", async (req, res) => { try { res.json(await AnalysisPipeline.execute(req.body)); } catch (e: any) { res.status(500).json({ error: e.message }); } });
-  app.get("/api/backtest", async (_, res) => { try { res.json(await BacktestService.runBacktest()); } catch (e) { res.status(500).json({ error: "Audit Failed" }); } });
+  
+  // Protected Routes
+  app.post("/api/ingest", auth, async (req, res) => { try { const { league } = req.body; const { matches } = await DataService.getLeagueContext(league || 'EPL'); res.json({ success: true, count: matches.length }); } catch (e) { res.status(500).json({ error: "Sync Failed" }); } });
+  app.post("/api/analyze", limiter, auth, async (req, res) => { try { res.json(await performAnalysis(req.body)); } catch (e: any) { res.status(500).json({ error: e.message }); } });
+  app.get("/api/backtest", auth, async (_, res) => { try { res.json(await BacktestService.runBacktest()); } catch (e) { res.status(500).json({ error: "Audit Failed" }); } });
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({ server: { middlewareMode: true, hmr: false }, appType: "spa" }); app.use(vite.middlewares);
     app.get("*all", async (req, res, next) => { if (req.url.startsWith("/api")) return next(); try { const fs = await import("fs"), html = fs.readFileSync(path.join(process.cwd(), "index.html"), "utf-8"), content = await vite.transformIndexHtml(req.url, html); res.status(200).set({ "Content-Type": "text/html" }).end(content); } catch (e) { vite.ssrFixStacktrace(e as Error); next(e); } });

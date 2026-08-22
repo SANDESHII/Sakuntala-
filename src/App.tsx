@@ -9,12 +9,10 @@ import { AnalysisForm } from './components/AnalysisForm';
 import { ResultGrid } from './components/ResultDisplay';
 import { GroundingLog } from './components/GroundingLog';
 import { BacktestDisplay } from './components/BacktestDisplay';
-import { FixtureSweep } from './components/FixtureSweep';
 import { fetchWithTimeout } from './utils';
 import { LOADING_MESSAGES } from './core/constants';
 
 export const App: React.FC = () => {
-    const [view, setView] = useState<'SINGLE' | 'SWEEP'>('SINGLE');
     const [inputs, setInputs] = useState({ home: '', away: '', league: 'EPL', time: '' });
     const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
     const [isSearchEnabled, setIsSearchEnabled] = useState<boolean>(true);
@@ -102,46 +100,15 @@ export const App: React.FC = () => {
                     </motion.div>
                 )}
 
-                <div className="flex justify-center gap-4">
-                    <button 
-                        onClick={() => setView('SINGLE')}
-                        className={`px-6 py-2 text-[10px] font-bold tracking-widest rounded-full transition-all border ${
-                            view === 'SINGLE' ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20' : 'bg-neutral-900 text-neutral-500 border-neutral-800'
-                        }`}
-                    >
-                        SINGLE ANALYSIS
-                    </button>
-                    <button 
-                        onClick={() => setView('SWEEP')}
-                        className={`px-6 py-2 text-[10px] font-bold tracking-widest rounded-full transition-all border ${
-                            view === 'SWEEP' ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20' : 'bg-neutral-900 text-neutral-500 border-neutral-800'
-                        }`}
-                    >
-                        GLOBAL SWEEP
-                    </button>
-                </div>
-
                 <div className="relative z-10">
-                    {view === 'SINGLE' ? (
-                        <AnalysisForm 
-                            home={inputs.home} setHome={(v) => setInputs(prev => ({ ...prev, home: v }))}
-                            away={inputs.away} setAway={(v) => setInputs(prev => ({ ...prev, away: v }))}
-                            league={inputs.league} setLeague={(v) => setInputs(prev => ({ ...prev, league: v }))}
-                            time={inputs.time} setTime={(v) => setInputs(prev => ({ ...prev, time: v }))}
-                            isSearchEnabled={isSearchEnabled} setIsSearchEnabled={setIsSearchEnabled}
-                            onAnalyze={handleAnalyze} loading={loadingAnalysis}
-                        />
-                    ) : (
-                        <FixtureSweep 
-                            league={inputs.league || 'EPL'} 
-                            setLeague={(l) => setInputs(prev => ({ ...prev, league: l }))}
-                            onSelectMatch={(res) => {
-                                setAnalysis(res);
-                                setView('SINGLE');
-                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }} 
-                        />
-                    )}
+                    <AnalysisForm 
+                        home={inputs.home} setHome={(v) => setInputs(prev => ({ ...prev, home: v }))}
+                        away={inputs.away} setAway={(v) => setInputs(prev => ({ ...prev, away: v }))}
+                        league={inputs.league} setLeague={(v) => setInputs(prev => ({ ...prev, league: v }))}
+                        time={inputs.time} setTime={(v) => setInputs(prev => ({ ...prev, time: v }))}
+                        isSearchEnabled={isSearchEnabled} setIsSearchEnabled={setIsSearchEnabled}
+                        onAnalyze={handleAnalyze} loading={loadingAnalysis}
+                    />
                 </div>
 
                 {error && (

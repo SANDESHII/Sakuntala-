@@ -1,2 +1,2 @@
-export async function fetchWithTimeout(r:string,o:any={},t=10000){const c=new AbortController(),i=setTimeout(()=>c.abort(),t);try{const res=await fetch(r,{...o,signal:c.signal});clearTimeout(i);return res;}catch(e){clearTimeout(i);throw e;}}
+export async function fetchWithTimeout(r:string,o:any={},t=10000){const c=new AbortController(),i=setTimeout(()=>c.abort(),t);const h={...o.headers};const k=import.meta.env.VITE_INTERNAL_API_KEY;if(k)h['x-api-key']=k;try{const res=await fetch(r,{...o,headers:h,signal:c.signal});clearTimeout(i);return res;}catch(e){clearTimeout(i);throw e;}}
 export async function retry<T>(f:()=>Promise<T>,r=3,d=1000):Promise<T>{try{return await f();}catch(e){if(r===0)throw e;await new Promise(x=>setTimeout(x,d));return retry(f,r-1,d*2);}}

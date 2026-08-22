@@ -5,6 +5,7 @@ import { ProfileService } from "./profileService";
 import { FootballDataProvider } from "./data/footballDataProvider";
 import { MatchContextService } from "./matchContext";
 import { RefereeService } from "./refereeService";
+import { CacheService } from "./cacheService";
 import { AnalysisResult, MatchHistory, LeagueContext, RhoData } from "../types";
 
 const MODEL = 'gemini-3.7-flash', SYSTEM_PROMPT = `Expert Quantitative Football Intelligence Analyst. MISSION: Rigorous Tactical Grounding for Europe's Top 5 Leagues & UCL. 
@@ -14,7 +15,7 @@ const MODEL = 'gemini-3.7-flash', SYSTEM_PROMPT = `Expert Quantitative Football 
 4. ADVERSARIAL: Compare FBRef vs Understat. Discard if >10% variance. 
 5. MARKET SYNC: Sync with Pinnacle/Betfair. 
 6. NO NARRATIVE: Atoms only. Output strictly valid JSON.
-7. REFEREE CAUTION: Only identify the Referee Name. Do not guess stats if unknown.`;
+7. REFEREE IDENTIFICATION: Only identify the Referee Name. Do NOT return or guess statistics (avg cards, penalties, etc.). Our deterministic database will handle the numbers.`;
 
 const AI_SCHEMA = {
     type: Type.OBJECT, properties: {
@@ -23,6 +24,7 @@ const AI_SCHEMA = {
             matchContext: { type: Type.STRING }, tacticalDrift: { type: Type.STRING }, verifiedNewsSummary: { type: Type.STRING },
             homeSeasonXG: { type: Type.NUMBER }, awaySeasonXG: { type: Type.NUMBER }, homeSeasonXGAs: { type: Type.NUMBER }, awaySeasonXGAs: { type: Type.NUMBER },
             pinnacleOver15: { type: Type.NUMBER }, pinnacleUnder35: { type: Type.NUMBER },
+            // Only name is requested to prevent LLM hallucination of statistics
             referee: { type: Type.OBJECT, properties: { name: { type: Type.STRING } } },
             citations: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { source: { type: Type.STRING }, url: { type: Type.STRING }, value: { type: Type.NUMBER }, timestamp: { type: Type.STRING } } } },
             varianceAlerts: { type: Type.ARRAY, items: { type: Type.STRING } }
@@ -34,7 +36,7 @@ const AI_SCHEMA = {
     }, required: ["matchSummary", "groundingConfidence"]
 };
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' }), cache = new Map<string, { result: AnalysisResult, timestamp: number }>();
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 const getFallback = async (req: { homeTeam: string; awayTeam: string; league: string; homeTeamName: string; awayTeamName: string; kickoff?: string }, matches: MatchHistory[], rho: RhoData, bias: Record<string, number> = {}): Promise<AnalysisResult> => {
     const asOf = (req.kickoff && req.kickoff !== 'UPCOMING') ? req.kickoff : undefined;
@@ -52,8 +54,11 @@ const getFallback = async (req: { homeTeam: string; awayTeam: string; league: st
 export const performAnalysis = async (raw: { homeTeam: string; awayTeam: string; league: string; kickoff?: string }): Promise<AnalysisResult> => {
     const l = FootballDataProvider.normalizeLeague(raw.league), hM = ProfileService.canonicalize(raw.homeTeam), aM = ProfileService.canonicalize(raw.awayTeam);
     const req = { ...raw, league: l, homeTeam: hM.id, awayTeam: aM.id, homeTeamName: ProfileService.getDisplayName(hM.id), awayTeamName: ProfileService.getDisplayName(aM.id) };
-    const key = `${req.homeTeam}-${req.awayTeam}-${req.league}`.toLowerCase(), cached = cache.get(key);
-    if (cached && (Date.now() - cached.timestamp < 30000)) return cached.result;
+    const key = `${req.homeTeam}-${req.awayTeam}-${req.league}`.toLowerCase();
+    
+    // Persistent Firestore Cache
+    const cached = await CacheService.get(key);
+    if (cached) return cached;
 
     const ctx: LeagueContext = await DataService.getLeagueContext(req.league || 'EPL').catch(() => ({ 
         matches: [], rhoData: { rho: -0.11, sigmaRho: 0.05, varHG: 0.25, varAG: 0.25 }, homeAwayBias: {},
@@ -63,11 +68,17 @@ export const performAnalysis = async (raw: { homeTeam: string; awayTeam: string;
     const matches = ctx.matches, rho = ctx.rhoData, bias = ctx.homeAwayBias;
 
     try {
-        const interaction = await ai.interactions.create({
+        const interactionPromise = ai.interactions.create({
             model: MODEL, system_instruction: SYSTEM_PROMPT,
             input: `MATCH: ${req.homeTeamName} vs ${req.awayTeamName} | KICKOFF: ${req.kickoff || 'UPCOMING'} | MANDATE: Identify Referee & Stadium. Fetch hard npxG stats. Sync Market.`,
             tools: [{ type: 'google_search' }], response_format: AI_SCHEMA as any
         });
+
+        const timeout = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Analysis Timeout: Research phase exceeded 10s limit.')), 10000)
+        );
+
+        const interaction = await Promise.race([interactionPromise, timeout]);
         const p = JSON.parse(interaction.output_text || '{}'), v = MatchContextService.getVenue(req.homeTeam);
         const [w, hS, aS, ref] = await Promise.all([
             MatchContextService.getWeather(v.lat, v.lon), 
@@ -88,41 +99,11 @@ export const performAnalysis = async (raw: { homeTeam: string; awayTeam: string;
             }, rho);
 
         res.summary = p.matchSummary || res.summary; res.surety.groundingCitations = p.verifiedFacts?.citations;
-        cache.set(key, { result: res, timestamp: Date.now() }); return res;
+        
+        // Save to Persistent Cache
+        await CacheService.set(key, res);
+        return res;
     } catch (e) { return getFallback(req, matches, rho, bias); }
-};
-
-export const fetchUpcomingFixtures = async (league: string = 'EPL'): Promise<any[]> => {
-    try {
-        const interaction = await ai.interactions.create({
-            model: MODEL,
-            system_instruction: "Identify and return the next 10-15 upcoming matches in the specified league (EPL, La Liga, Bundesliga, Serie A, Ligue 1, or UCL) for the next 7 days. Return strictly valid JSON array of objects with fields: homeTeam, awayTeam, league, kickoff (ISO string).",
-            input: `LEAGUE: ${league} | Current Time: ${new Date().toISOString()}`,
-            tools: [{ type: 'google_search' }],
-            response_format: {
-                type: Type.OBJECT,
-                properties: {
-                    fixtures: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                homeTeam: { type: Type.STRING },
-                                awayTeam: { type: Type.STRING },
-                                league: { type: Type.STRING },
-                                kickoff: { type: Type.STRING }
-                            }
-                        }
-                    }
-                }
-            } as any
-        });
-        const p = JSON.parse(interaction.output_text || '{"fixtures":[]}');
-        return p.fixtures || [];
-    } catch (e) {
-        console.error('Fixture sweep failed:', e);
-        return [];
-    }
 };
 
 

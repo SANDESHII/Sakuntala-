@@ -2,7 +2,7 @@ import { ProfileService } from './profileService';
 import { MatchEngine } from './engine';
 import { DataService } from './dataService';
 import { AnalysisResult } from '../types';
-import { BACKTEST_CONFIG } from '../core/constants';
+import { BACKTEST_CONFIG, BAYESIAN_CONFIG } from '../core/constants';
 
 export interface BacktestSummary {
     totalMatches: number;
@@ -12,6 +12,7 @@ export interface BacktestSummary {
     highPurityBrierScore: number;
     highPurityMatches: number;
     edgeSegments: any[];
+    calibrationUsed: { baseTrust: number; purityScale: number };
     matches: Array<{
         match: any;
         prediction: AnalysisResult;
@@ -56,6 +57,7 @@ export class BacktestService {
             highPurityBrierScore: hpC > 0 ? hpB / hpC : 0,
             highPurityMatches: hpC,
             edgeSegments: segments.map(s => ({ segment: s.segment, count: s.count, hitRate: s.count > 0 ? s.hits / s.count : 0, avgEdge: s.min / 100 })),
+            calibrationUsed: { baseTrust: BAYESIAN_CONFIG.BASE_TRUST, purityScale: BAYESIAN_CONFIG.PURITY_SCALE },
             matches: results
         };
     }

@@ -22,7 +22,7 @@ export class DixonColes {
     }
 }
 export class MonteCarloSimulator {
-    static run(hL:number, aM:number, _hV:number, _aV:number, threshold:number = 1.5, isUnder:boolean = false, rho:number = -0.11, iters:number = 10000) {
+    static run(hL:number, aM:number, threshold:number = 1.5, isUnder:boolean = false, rho:number = -0.11, iters:number = 10000) {
         const matrix = DixonColes.calculateScoreMatrix(hL, aM, rho);
         const flat: { hit: boolean, p: number }[] = [];
         for (let h = 0; h <= 8; h++) {

@@ -26,7 +26,8 @@ export class ProfileService {
             return hId === id || aId === id;
         });
         if (!rel.length) {
-            const e = ELITE_TEAMS.includes(id), s = STRONG_TEAMS.includes(id), st = e ? ARCHETYPE_STATS.ELITE : (s ? ARCHETYPE_STATS.STRONG : ARCHETYPE_STATS.STANDARD);
+            const dyn = this.computeDynamicArchetypes(history);
+            const e = ELITE_TEAMS.includes(id), s = STRONG_TEAMS.includes(id), st = e ? dyn.ELITE : (s ? dyn.STRONG : dyn.STANDARD);
             return { name, npxG: st.npxG, avgXGA: st.avgXGA, defensiveStability: st.defensiveStability, purity: 0.1, form: [0.5, 0.5, 0.5, 0.5, 0.5], cleanSheets: st.cleanSheets, redCardPropensity: 0.05, clinicalEdge: st.clinicalEdge };
         }
         let wGS = 0, wGA = 0, tW = 0, cs = 0, tR = 0, tD = 0;
@@ -50,6 +51,34 @@ export class ProfileService {
                 if (tXG < oXG - 0.5) return 0.0;
                 return 0.5;
             }), cleanSheets: cs / rel.length
+        };
+    }
+
+    private static computeDynamicArchetypes(matches: MatchHistory[]) {
+        if (!matches.length) return ARCHETYPE_STATS;
+        const stats: Record<string, { xG: number; xGA: number; games: number; cleanSheets: number; delta: number }> = {};
+        const lAvg = matches.reduce((a, m) => a + m.homeGoals + m.awayGoals, 0) / (matches.length * 2) || DATA_CONSTANTS.DEFAULT_LEAGUE_AVG;
+        
+        matches.forEach(m => {
+            const hId = this.canonicalize(m.homeTeam).id, aId = this.canonicalize(m.awayTeam).id;
+            const r = LEAGUE_CONVERSION_RATES[m.league || 'STANDARD'] || LEAGUE_CONVERSION_RATES.STANDARD;
+            [hId, aId].forEach(id => { if (!stats[id]) stats[id] = { xG: 0, xGA: 0, games: 0, cleanSheets: 0, delta: 0 }; });
+            const hXG = m.homeXG ?? ((m.homeShotsOnTarget || 0) * r), aXG = m.awayXG ?? ((m.awayShotsOnTarget || 0) * r);
+            stats[hId].xG += hXG; stats[hId].xGA += aXG; stats[hId].games++; if (m.awayGoals === 0) stats[hId].cleanSheets++; stats[hId].delta += (m.homeGoals - hXG);
+            stats[aId].xG += aXG; stats[aId].xGA += hXG; stats[aId].games++; if (m.homeGoals === 0) stats[aId].cleanSheets++; stats[aId].delta += (m.awayGoals - aXG);
+        });
+
+        const pool = (ids: string[]) => {
+            const p = Object.entries(stats).filter(([id, s]) => ids.includes(id) && s.games >= 3).map(([_, s]) => ({ xG: s.xG / s.games, xGA: s.xGA / s.games, cs: s.cleanSheets / s.games, ce: s.delta / s.games }));
+            if (!p.length) return null;
+            const n = p.length, avgXG = p.reduce((a, v) => a + v.xG, 0) / n, avgXGA = p.reduce((a, v) => a + v.xGA, 0) / n;
+            return { npxG: avgXG, avgXGA, defensiveStability: Math.max(0.3, Math.min(0.9, 1 - (avgXGA / (lAvg * 2)))), cleanSheets: p.reduce((a, v) => a + v.cs, 0) / n, clinicalEdge: p.reduce((a, v) => a + v.ce, 0) / n };
+        };
+
+        return {
+            ELITE: pool(ELITE_TEAMS) || ARCHETYPE_STATS.ELITE,
+            STRONG: pool(STRONG_TEAMS) || ARCHETYPE_STATS.STRONG,
+            STANDARD: pool(Object.keys(stats).filter(id => !ELITE_TEAMS.includes(id) && !STRONG_TEAMS.includes(id))) || ARCHETYPE_STATS.STANDARD
         };
     }
     static async getStyle(id: string): Promise<TeamStyleProfile | null> { const s = await getDoc(doc(db, 'team_style_profiles', id)); return s.exists() ? s.data() as TeamStyleProfile : null; }

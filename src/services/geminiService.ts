@@ -3,7 +3,6 @@ import { MatchEngine } from "./engine";
 import { DataService } from "./dataService";
 import { ProfileService } from "./profileService";
 import { FootballDataProvider } from "./data/footballDataProvider";
-import { MatchContextService } from "./matchContext";
 import { RefereeService } from "./refereeService";
 import { CacheService } from "./cacheService";
 import { AnalysisResult, MatchHistory, LeagueContext, RhoData } from "../types";
@@ -23,7 +22,7 @@ const AI_SCHEMA = {
         verifiedFacts: { type: Type.OBJECT, properties: {
             matchContext: { type: Type.STRING }, tacticalDrift: { type: Type.STRING }, verifiedNewsSummary: { type: Type.STRING },
             homeSeasonXG: { type: Type.NUMBER }, awaySeasonXG: { type: Type.NUMBER }, homeSeasonXGAs: { type: Type.NUMBER }, awaySeasonXGAs: { type: Type.NUMBER },
-            pinnacleOver15: { type: Type.NUMBER }, pinnacleUnder35: { type: Type.NUMBER },
+            pinnacleOver15: { type: Type.NUMBER }, pinnacleUnder15: { type: Type.NUMBER }, pinnacleUnder35: { type: Type.NUMBER }, pinnacleOver35: { type: Type.NUMBER },
             // Only name is requested to prevent LLM hallucination of statistics
             referee: { type: Type.OBJECT, properties: { name: { type: Type.STRING } } },
             citations: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { source: { type: Type.STRING }, url: { type: Type.STRING }, value: { type: Type.NUMBER }, timestamp: { type: Type.STRING } } } },
@@ -44,7 +43,7 @@ const getFallback = async (req: { homeTeam: string; awayTeam: string; league: st
         ...MatchEngine.calculate(
             DataService.standardize({ ...ProfileService.computeBaseline(req.homeTeam, matches, asOf), name: req.homeTeamName, homeAwayBias: bias[req.homeTeam] }), 
             DataService.standardize({ ...ProfileService.computeBaseline(req.awayTeam, matches, asOf), name: req.awayTeamName, homeAwayBias: bias[req.awayTeam] }), 
-            { weatherData: { temperature: 15, condition: 'Stable' }, league: req.league }, 
+            { league: req.league }, 
             rho
         ), 
         dataSource: 'FALLBACK_STATIC' 
@@ -61,7 +60,7 @@ export const performAnalysis = async (raw: { homeTeam: string; awayTeam: string;
     if (cached) return cached;
 
     const ctx: LeagueContext = await DataService.getLeagueContext(req.league || 'EPL').catch(() => ({ 
-        matches: [], rhoData: { rho: -0.11, sigmaRho: 0.05, varHG: 0.25, varAG: 0.25 }, homeAwayBias: {},
+        matches: [], rhoData: { rho: -0.11, sigmaRho: 0.05 }, homeAwayBias: {},
         defensiveRanks: {}, redCardPropensity: {}, clinicalEdge: {}, avgHG: 1.35, avgAG: 1.25, varHG: 1.1, varAG: 1.1,
         audit: { signalIntegrity: '0%', alphaAdjustment: 'None', redCardRegime: 'None', dataReliability: 'Low', sampleSize: 0 }
     }));
@@ -79,9 +78,8 @@ export const performAnalysis = async (raw: { homeTeam: string; awayTeam: string;
         );
 
         const interaction = await Promise.race([interactionPromise, timeout]);
-        const p = JSON.parse(interaction.output_text || '{}'), v = MatchContextService.getVenue(req.homeTeam);
-        const [w, hS, aS, ref] = await Promise.all([
-            MatchContextService.getWeather(v.lat, v.lon), 
+        const p = JSON.parse(interaction.output_text || '{}');
+        const [hS, aS, ref] = await Promise.all([
             ProfileService.getStyle(req.homeTeam), 
             ProfileService.getStyle(req.awayTeam),
             RefereeService.getRefereeStats(p.verifiedFacts?.referee?.name, req.league)
@@ -92,9 +90,14 @@ export const performAnalysis = async (raw: { homeTeam: string; awayTeam: string;
             DataService.standardize({ ...ProfileService.computeBaseline(req.homeTeam, matches, asOf), name: req.homeTeamName, homeAwayBias: bias[req.homeTeam] }), 
             DataService.standardize({ ...ProfileService.computeBaseline(req.awayTeam, matches, asOf), name: req.awayTeamName, homeAwayBias: bias[req.awayTeam] }), 
             { 
-                weatherData: w, referee: ref, homeStyle: { ...(hS || {}), ...(p.styleMetrics?.home || {}), teamId: req.homeTeam }, awayStyle: { ...(aS || {}), ...(p.styleMetrics?.away || {}), teamId: req.awayTeam }, league: req.league,
+                referee: ref, homeStyle: { ...(hS || {}), ...(p.styleMetrics?.home || {}), teamId: req.homeTeam }, awayStyle: { ...(aS || {}), ...(p.styleMetrics?.away || {}), teamId: req.awayTeam }, league: req.league,
                 homeSeasonXG: p.verifiedFacts?.homeSeasonXG, awaySeasonXG: p.verifiedFacts?.awaySeasonXG, homeSeasonXGA: p.verifiedFacts?.homeSeasonXGA, awaySeasonXGA: p.verifiedFacts?.awaySeasonXGA,
-                marketOdds: { pinnacleOver15: p.verifiedFacts?.pinnacleOver15, pinnacleUnder35: p.verifiedFacts?.pinnacleUnder35 },
+                marketOdds: { 
+                    pinnacleOver15: p.verifiedFacts?.pinnacleOver15, 
+                    pinnacleUnder15: p.verifiedFacts?.pinnacleUnder15,
+                    pinnacleUnder35: p.verifiedFacts?.pinnacleUnder35,
+                    pinnacleOver35: p.verifiedFacts?.pinnacleOver35
+                },
                 groundingLog: { citations: p.verifiedFacts?.citations || [], varianceAlerts: p.verifiedFacts?.varianceAlerts || [] }
             }, rho);
 

@@ -130,7 +130,6 @@ export class DataService {
             avgHG: aH, avgAG: aA, varHG: vH, varAG: vA,
             rhoData: {
                 ...DixonColes.fitRho(matches.slice(-DATA_CONSTANTS.RHO_SAMPLE_SIZE).map(m => ({ x: m.homeGoals, y: m.awayGoals, lambda: m.homeXG || aH, mu: m.awayXG || aA, weight: m.weight || 1.0 }))),
-                varHG: vH, varAG: vA
             }
         };
     }

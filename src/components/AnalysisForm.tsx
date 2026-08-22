@@ -1,6 +1,8 @@
 
 import React from 'react';
 
+import { ELITE_LEAGUES } from '../core/constants';
+
 interface AnalysisFormProps {
     home: string;
     setHome: (v: string) => void;
@@ -40,6 +42,20 @@ export const AnalysisForm: React.FC<AnalysisFormProps> = ({
                         className="w-full bg-transparent border-b border-neutral-800 px-0 py-4 text-4xl text-white focus:outline-none focus:border-emerald-500 transition-all font-bold placeholder:text-neutral-800 uppercase tracking-tighter" 
                         placeholder={f.placeholder} 
                     />
+                    {f.label === 'League Code' && (
+                        <div className="flex flex-wrap gap-2 mt-4">
+                            {ELITE_LEAGUES.map(l => (
+                                <button
+                                    key={l}
+                                    type="button"
+                                    onClick={() => setLeague(l)}
+                                    className={`px-3 py-1 text-[8px] font-black border transition-all ${league === l ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-neutral-900 border-neutral-800 text-neutral-500 hover:border-neutral-700'}`}
+                                >
+                                    {l.replace('_', ' ')}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
             ))}
         </div>

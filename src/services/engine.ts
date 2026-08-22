@@ -15,6 +15,12 @@ export class MatchEngine {
         let hL = lAvg * (hA / lAvg) * aD * (1 + config.homeAdvantage / lAvg) * config.goalRate;
         let aM = lAvg * (aA / lAvg) * hD * config.goalRate;
 
+        // POLISH: Apply Team-Specific Home/Away Bias (Dampened)
+        const hBias = Math.pow(home.homeAwayBias || 1.0, 0.4);
+        const aBias = Math.pow(away.homeAwayBias || 1.0, 0.4);
+        hL *= hBias;
+        aM *= (1 / aBias);
+
         const hM = (home.clinicalEdge || 0), aM_ = (away.clinicalEdge || 0);
         hL *= (1 + Math.sign(hM) * Math.min(Math.sqrt(Math.abs(hM)), DATA_CONSTANTS.MOMENTUM_CAP));
         aM *= (1 + Math.sign(aM_) * Math.min(Math.sqrt(Math.abs(aM_)), DATA_CONSTANTS.MOMENTUM_CAP)) * MatchContextService.calculateTravelFatigue(home.name.toUpperCase(), away.name.toUpperCase());
@@ -24,19 +30,45 @@ export class MatchEngine {
             if (t > 28 || t < 2) { hL *= (t > 28 ? 0.95 : 1.03); aM *= (t > 28 ? 0.95 : 1.03); }
         }
 
-        if (context.referee) { const rE = 1 + (context.referee.avgPenaltiesPerGame - 0.2) * 0.5; hL *= rE; aM *= rE; }
-        if (context.homeStyle?.ppda < 10) { hL *= 1.1; aM *= 1.05; }
-        if (context.awayStyle?.ppda < 10) { aM *= 1.1; hL *= 1.05; }
+        if (context.referee) { 
+            const rE = 1 + (context.referee.avgPenaltiesPerGame - 0.2) * 0.2; // Dampened from 0.5
+            hL *= rE; aM *= rE; 
+        }
+        
+        // Stabilized Tactical Multipliers (Dampened from 1.1)
+        if (context.homeStyle?.ppda && context.homeStyle.ppda < 10) { hL *= 1.04; aM *= 1.02; }
+        if (context.awayStyle?.ppda && context.awayStyle.ppda < 10) { aM *= 1.04; hL *= 1.02; }
 
         const matrix = DixonColes.calculateScoreMatrix(hL, aM, rhoData.rho);
         const pO15 = DixonColes.calculateOverUnder(matrix, 1.5), pU35 = 1 - DixonColes.calculateOverUnder(matrix, 3.5);
-        const type = pO15 > 0.65 ? 'OVER_15' : 'UNDER_35', p = type === 'OVER_15' ? pO15 : pU35;
+        
+        const type = pO15 > 0.65 ? 'OVER_15' : 'UNDER_35';
+        let rawP = type === 'OVER_15' ? pO15 : pU35;
+
+        // --- NEW: BAYESIAN MARKET BLENDING (THE "RENTECH" ANCHOR) ---
         const mOdds = (type === 'OVER_15' ? context.marketOdds?.pinnacleOver15 : context.marketOdds?.pinnacleUnder35) || 1.50;
-        const mP = 1 / mOdds, edge = p - mP, b = mOdds - 1;
-        const stake = Math.max(0, (b * p - (1 - p)) / b) * 0.25, hasEdge = edge > 0.04;
+        
+        // --- POLISH: OVERROUND REMOVAL (POWER METHOD APPROXIMATION) ---
+        // Since we only have one side of the market usually, we assume a standard 3.5% overround
+        // to approximate the "True" Market Probability.
+        const overround = 0.035; 
+        const mP_raw = 1 / mOdds;
+        const mP = mP_raw / (1 + overround); 
+        
+        const purity = ((home.dataPurity || 0.1) + (away.dataPurity || 0.1)) / 2;
+        
+        // If purity is 1.0, we use 85% model / 15% market. 
+        // If purity is 0.1, we use 5% model / 95% market.
+        const modelWeight = 0.05 + (purity * 0.8); 
+        const p = (rawP * modelWeight) + (mP * (1 - modelWeight));
+
+        const edge = p - mP_raw, b = mOdds - 1;
+        // POLISH: Dynamic Kelly scaling based on surety and edge quality
+        const kellyFraction = 0.12 * Math.min(1.5, Math.max(0.5, purity + (rawP > 0.7 ? 0.2 : 0)));
+        const stake = Math.max(0, (b * p - (1 - p)) / b) * kellyFraction; 
+        const hasEdge = edge > 0.025; // Professional threshold
 
         const sim = MonteCarloSimulator.run(hL, aM, rhoData.varHG || 0.25, rhoData.varAG || 0.25, type === 'UNDER_35' ? 3.5 : 1.5, type === 'UNDER_35', rhoData.rho);
-        const purity = (home.dataPurity + away.dataPurity) / 2;
         
         return {
             probability: Math.round(p * 100),

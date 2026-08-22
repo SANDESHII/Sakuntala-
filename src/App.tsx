@@ -9,10 +9,13 @@ import { AnalysisForm } from './components/AnalysisForm';
 import { ResultGrid } from './components/ResultDisplay';
 import { GroundingLog } from './components/GroundingLog';
 import { BacktestDisplay } from './components/BacktestDisplay';
+import { FixtureSweep } from './components/FixtureSweep';
 import { fetchWithTimeout } from './utils';
+import { LOADING_MESSAGES } from './core/constants';
 
 export const App: React.FC = () => {
-    const [inputs, setInputs] = useState({ home: '', away: '', league: '', time: '' });
+    const [view, setView] = useState<'SINGLE' | 'SWEEP'>('SINGLE');
+    const [inputs, setInputs] = useState({ home: '', away: '', league: 'EPL', time: '' });
     const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
     const [isSearchEnabled, setIsSearchEnabled] = useState<boolean>(true);
     const [loadingAnalysis, setLoadingAnalysis] = useState(false);
@@ -21,16 +24,11 @@ export const App: React.FC = () => {
     const [lastRequestTime, setLastRequestTime] = useState<number>(0);
     const RATE_LIMIT_MS = 15000;
 
-    const loadingMessages = [
-        "Initializing Stochastic Engine...", "Ingesting De-Censored Data...", "Modeling Tail-Risk Variance...",
-        "Sampling Overdispersion...", "Projecting Clinical Edge...", "Finalizing Neural Signal..."
-    ];
-
     useEffect(() => {
         let interval: any;
         if (loadingAnalysis) {
             interval = setInterval(() => {
-                setLoadingStage(prev => (prev + 1) % loadingMessages.length);
+                setLoadingStage(prev => (prev + 1) % LOADING_MESSAGES.length);
             }, 1200);
         } else {
             setLoadingStage(0);
@@ -80,7 +78,7 @@ export const App: React.FC = () => {
     return (
         <div className="min-h-screen bg-neutral-950 text-neutral-200 selection:bg-emerald-500/30 font-sans antialiased">
             <Header />
-            <LoadingOverlay loading={loadingAnalysis} stage={loadingStage} messages={loadingMessages} />
+            <LoadingOverlay loading={loadingAnalysis} stage={loadingStage} messages={LOADING_MESSAGES} />
 
             <main className="max-w-6xl mx-auto px-6 pt-32 pb-24 space-y-32">
                 {!analysis && !loadingAnalysis && (
@@ -104,15 +102,46 @@ export const App: React.FC = () => {
                     </motion.div>
                 )}
 
+                <div className="flex justify-center gap-4">
+                    <button 
+                        onClick={() => setView('SINGLE')}
+                        className={`px-6 py-2 text-[10px] font-bold tracking-widest rounded-full transition-all border ${
+                            view === 'SINGLE' ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20' : 'bg-neutral-900 text-neutral-500 border-neutral-800'
+                        }`}
+                    >
+                        SINGLE ANALYSIS
+                    </button>
+                    <button 
+                        onClick={() => setView('SWEEP')}
+                        className={`px-6 py-2 text-[10px] font-bold tracking-widest rounded-full transition-all border ${
+                            view === 'SWEEP' ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20' : 'bg-neutral-900 text-neutral-500 border-neutral-800'
+                        }`}
+                    >
+                        GLOBAL SWEEP
+                    </button>
+                </div>
+
                 <div className="relative z-10">
-                    <AnalysisForm 
-                        home={inputs.home} setHome={(v) => setInputs(prev => ({ ...prev, home: v }))}
-                        away={inputs.away} setAway={(v) => setInputs(prev => ({ ...prev, away: v }))}
-                        league={inputs.league} setLeague={(v) => setInputs(prev => ({ ...prev, league: v }))}
-                        time={inputs.time} setTime={(v) => setInputs(prev => ({ ...prev, time: v }))}
-                        isSearchEnabled={isSearchEnabled} setIsSearchEnabled={setIsSearchEnabled}
-                        onAnalyze={handleAnalyze} loading={loadingAnalysis}
-                    />
+                    {view === 'SINGLE' ? (
+                        <AnalysisForm 
+                            home={inputs.home} setHome={(v) => setInputs(prev => ({ ...prev, home: v }))}
+                            away={inputs.away} setAway={(v) => setInputs(prev => ({ ...prev, away: v }))}
+                            league={inputs.league} setLeague={(v) => setInputs(prev => ({ ...prev, league: v }))}
+                            time={inputs.time} setTime={(v) => setInputs(prev => ({ ...prev, time: v }))}
+                            isSearchEnabled={isSearchEnabled} setIsSearchEnabled={setIsSearchEnabled}
+                            onAnalyze={handleAnalyze} loading={loadingAnalysis}
+                        />
+                    ) : (
+                        <FixtureSweep 
+                            league={inputs.league || 'EPL'} 
+                            setLeague={(l) => setInputs(prev => ({ ...prev, league: l }))}
+                            onSelectMatch={(res) => {
+                                setAnalysis(res);
+                                setView('SINGLE');
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }} 
+                        />
+                    )}
                 </div>
 
                 {error && (

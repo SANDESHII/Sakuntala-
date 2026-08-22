@@ -4,18 +4,26 @@ import { DataService } from "./dataService";
 import { ProfileService } from "./profileService";
 import { FootballDataProvider } from "./data/footballDataProvider";
 import { MatchContextService } from "./matchContext";
-import { AnalysisResult, MatchContext, RefereeProfile, TeamStyleProfile, MatchHistory } from "../types";
+import { RefereeService } from "./refereeService";
+import { AnalysisResult, MatchHistory, LeagueContext, RhoData } from "../types";
 
-const MODEL = 'gemini-3.7-flash', SYSTEM_PROMPT = `Expert Quantitative Football Intelligence Analyst. MISSION: Rigorous Tactical Grounding. 1. OUTLIER JAIL: Discard stats outside reality ranges (npxG/xGA 0.4-3.5). 2. CHECKSUM: Verify (Season Goals / Matches). 3. ADVERSARIAL: Compare FBRef vs Understat. Discard if >10% variance. 4. MARKET SYNC: Sync with Pinnacle/Betfair. 5. NO NARRATIVE: Atoms only. Output strictly valid JSON.`;
+const MODEL = 'gemini-3.7-flash', SYSTEM_PROMPT = `Expert Quantitative Football Intelligence Analyst. MISSION: Rigorous Tactical Grounding for Europe's Top 5 Leagues & UCL. 
+1. IDENTIFICATION: Identify the Referee and Stadium for the given match using search.
+2. OUTLIER JAIL: Discard stats outside reality ranges (npxG/xGA 0.4-3.5). 
+3. CHECKSUM: Verify (Season Goals / Matches). 
+4. ADVERSARIAL: Compare FBRef vs Understat. Discard if >10% variance. 
+5. MARKET SYNC: Sync with Pinnacle/Betfair. 
+6. NO NARRATIVE: Atoms only. Output strictly valid JSON.
+7. REFEREE CAUTION: Only identify the Referee Name. Do not guess stats if unknown.`;
 
 const AI_SCHEMA = {
     type: Type.OBJECT, properties: {
         groundingConfidence: { type: Type.NUMBER },
         verifiedFacts: { type: Type.OBJECT, properties: {
             matchContext: { type: Type.STRING }, tacticalDrift: { type: Type.STRING }, verifiedNewsSummary: { type: Type.STRING },
-            homeSeasonXG: { type: Type.NUMBER }, awaySeasonXG: { type: Type.NUMBER }, homeSeasonXGA: { type: Type.NUMBER }, awaySeasonXGA: { type: Type.NUMBER },
+            homeSeasonXG: { type: Type.NUMBER }, awaySeasonXG: { type: Type.NUMBER }, homeSeasonXGAs: { type: Type.NUMBER }, awaySeasonXGAs: { type: Type.NUMBER },
             pinnacleOver15: { type: Type.NUMBER }, pinnacleUnder35: { type: Type.NUMBER },
-            referee: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, avgCards: { type: Type.NUMBER }, avgPenalties: { type: Type.NUMBER } } },
+            referee: { type: Type.OBJECT, properties: { name: { type: Type.STRING } } },
             citations: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { source: { type: Type.STRING }, url: { type: Type.STRING }, value: { type: Type.NUMBER }, timestamp: { type: Type.STRING } } } },
             varianceAlerts: { type: Type.ARRAY, items: { type: Type.STRING } }
         }},
@@ -28,40 +36,94 @@ const AI_SCHEMA = {
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' }), cache = new Map<string, { result: AnalysisResult, timestamp: number }>();
 
-const getFallback = async (req: any, matches: MatchHistory[], rho: any): Promise<AnalysisResult> => ({ 
-    ...MatchEngine.calculate(DataService.standardize({ ...ProfileService.computeBaseline(req.homeTeam, matches), name: req.homeTeamName }), DataService.standardize({ ...ProfileService.computeBaseline(req.awayTeam, matches), name: req.awayTeamName }), { weatherData: { temperature: 15, condition: 'Stable' }, league: req.league }, rho), 
-    dataSource: 'FALLBACK_STATIC' 
-});
+const getFallback = async (req: { homeTeam: string; awayTeam: string; league: string; homeTeamName: string; awayTeamName: string; kickoff?: string }, matches: MatchHistory[], rho: RhoData, bias: Record<string, number> = {}): Promise<AnalysisResult> => {
+    const asOf = (req.kickoff && req.kickoff !== 'UPCOMING') ? req.kickoff : undefined;
+    return { 
+        ...MatchEngine.calculate(
+            DataService.standardize({ ...ProfileService.computeBaseline(req.homeTeam, matches, asOf), name: req.homeTeamName, homeAwayBias: bias[req.homeTeam] }), 
+            DataService.standardize({ ...ProfileService.computeBaseline(req.awayTeam, matches, asOf), name: req.awayTeamName, homeAwayBias: bias[req.awayTeam] }), 
+            { weatherData: { temperature: 15, condition: 'Stable' }, league: req.league }, 
+            rho
+        ), 
+        dataSource: 'FALLBACK_STATIC' 
+    };
+};
 
-export const performAnalysis = async (raw: any): Promise<AnalysisResult> => {
+export const performAnalysis = async (raw: { homeTeam: string; awayTeam: string; league: string; kickoff?: string }): Promise<AnalysisResult> => {
     const l = FootballDataProvider.normalizeLeague(raw.league), hM = ProfileService.canonicalize(raw.homeTeam), aM = ProfileService.canonicalize(raw.awayTeam);
     const req = { ...raw, league: l, homeTeam: hM.id, awayTeam: aM.id, homeTeamName: ProfileService.getDisplayName(hM.id), awayTeamName: ProfileService.getDisplayName(aM.id) };
     const key = `${req.homeTeam}-${req.awayTeam}-${req.league}`.toLowerCase(), cached = cache.get(key);
     if (cached && (Date.now() - cached.timestamp < 30000)) return cached.result;
 
-    const ctx = await DataService.getLeagueContext(req.league || 'EPL').catch(() => ({ matches: [], rhoData: { rho: -0.11, sigmaRho: 0.05 } }));
-    const matches = (ctx as any).matches || [], rho = (ctx as any).rhoData;
+    const ctx: LeagueContext = await DataService.getLeagueContext(req.league || 'EPL').catch(() => ({ 
+        matches: [], rhoData: { rho: -0.11, sigmaRho: 0.05, varHG: 0.25, varAG: 0.25 }, homeAwayBias: {},
+        defensiveRanks: {}, redCardPropensity: {}, clinicalEdge: {}, avgHG: 1.35, avgAG: 1.25, varHG: 1.1, varAG: 1.1,
+        audit: { signalIntegrity: '0%', alphaAdjustment: 'None', redCardRegime: 'None', dataReliability: 'Low', sampleSize: 0 }
+    }));
+    const matches = ctx.matches, rho = ctx.rhoData, bias = ctx.homeAwayBias;
 
     try {
         const interaction = await ai.interactions.create({
             model: MODEL, system_instruction: SYSTEM_PROMPT,
-            input: `MATCH: ${req.homeTeamName} vs ${req.awayTeamName} | KICKOFF: ${req.kickoff || 'UPCOMING'} | MANDATE: CLEAN DATA. Checksum Goals/Matches. FBRef/Understat npxG. Outlier Jail. Market Sync. JSON ONLY.`,
+            input: `MATCH: ${req.homeTeamName} vs ${req.awayTeamName} | KICKOFF: ${req.kickoff || 'UPCOMING'} | MANDATE: Identify Referee & Stadium. Fetch hard npxG stats. Sync Market.`,
             tools: [{ type: 'google_search' }], response_format: AI_SCHEMA as any
         });
         const p = JSON.parse(interaction.output_text || '{}'), v = MatchContextService.getVenue(req.homeTeam);
-        const [w, hS, aS] = await Promise.all([MatchContextService.getWeather(v.lat, v.lon), ProfileService.getStyle(req.homeTeam), ProfileService.getStyle(req.awayTeam)]);
-        const ref = p.verifiedFacts?.referee?.name ? { name: p.verifiedFacts.referee.name, avgCardsPerGame: p.verifiedFacts.referee.avgCards || 3.8, avgPenaltiesPerGame: p.verifiedFacts.referee.avgPenalties || 0.2, homeWinRate: 0.45, tendency: (p.verifiedFacts.referee.avgCards > 4) ? 'STRICT' : 'AVERAGE' } : undefined;
+        const [w, hS, aS, ref] = await Promise.all([
+            MatchContextService.getWeather(v.lat, v.lon), 
+            ProfileService.getStyle(req.homeTeam), 
+            ProfileService.getStyle(req.awayTeam),
+            RefereeService.getRefereeStats(p.verifiedFacts?.referee?.name, req.league)
+        ]);
 
-        const res = MatchEngine.calculate(DataService.standardize({ ...ProfileService.computeBaseline(req.homeTeam, matches), name: req.homeTeamName }), DataService.standardize({ ...ProfileService.computeBaseline(req.awayTeam, matches), name: req.awayTeamName }), { 
-            weatherData: w, referee: ref, homeStyle: { ...(hS || {}), ...(p.styleMetrics?.home || {}), teamId: req.homeTeam, purity: 0.9 }, awayStyle: { ...(aS || {}), ...(p.styleMetrics?.away || {}), teamId: req.awayTeam, purity: 0.9 }, league: req.league,
-            homeSeasonXG: p.verifiedFacts?.homeSeasonXG, awaySeasonXG: p.verifiedFacts?.awaySeasonXG, homeSeasonXGA: p.verifiedFacts?.homeSeasonXGA, awaySeasonXGA: p.verifiedFacts?.awaySeasonXGA,
-            marketOdds: { pinnacleOver15: p.verifiedFacts?.pinnacleOver15, pinnacleUnder35: p.verifiedFacts?.pinnacleUnder35 },
-            groundingLog: { citations: p.verifiedFacts?.citations || [], varianceAlerts: p.verifiedFacts?.varianceAlerts || [] }
-        }, rho);
+        const asOf = (req.kickoff && req.kickoff !== 'UPCOMING') ? req.kickoff : undefined;
+        const res = MatchEngine.calculate(
+            DataService.standardize({ ...ProfileService.computeBaseline(req.homeTeam, matches, asOf), name: req.homeTeamName, homeAwayBias: bias[req.homeTeam] }), 
+            DataService.standardize({ ...ProfileService.computeBaseline(req.awayTeam, matches, asOf), name: req.awayTeamName, homeAwayBias: bias[req.awayTeam] }), 
+            { 
+                weatherData: w, referee: ref, homeStyle: { ...(hS || {}), ...(p.styleMetrics?.home || {}), teamId: req.homeTeam }, awayStyle: { ...(aS || {}), ...(p.styleMetrics?.away || {}), teamId: req.awayTeam }, league: req.league,
+                homeSeasonXG: p.verifiedFacts?.homeSeasonXG, awaySeasonXG: p.verifiedFacts?.awaySeasonXG, homeSeasonXGA: p.verifiedFacts?.homeSeasonXGA, awaySeasonXGA: p.verifiedFacts?.awaySeasonXGA,
+                marketOdds: { pinnacleOver15: p.verifiedFacts?.pinnacleOver15, pinnacleUnder35: p.verifiedFacts?.pinnacleUnder35 },
+                groundingLog: { citations: p.verifiedFacts?.citations || [], varianceAlerts: p.verifiedFacts?.varianceAlerts || [] }
+            }, rho);
 
         res.summary = p.matchSummary || res.summary; res.surety.groundingCitations = p.verifiedFacts?.citations;
         cache.set(key, { result: res, timestamp: Date.now() }); return res;
-    } catch (e) { return getFallback(req, matches, rho); }
+    } catch (e) { return getFallback(req, matches, rho, bias); }
 };
+
+export const fetchUpcomingFixtures = async (league: string = 'EPL'): Promise<any[]> => {
+    try {
+        const interaction = await ai.interactions.create({
+            model: MODEL,
+            system_instruction: "Identify and return the next 10-15 upcoming matches in the specified league (EPL, La Liga, Bundesliga, Serie A, Ligue 1, or UCL) for the next 7 days. Return strictly valid JSON array of objects with fields: homeTeam, awayTeam, league, kickoff (ISO string).",
+            input: `LEAGUE: ${league} | Current Time: ${new Date().toISOString()}`,
+            tools: [{ type: 'google_search' }],
+            response_format: {
+                type: Type.OBJECT,
+                properties: {
+                    fixtures: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                homeTeam: { type: Type.STRING },
+                                awayTeam: { type: Type.STRING },
+                                league: { type: Type.STRING },
+                                kickoff: { type: Type.STRING }
+                            }
+                        }
+                    }
+                }
+            } as any
+        });
+        const p = JSON.parse(interaction.output_text || '{"fixtures":[]}');
+        return p.fixtures || [];
+    } catch (e) {
+        console.error('Fixture sweep failed:', e);
+        return [];
+    }
+};
+
 
 

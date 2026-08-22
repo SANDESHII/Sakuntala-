@@ -7,5 +7,6 @@
   "storageBucket": "forward-setting-8xczp.firebasestorage.app",
   "messagingSenderId": "472184961275",
   "measurementId": "",
-  "oAuthClientId": "472184961275-55e5njhigfbdopnvtatqpp6glfqsj28v.apps.googleusercontent.com"
+  "oAuthClientId": "472184961275-55e5njhigfbdopnvtatqpp6glfqsj28v.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
 }

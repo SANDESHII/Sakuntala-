@@ -29,8 +29,8 @@ export class BacktestService {
         const results: any[] = [], segments = BACKTEST_CONFIG.SEGMENTS.map(s => ({ ...s }));
 
         for (const m of samples) {
-            const h = DataService.standardize({ ...ProfileService.computeBaseline(m.homeTeam, all), name: m.homeTeam });
-            const a = DataService.standardize({ ...ProfileService.computeBaseline(m.awayTeam, all), name: m.awayTeam });
+            const h = DataService.standardize({ ...ProfileService.computeBaseline(m.homeTeam, all, m.date), name: m.homeTeam });
+            const a = DataService.standardize({ ...ProfileService.computeBaseline(m.awayTeam, all, m.date), name: m.awayTeam });
             const math = MatchEngine.calculate(h, a, { date: m.date });
             const tg = (m.homeGoals || 0) + (m.awayGoals || 0), isO = tg > 1.5, isU = tg < 3.5;
             const outcome = math.predictionType === 'OVER_15' ? isO : isU;

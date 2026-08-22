@@ -8,10 +8,11 @@ export class FootballDataProvider {
     static normalizeLeague(league: string): string {
         const l = (league || '').toUpperCase().trim();
         if (l.includes('PREMIER') || l === 'EPL' || l === 'E0') return 'EPL';
-        if (l.includes('CHAMPION') || l === 'E1') return 'CHAMPIONSHIP';
         if (l.includes('LIGA') || l === 'SP1') return 'LA_LIGA';
         if (l.includes('SERIE') || l === 'I1') return 'SERIE_A';
         if (l.includes('BUNDES') || l === 'D1') return 'BUNDESLIGA';
+        if (l.includes('LIGUE') || l === 'F1') return 'LIGUE_1';
+        if (l.includes('CHAMPIONS LEAGUE') || l === 'UCL' || l.includes('UCL')) return 'UCL';
         return l;
     }
 
@@ -25,7 +26,7 @@ export class FootballDataProvider {
                 const res = await fetchWithTimeout(url);
                 if (!res.ok) return [];
                 const parsed = Papa.parse(await res.text(), { header: true, skipEmptyLines: true });
-                return parsed.data.map(r => DataService.validateMatch(r, league)).filter((r): r is MatchHistory => r !== null);
+                return parsed.data.map(r => DataService.validateMatch(r as Record<string, any>, league)).filter((r): r is MatchHistory => r !== null);
             });
         } catch { return []; }
     }
@@ -38,8 +39,23 @@ export class FootballDataProvider {
         });
     }
 
+    static getCurrentSeasonString(): string {
+        const now = new Date();
+        const year = now.getFullYear();
+        // If we are in July or later, the "current" season is the one that just started (e.g. 2425 in Aug 2024)
+        if (now.getMonth() >= 6) { // 0-indexed, 6 is July
+            return `${String(year).slice(-2)}${String(year + 1).slice(-2)}`;
+        }
+        return `${String(year - 1).slice(-2)}${String(year).slice(-2)}`;
+    }
+
     static async fetchBacklog(league: string, count = 5): Promise<MatchHistory[]> {
-        const res = await Promise.all(this.getBacklogSeasonStrings(count).map(s => this.fetchSeasonData(league, s)));
+        const seasons = this.getBacklogSeasonStrings(count);
+        // Include the current season in the backlog if we are in it
+        const current = this.getCurrentSeasonString();
+        if (!seasons.includes(current)) seasons.unshift(current);
+        
+        const res = await Promise.all(seasons.map(s => this.fetchSeasonData(league, s)));
         return res.flat();
     }
 }

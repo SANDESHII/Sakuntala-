@@ -9,74 +9,77 @@ interface ResultGridProps {
 }
 
 const StatCard: React.FC<{ label: string; value: string | number; subValue?: string; icon: LucideIcon }> = ({ label, value, subValue, icon: Icon }) => (
-    <div className="bg-neutral-950 p-8 border border-neutral-900 flex flex-col justify-between space-y-6 hover:bg-neutral-900 transition-all group">
+    <div className="bg-neutral-900/30 p-10 rounded-2xl border border-neutral-900 flex flex-col justify-between space-y-8 hover:bg-neutral-900/50 transition-all group shadow-sm">
         <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">{label}</span>
-            <Icon className="w-3.5 h-3.5 text-neutral-700 group-hover:text-emerald-500 transition-colors" />
+            <span className="text-[11px] font-black text-neutral-500 uppercase tracking-[0.2em]">{label}</span>
+            <Icon className="w-4 h-4 text-neutral-700 group-hover:text-emerald-500 transition-colors" />
         </div>
-        <div className="space-y-1">
-            <h4 className="text-4xl font-bold text-white tracking-tighter tabular-nums">{value}</h4>
-            <p className="text-[9px] font-black text-neutral-600 uppercase tracking-widest leading-none">{subValue}</p>
+        <div className="space-y-2">
+            <h4 className="text-5xl font-black text-white tracking-tighter tabular-nums leading-none">{value}</h4>
+            <p className="text-[10px] font-black text-neutral-600 uppercase tracking-widest leading-none">{subValue}</p>
         </div>
     </div>
 );
 
 export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
     return (
-        <div className="space-y-16">
+        <div className="space-y-24">
             {/* Header Status */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8 pb-12 border-b border-neutral-900">
-                <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-xs font-bold tracking-widest text-neutral-500 uppercase">
-                            {analysis.dataSource === 'LIVE' ? 'Live Neural Mode' : 'Tactical Archetype Mode'}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-10 pb-16 border-b border-neutral-900/50">
+                <div className="space-y-6">
+                    <div className="flex items-center gap-4">
+                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse" />
+                        <span className="text-[10px] font-black tracking-[0.3em] text-neutral-600 uppercase">
+                            {analysis.dataSource === 'LIVE' ? 'Neural Signal Integrity: 100%' : 'Archetype Projection Mode'}
                         </span>
                     </div>
-                    <h2 className="text-6xl font-bold text-white tracking-tighter leading-none uppercase">
+                    <h2 className="text-7xl md:text-8xl font-black text-white tracking-tighter leading-[0.8] uppercase max-w-2xl">
                         {analysis.predictionLabel}
                     </h2>
                 </div>
-                <div className="flex flex-col items-end gap-2">
-                    <span className="text-8xl font-black text-emerald-500 tracking-tighter leading-none">{analysis.probability}%</span>
-                    <span className="text-xs font-bold text-neutral-600 uppercase tracking-widest">Confidence Score</span>
+                <div className="flex flex-col items-end gap-3">
+                    <span className="text-9xl font-black text-emerald-500 tracking-tighter leading-none drop-shadow-2xl shadow-emerald-500/10">{analysis.probability}%</span>
+                    <span className="text-[11px] font-black text-neutral-600 uppercase tracking-[0.25em]">Probability Signal</span>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-                <div className="lg:col-span-8 space-y-12">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
+                <div className="lg:col-span-8 space-y-16">
                     {/* Primary Metrics */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <StatCard label="Edge Detected" value={`${analysis.edge > 0 ? '+' : ''}${analysis.edge}%`} subValue="vs Market Implied" icon={Zap} />
-                        <StatCard label="Kelly Stake" value={`${analysis.recommendedStake}%`} subValue="Quarter-Kelly Risk" icon={Shield} />
-                        <StatCard label="Market Price" value={analysis.marketOdds.toFixed(2)} subValue="Pinnacle/Betfair" icon={Target} />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <StatCard label="Model Edge" value={`${analysis.edge > 0 ? '+' : ''}${analysis.edge}%`} subValue="Alpha vs Market" icon={Zap} />
+                        <StatCard label="Risk Unit" value={`${analysis.recommendedStake}%`} subValue="Optimal Allocation" icon={Shield} />
+                        <StatCard label="Live Odds" value={analysis.marketOdds.toFixed(2)} subValue="True Value Anchor" icon={Target} />
                     </div>
 
                     {/* Team Deep Dive */}
-                    <div className="bg-neutral-950 border border-neutral-900 rounded-3xl p-12">
-                        <div className="flex items-center gap-3 mb-12">
-                            <Binary className="w-4 h-4 text-emerald-500" />
-                            <h3 className="text-[10px] font-black text-white uppercase tracking-[0.2em]">Scoring Baselines</h3>
+                    <div className="bg-neutral-900/20 border border-neutral-900/80 rounded-[40px] p-16">
+                        <div className="flex items-center gap-4 mb-16">
+                            <Binary className="w-5 h-5 text-emerald-500" />
+                            <h3 className="text-[11px] font-black text-neutral-400 uppercase tracking-[0.3em]">Scoring Architectures</h3>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-20">
                             {[
-                                { team: analysis.homeStats, xG: analysis.homeXG },
-                                { team: analysis.awayStats, xG: analysis.awayXG }
+                                { team: analysis.homeStats, xG: analysis.homeXG, role: 'HOME' },
+                                { team: analysis.awayStats, xG: analysis.awayXG, role: 'AWAY' }
                             ].map((item, idx) => (
-                                <div key={idx} className="space-y-10">
-                                    <h4 className="text-2xl font-black text-white tracking-tighter uppercase">{item.team.name}</h4>
-                                    <div className="grid grid-cols-2 gap-10">
-                                        <div className="space-y-2">
-                                            <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Adjusted xG</span>
-                                            <p className="text-3xl font-bold text-white tabular-nums tracking-tighter">{item.xG.toFixed(2)}</p>
+                                <div key={idx} className="space-y-12">
+                                    <div className="space-y-1">
+                                        <span className="text-[10px] font-bold text-neutral-700 uppercase tracking-widest">{item.role}</span>
+                                        <h4 className="text-3xl font-black text-white tracking-tighter uppercase">{item.team.name}</h4>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-12">
+                                        <div className="space-y-3">
+                                            <span className="text-[10px] text-neutral-600 font-bold uppercase tracking-widest">Adjusted xG</span>
+                                            <p className="text-4xl font-bold text-white tabular-nums tracking-tighter">{item.xG.toFixed(2)}</p>
                                         </div>
-                                        <div className="space-y-2">
-                                            <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Stability</span>
-                                            <p className="text-3xl font-bold text-emerald-500 tabular-nums tracking-tighter">{item.team.defensiveStability.toFixed(2)}</p>
+                                        <div className="space-y-3">
+                                            <span className="text-[10px] text-neutral-600 font-bold uppercase tracking-widest">Stability</span>
+                                            <p className="text-4xl font-bold text-emerald-500 tabular-nums tracking-tighter">{item.team.defensiveStability.toFixed(2)}</p>
                                         </div>
-                                        <div className="space-y-2">
-                                            <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Clinical Edge</span>
-                                            <p className="text-3xl font-bold text-white tabular-nums tracking-tighter">{(item.team.clinicalEdge * 100).toFixed(1)}%</p>
+                                        <div className="space-y-3">
+                                            <span className="text-[10px] text-neutral-600 font-bold uppercase tracking-widest">Tactical Bias</span>
+                                            <p className="text-4xl font-bold text-white tabular-nums tracking-tighter">{item.team.homeAwayBias.toFixed(2)}</p>
                                         </div>
                                     </div>
                                 </div>

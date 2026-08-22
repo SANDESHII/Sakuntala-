@@ -1,5 +1,5 @@
 export interface TeamStats { name:string; goalsScored:number; goalsConceded:number; avgXG:number; avgXGA:number; npxG:number; defensiveStability:number; form:number[]; cleanSheets:number; dataPurity:number; redCardPropensity:number; clinicalEdge:number; homeAwayBias:number; }
-export interface RefereeProfile { name:string; avgCardsPerGame:number; avgPenaltiesPerGame:number; homeWinRate:number; tendency:'STRICT'|'LENIENT'|'AVERAGE'; }
+export interface RefereeProfile { name:string; avgCardsPerGame:number; avgPenaltiesPerGame:number; homeWinRate:number; tendency:'STRICT'|'LENIENT'|'AVERAGE'; gamesOfficiated:number; }
 export interface TeamStyleProfile { teamId:string; ppda:number; possessionFinalThird:number; purity:number; }
 export interface Citation { source:string; url:string; value:number; timestamp:string; }
 export interface MatchContext { referee?:RefereeProfile; homeStyle?:TeamStyleProfile; awayStyle?:TeamStyleProfile; league?:string; homeSeasonXG?:number; awaySeasonXG?:number; homeSeasonXGA?:number; awaySeasonXGA?:number; date?:string; marketOdds?:{ pinnacleOver15?:number; pinnacleUnder15?:number; pinnacleUnder35?:number; pinnacleOver35?:number; }; groundingLog?:{ citations:Citation[]; varianceAlerts:string[]; }; audit?:{ signalIntegrity:string; alphaAdjustment:string; redCardRegime:string; dataReliability:string; sampleSize:number; }; }

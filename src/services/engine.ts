@@ -13,7 +13,7 @@ export class MatchEngine {
         const hD = (hXGA / lAvg) * 0.6 + (home.defensiveStability / 0.65) * 0.4;
         const aD = (aXGA / lAvg) * 0.6 + (away.defensiveStability / 0.65) * 0.4;
 
-        let hL = lAvg * (hA / lAvg) * aD * config.goalRate;
+        let hL = lAvg * (hA / lAvg) * aD * (1 + config.homeAdvantage / lAvg) * config.goalRate;
         let aM = lAvg * (aA / lAvg) * hD * config.goalRate;
 
         // POLISH: Apply Team-Specific Home/Away Bias (Dampened)
@@ -26,17 +26,19 @@ export class MatchEngine {
         hL *= (1 + Math.sign(hM) * Math.min(Math.sqrt(Math.abs(hM)), DATA_CONSTANTS.MOMENTUM_CAP));
         aM *= (1 + Math.sign(aM_) * Math.min(Math.sqrt(Math.abs(aM_)), DATA_CONSTANTS.MOMENTUM_CAP)) * MatchContextService.calculateTravelFatigue(home.name.toUpperCase(), away.name.toUpperCase());
 
-        if (context.referee) { 
-            const rE = 1 + (context.referee.avgPenaltiesPerGame - 0.2) * 0.2; // Dampened from 0.5
+        if (context.referee && context.referee.gamesOfficiated) { 
+            const leagueAvgPen = 0.2;
+            const k = DATA_CONSTANTS.SHRINKAGE_K; // 12
+            const n = context.referee.gamesOfficiated;
+            const raw = context.referee.avgPenaltiesPerGame;
+            // Shrink toward league average: more games = more trust in raw data
+            const shrunk = (n * raw + k * leagueAvgPen) / (n + k);
+            const rE = 1 + (shrunk - leagueAvgPen) * 0.2;
             hL *= rE; aM *= rE; 
         }
         
-        // Stabilized Tactical Multipliers (Dampened from 1.1)
-        if (context.homeStyle?.ppda && context.homeStyle.ppda < 10) { hL *= 1.04; aM *= 1.02; }
-        if (context.awayStyle?.ppda && context.awayStyle.ppda < 10) { aM *= 1.04; hL *= 1.02; }
 
-        // Apply home advantage as a flat addition at the end
-        hL += config.homeAdvantage;
+
 
         const matrix = DixonColes.calculateScoreMatrix(hL, aM, rhoData.rho);
         const pO15_raw = DixonColes.calculateOverUnder(matrix, 1.5);

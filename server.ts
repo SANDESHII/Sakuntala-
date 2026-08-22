@@ -4,12 +4,16 @@ import { CalibrationService } from "./src/services/calibrationService";
 import rateLimit from "express-rate-limit";
 
 async function startServer() {
-  const app = express(), PORT = 3000; app.use(express.json());
+  const app = express(), PORT = 3000; 
+  app.set('trust proxy', 1);
+  app.use(express.json());
   
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 50,
-    message: { error: "Tactical override: Rate limit exceeded to protect quotas." }
+    message: { error: "Tactical override: Rate limit exceeded to protect quotas." },
+    standardHeaders: true,
+    legacyHeaders: false,
   });
 
   const auth = (req: any, res: any, next: any) => {

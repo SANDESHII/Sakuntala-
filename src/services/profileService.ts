@@ -2,7 +2,8 @@ import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { TeamStyleProfile, MatchHistory } from '../types';
 import { LEAGUE_CONVERSION_RATES, DATA_CONSTANTS } from '../core/constants';
-import { ELITE_TEAMS, STRONG_TEAMS, ARCHETYPE_STATS } from '../core/archetypes';
+import { ELITE_TEAMS, STRONG_TEAMS } from '../core/archetypes';
+import { ArchetypeEngine } from '../core/archetypeEngine';
 
 export class ProfileService {
     private static readonly MAP: Record<string, string[]> = {
@@ -26,12 +27,22 @@ export class ProfileService {
             return hId === id || aId === id;
         });
         if (!rel.length) {
-            const dyn = this.computeDynamicArchetypes(history);
+            const dyn = ArchetypeEngine.compute(history);
             // Dynamic assignment based on score ranking
             let st = dyn.STANDARD;
             
-            const statsArr = Object.entries((history as any).teamPerformance || {})
-                .map(([id, s]: [string, any]) => ({ id, score: s.score }))
+            // Compute ranking from history for assignment
+            const stats: Record<string, number> = {};
+            history.forEach(m => {
+                const hId = this.canonicalize(m.homeTeam).id, aId = this.canonicalize(m.awayTeam).id;
+                const r = LEAGUE_CONVERSION_RATES[m.league || 'STANDARD'] || LEAGUE_CONVERSION_RATES.STANDARD;
+                if (!stats[hId]) stats[hId] = 0; if (!stats[aId]) stats[aId] = 0;
+                stats[hId] += (m.homeXG ?? ((m.homeShotsOnTarget || 0) * r)) - (m.awayXG ?? ((m.awayShotsOnTarget || 0) * r));
+                stats[aId] += (m.awayXG ?? ((m.awayShotsOnTarget || 0) * r)) - (m.homeXG ?? ((m.homeShotsOnTarget || 0) * r));
+            });
+            
+            const statsArr = Object.entries(stats)
+                .map(([id, score]) => ({ id, score }))
                 .sort((a, b) => b.score - a.score);
             
             const rank = statsArr.findIndex(s => s.id === id);
@@ -41,7 +52,6 @@ export class ProfileService {
                 const pct = rank / total;
                 st = pct <= 0.1 ? dyn.ELITE : (pct <= 0.3 ? dyn.STRONG : dyn.STANDARD);
             } else {
-                // Fallback to names if ranking data unavailable in current session
                 const e = ELITE_TEAMS.includes(id), s = STRONG_TEAMS.includes(id);
                 st = e ? dyn.ELITE : (s ? dyn.STRONG : dyn.STANDARD);
             }
@@ -72,61 +82,6 @@ export class ProfileService {
         };
     }
 
-    private static computeDynamicArchetypes(matches: MatchHistory[]) {
-        if (!matches.length) return ARCHETYPE_STATS;
-        const stats: Record<string, { xG: number; xGA: number; games: number; cleanSheets: number; delta: number; score: number }> = {};
-        const lAvg = matches.reduce((a, m) => a + m.homeGoals + m.awayGoals, 0) / (matches.length * 2) || DATA_CONSTANTS.DEFAULT_LEAGUE_AVG;
-        
-        matches.forEach(m => {
-            const hId = this.canonicalize(m.homeTeam).id, aId = this.canonicalize(m.awayTeam).id;
-            const r = LEAGUE_CONVERSION_RATES[m.league || 'STANDARD'] || LEAGUE_CONVERSION_RATES.STANDARD;
-            [hId, aId].forEach(id => { if (!stats[id]) stats[id] = { xG: 0, xGA: 0, games: 0, cleanSheets: 0, delta: 0, score: 0 }; });
-            const hXG = m.homeXG ?? ((m.homeShotsOnTarget || 0) * r), aXG = m.awayXG ?? ((m.awayShotsOnTarget || 0) * r);
-            stats[hId].xG += hXG; stats[hId].xGA += aXG; stats[hId].games++; if (m.awayGoals === 0) stats[hId].cleanSheets++; stats[hId].delta += (m.homeGoals - hXG);
-            stats[aId].xG += aXG; stats[aId].xGA += hXG; stats[aId].games++; if (m.homeGoals === 0) stats[aId].cleanSheets++; stats[aId].delta += (m.awayGoals - aXG);
-        });
-
-        // Compute performance score (Net XG per game) for ranking
-        Object.values(stats).forEach(s => {
-            if (s.games > 0) s.score = (s.xG - s.xGA) / s.games;
-        });
-
-        const sortedTeams = Object.entries(stats)
-            .filter(([_, s]) => s.games >= 3)
-            .sort((a, b) => b[1].score - a[1].score);
-
-        if (!sortedTeams.length) return ARCHETYPE_STATS;
-
-        const getGroupStats = (startPct: number, endPct: number) => {
-            const start = Math.floor(sortedTeams.length * startPct);
-            const end = Math.floor(sortedTeams.length * endPct);
-            const group = sortedTeams.slice(start, Math.max(start + 1, end));
-            if (!group.length) return null;
-            
-            let tXG = 0, tXGA = 0, tCS = 0, tCE = 0, n = group.length;
-            group.forEach(([_, s]) => {
-                tXG += s.xG / s.games;
-                tXGA += s.xGA / s.games;
-                tCS += s.cleanSheets / s.games;
-                tCE += s.delta / s.games;
-            });
-            
-            const avgXGA = tXGA / n;
-            return {
-                npxG: tXG / n,
-                avgXGA,
-                defensiveStability: Math.max(0.3, Math.min(0.9, 1 - (avgXGA / (lAvg * 2)))),
-                cleanSheets: tCS / n,
-                clinicalEdge: tCE / n
-            };
-        };
-
-        return {
-            ELITE: getGroupStats(0, 0.1) || ARCHETYPE_STATS.ELITE,
-            STRONG: getGroupStats(0.1, 0.3) || ARCHETYPE_STATS.STRONG,
-            STANDARD: getGroupStats(0.3, 1.0) || ARCHETYPE_STATS.STANDARD
-        };
-    }
     static async getStyle(id: string): Promise<TeamStyleProfile | null> { const s = await getDoc(doc(db, 'team_style_profiles', id)); return s.exists() ? s.data() as TeamStyleProfile : null; }
     static async saveStyle(p: TeamStyleProfile) { await setDoc(doc(db, 'team_style_profiles', p.teamId), p, { merge: true }); }
 }

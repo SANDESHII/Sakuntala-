@@ -7,34 +7,6 @@ import { LEAGUE_CONVERSION_RATES, DATA_CONSTANTS } from '../core/constants';
 import { collection, query, where, getDocsFromServer, writeBatch, doc, limit, orderBy } from 'firebase/firestore';
 
 export class DataService {
-    static sanitize(v: string | number | null | undefined): number {
-        if (v == null) return 0;
-        if (typeof v === 'number') return v;
-        const p = parseFloat(String(v).replace(/%/g, '').replace(/[^0-9.-]/g, ''));
-        return isNaN(p) ? 0 : p;
-    }
-
-    static validateMatch(row: Record<string, any>, league: string): MatchHistory | null {
-        const home = ProfileService.canonicalize(row.homeTeam || row.HomeTeam).id;
-        const away = ProfileService.canonicalize(row.awayTeam || row.AwayTeam).id;
-        const date = row.date || row.Date;
-        if (!home || !away || !date) return null;
-
-        const hg = this.sanitize(row.homeGoals ?? row.FTHG), ag = this.sanitize(row.awayGoals ?? row.FTAG);
-        const hst = this.sanitize(row.HST ?? row.homeShotsOnTarget), ast = this.sanitize(row.AST ?? row.awayShotsOnTarget);
-        if ((hg > 0 && hst === 0) || (ag > 0 && ast === 0) || hg > hst + 1 || ag > ast + 1) return null;
-
-        return {
-            homeTeam: home, awayTeam: away, date, homeGoals: hg, awayGoals: ag,
-            homeXG: row.homeXG ? this.sanitize(row.homeXG) : undefined,
-            awayXG: row.awayXG ? this.sanitize(row.awayXG) : undefined,
-            homeShotsOnTarget: hst, awayShotsOnTarget: ast,
-            homeRedCards: this.sanitize(row.HR ?? row.homeRedCards),
-            awayRedCards: this.sanitize(row.AR ?? row.awayRedCards),
-            league
-        };
-    }
-
     static async getLeagueContext(league: string): Promise<LeagueContext> {
         const normalized = FootballDataProvider.normalizeLeague(league);
         const matches = await this.fetchHistoricalData(normalized);

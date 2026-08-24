@@ -13,7 +13,8 @@ export class ArchetypeEngine {
         }
 
         const teamStats: Record<string, { xG: number; xGA: number; games: number; cleanSheets: number; delta: number; score: number }> = {};
-        const lAvg = matches.reduce((a, m) => a + m.homeGoals + m.awayGoals, 0) / (matches.length * 2) || DATA_CONSTANTS.DEFAULT_LEAGUE_AVG;
+        const totalGoals = matches.reduce((a, m) => a + (m.homeGoals ?? 0) + (m.awayGoals ?? 0), 0);
+        const lAvg = (totalGoals / (matches.length * 2)) || DATA_CONSTANTS.DEFAULT_LEAGUE_AVG;
 
         matches.forEach(m => {
             const hId = m.homeTeam, aId = m.awayTeam;

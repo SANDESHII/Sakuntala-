@@ -26,59 +26,80 @@ export class ProfileService {
             const aId = this.canonicalize(m.awayTeam).id;
             return hId === id || aId === id;
         });
-        if (!rel.length) {
-            const dyn = ArchetypeEngine.compute(history);
-            // Dynamic assignment based on score ranking
-            let st = dyn.STANDARD;
-            
-            // Compute ranking from history for assignment
-            const stats: Record<string, number> = {};
-            history.forEach(m => {
-                const hId = this.canonicalize(m.homeTeam).id, aId = this.canonicalize(m.awayTeam).id;
-                const r = LEAGUE_CONVERSION_RATES[m.league || 'STANDARD'] || LEAGUE_CONVERSION_RATES.STANDARD;
-                if (!stats[hId]) stats[hId] = 0; if (!stats[aId]) stats[aId] = 0;
-                stats[hId] += (m.homeXG ?? ((m.homeShotsOnTarget || 0) * r)) - (m.awayXG ?? ((m.awayShotsOnTarget || 0) * r));
-                stats[aId] += (m.awayXG ?? ((m.awayShotsOnTarget || 0) * r)) - (m.homeXG ?? ((m.homeShotsOnTarget || 0) * r));
-            });
-            
-            const statsArr = Object.entries(stats)
-                .map(([id, score]) => ({ id, score }))
-                .sort((a, b) => b.score - a.score);
-            
-            const rank = statsArr.findIndex(s => s.id === id);
-            const total = statsArr.length;
-            
-            if (rank !== -1 && total > 0) {
-                const pct = rank / total;
-                st = pct <= 0.1 ? dyn.ELITE : (pct <= 0.3 ? dyn.STRONG : dyn.STANDARD);
-            } else {
-                const e = ELITE_TEAMS.includes(id), s = STRONG_TEAMS.includes(id);
-                st = e ? dyn.ELITE : (s ? dyn.STRONG : dyn.STANDARD);
-            }
 
-            return { name, npxG: st.npxG, avgXGA: st.avgXGA, defensiveStability: st.defensiveStability, purity: 0.1, form: [0.5, 0.5, 0.5, 0.5, 0.5], cleanSheets: st.cleanSheets, redCardPropensity: 0.05, clinicalEdge: st.clinicalEdge };
+        // 1. Compute Dynamic Archetypes from the current dataset
+        const dyn = ArchetypeEngine.compute(history);
+
+        // 2. Identify the team's ranking score
+        const teamScores: Record<string, number> = {};
+        history.forEach(m => {
+            const hId = this.canonicalize(m.homeTeam).id, aId = this.canonicalize(m.awayTeam).id;
+            const r = LEAGUE_CONVERSION_RATES[m.league || 'STANDARD'] || LEAGUE_CONVERSION_RATES.STANDARD;
+            const hXG = m.homeXG ?? ((m.homeShotsOnTarget || 0) * r);
+            const aXG = m.awayXG ?? ((m.awayShotsOnTarget || 0) * r);
+            if (!teamScores[hId]) teamScores[hId] = 0; if (!teamScores[aId]) teamScores[aId] = 0;
+            teamScores[hId] += (hXG - aXG); teamScores[aId] += (aXG - hXG);
+        });
+        
+        const statsArr = Object.entries(teamScores).map(([id, score]) => ({ id, score })).sort((a, b) => b.score - a.score);
+        const rank = statsArr.findIndex(s => s.id === id);
+        const total = statsArr.length;
+        
+        // 3. Select Archetype Tier
+        let archetype = dyn.STANDARD;
+        if (rank !== -1 && total > 0) {
+            const pct = rank / total;
+            archetype = pct <= 0.1 ? dyn.ELITE : (pct <= 0.3 ? dyn.STRONG : dyn.STANDARD);
+        } else {
+            const e = ELITE_TEAMS.includes(id), s = STRONG_TEAMS.includes(id);
+            archetype = e ? dyn.ELITE : (s ? dyn.STRONG : dyn.STANDARD);
         }
+
+        // 4. Calculate Empirical Stats from specific history
         let wGS = 0, wGA = 0, tW = 0, cs = 0, tR = 0, tD = 0;
         rel.forEach(m => {
-            const w = (m as any).weight || 1, h = m.homeTeam === id, sc = h ? m.homeGoals : m.awayGoals, co = h ? m.awayGoals : m.homeGoals, r = h ? (m.homeRedCards || 0) : (m.awayRedCards || 0), s = h ? (m.homeShotsOnTarget || 0) : (m.awayShotsOnTarget || 0);
-            const rate = LEAGUE_CONVERSION_RATES[m.league || 'STANDARD'] || LEAGUE_CONVERSION_RATES.STANDARD, xG = (h ? m.homeXG : m.awayXG) ?? (s * rate);
-            wGS += sc * w; wGA += co * w; tW += w; tR += r; tD += (sc - xG); if (co === 0) cs++;
+            const w = (m as any).weight || 1;
+            const h = m.homeTeam === id;
+            const sc = h ? (m.homeGoals ?? 0) : (m.awayGoals ?? 0);
+            const co = h ? (m.awayGoals ?? 0) : (m.homeGoals ?? 0);
+            const r = h ? (m.homeRedCards || 0) : (m.awayRedCards || 0);
+            const s = h ? (m.homeShotsOnTarget || 0) : (m.awayShotsOnTarget || 0);
+            const rate = LEAGUE_CONVERSION_RATES[m.league || 'STANDARD'] || LEAGUE_CONVERSION_RATES.STANDARD;
+            const xG = (h ? m.homeXG : m.awayXG) ?? (s * rate);
+            const oXG = (h ? m.awayXG : m.homeXG) ?? ((h ? m.awayShotsOnTarget : m.homeShotsOnTarget) || 0) * rate;
+            wGS += xG * w; wGA += oXG * w; tW += w; tR += r; tD += (sc - xG); if (co === 0) cs++;
         });
-        const isVerified = rel.some((m: any) => m.isVerified);
-        const lAvg = history.length ? (history.reduce((a, m) => a + m.homeGoals + m.awayGoals, 0) / (history.length * 2)) : DATA_CONSTANTS.DEFAULT_LEAGUE_AVG;
-        const avgS = wGS / tW, avgC = wGA / tW;
+
+        // 5. Apply Bayesian Shrinkage (Shrink toward Archetype)
+        // K = 10 (Trust the team more after 10 games)
+        const K = 10;
+        const n = rel.length;
+        const purity = Math.min(1, n / 15);
+        const totalGoals = history.reduce((a, m) => a + (m.homeGoals ?? 0) + (m.awayGoals ?? 0), 0);
+        const lAvg = history.length ? (totalGoals / (history.length * 2)) : DATA_CONSTANTS.DEFAULT_LEAGUE_AVG;
+
+        const blendedXG = (wGS + K * archetype.npxG) / (n + K);
+        const blendedXGA = (wGA + K * archetype.avgXGA) / (n + K);
+        const blendedCS = (cs + (K / 5) * archetype.cleanSheets) / (n + (K / 5)); // Lower K for noisy CS stat
+        
         return { 
-            name, npxG: avgS, avgXGA: avgC, defensiveStability: Math.max(0.3, Math.min(0.9, 1 - (avgC / (lAvg * 2)))), purity: isVerified ? 0.98 : 0.45, redCardPropensity: tR / rel.length, clinicalEdge: tD / (rel.length + DATA_CONSTANTS.SHRINKAGE_K),
+            name, 
+            npxG: blendedXG, 
+            avgXGA: blendedXGA, 
+            defensiveStability: Math.max(0.3, Math.min(0.9, 1 - (blendedXGA / (lAvg * 2)))), 
+            purity: purity, 
+            redCardPropensity: tR / Math.max(1, rel.length), 
+            clinicalEdge: tD / (Math.max(1, rel.length) + DATA_CONSTANTS.SHRINKAGE_K),
             form: rel.slice(-5).map(m => {
                 const h = m.homeTeam === id;
                 const rate = LEAGUE_CONVERSION_RATES[m.league || 'STANDARD'] || LEAGUE_CONVERSION_RATES.STANDARD;
                 const tXG = (h ? m.homeXG : m.awayXG) ?? ((h ? m.homeShotsOnTarget : m.awayShotsOnTarget) || 0) * rate;
                 const oXG = (h ? m.awayXG : m.homeXG) ?? ((h ? m.awayShotsOnTarget : m.homeShotsOnTarget) || 0) * rate;
-                // Quantitative form: Dominance in expected goals creation/suppression
                 if (tXG > oXG + 0.5) return 1.0;
                 if (tXG < oXG - 0.5) return 0.0;
                 return 0.5;
-            }), cleanSheets: cs / rel.length
+            }), 
+            cleanSheets: blendedCS
         };
     }
 

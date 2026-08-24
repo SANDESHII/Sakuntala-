@@ -1,10 +1,38 @@
 import Papa from 'papaparse';
 import { MatchHistory } from '../../types';
-import { DataService } from '../dataService';
+import { ProfileService } from '../profileService';
 import { fetchWithTimeout, retry } from '../../utils';
-import { FOOTBALL_DATA_CONFIG } from '../../core/constants';
+import { FOOTBALL_DATA_CONFIG, LEAGUE_CONVERSION_RATES } from '../../core/constants';
 
 export class FootballDataProvider {
+    static sanitize(v: string | number | null | undefined): number {
+        if (v == null) return 0;
+        if (typeof v === 'number') return v;
+        const p = parseFloat(String(v).replace(/%/g, '').replace(/[^0-9.-]/g, ''));
+        return isNaN(p) ? 0 : p;
+    }
+
+    static validateMatch(row: Record<string, any>, league: string): MatchHistory | null {
+        const home = ProfileService.canonicalize(row.homeTeam || row.HomeTeam).id;
+        const away = ProfileService.canonicalize(row.awayTeam || row.AwayTeam).id;
+        const date = row.date || row.Date;
+        if (!home || !away || !date) return null;
+
+        const hg = this.sanitize(row.homeGoals ?? row.FTHG), ag = this.sanitize(row.awayGoals ?? row.FTAG);
+        const hst = this.sanitize(row.HST ?? row.homeShotsOnTarget), ast = this.sanitize(row.AST ?? row.awayShotsOnTarget);
+        if ((hg > 0 && hst === 0) || (ag > 0 && ast === 0) || hg > hst + 1 || ag > ast + 1) return null;
+
+        return {
+            homeTeam: home, awayTeam: away, date, homeGoals: hg, awayGoals: ag,
+            homeXG: row.homeXG ? this.sanitize(row.homeXG) : undefined,
+            awayXG: row.awayXG ? this.sanitize(row.awayXG) : undefined,
+            homeShotsOnTarget: hst, awayShotsOnTarget: ast,
+            homeRedCards: this.sanitize(row.HR ?? row.homeRedCards),
+            awayRedCards: this.sanitize(row.AR ?? row.awayRedCards),
+            league
+        };
+    }
+
     static normalizeLeague(league: string): string {
         const l = (league || '').toUpperCase().trim();
         if (l.includes('PREMIER') || l === 'EPL' || l === 'E0') return 'EPL';
@@ -26,7 +54,7 @@ export class FootballDataProvider {
                 const res = await fetchWithTimeout(url);
                 if (!res.ok) return [];
                 const parsed = Papa.parse(await res.text(), { header: true, skipEmptyLines: true });
-                return parsed.data.map(r => DataService.validateMatch(r as Record<string, any>, league)).filter((r): r is MatchHistory => r !== null);
+                return parsed.data.map(r => this.validateMatch(r as Record<string, any>, league)).filter((r): r is MatchHistory => r !== null);
             });
         } catch { return []; }
     }

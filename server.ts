@@ -32,8 +32,11 @@ async function startServer() {
   app.post("/api/analyze", limiter, auth, async (req, res) => { try { res.json(await performAnalysis(req.body)); } catch (e: any) { res.status(500).json({ error: e.message }); } });
   app.get("/api/backtest", auth, async (req, res) => { try { const { league } = req.query; res.json(await BacktestService.runBacktest((league as string) || 'EPL')); } catch (e) { res.status(500).json({ error: "Audit Failed" }); } });
   app.get("/api/calibrate", auth, async (req, res) => { try { const { league } = req.query; res.json(await CalibrationService.calibrate((league as string) || 'EPL')); } catch (e) { res.status(500).json({ error: "Calibration Failed" }); } });
+  console.log(`[SERVER] starting in ${process.env.NODE_ENV || 'development'} mode`);
   if (process.env.NODE_ENV !== "production") {
+    console.log("[SERVER] initializing Vite middleware...");
     const vite = await createViteServer({ server: { middlewareMode: true, hmr: false }, appType: "spa" }); app.use(vite.middlewares);
+    console.log("[SERVER] Vite middleware ready");
     app.get("*all", async (req, res, next) => { if (req.url.startsWith("/api")) return next(); try { const fs = await import("fs"), html = fs.readFileSync(path.join(process.cwd(), "index.html"), "utf-8"), content = await vite.transformIndexHtml(req.url, html); res.status(200).set({ "Content-Type": "text/html" }).end(content); } catch (e) { vite.ssrFixStacktrace(e as Error); next(e); } });
   } else {
     const d = path.join(process.cwd(), "dist"); app.use(express.static(d)); app.get("*all", (_, res) => res.sendFile(path.join(d, "index.html")));

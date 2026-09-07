@@ -1,10 +1,8 @@
 import { MatchHistory, TeamStats, LeagueContext, LeagueTraits } from '../types';
-import { ProfileService } from './profileService';
 import { FootballDataProvider } from './data/footballDataProvider';
 import { DixonColes } from '../core/math';
-import { db } from '../lib/firebase';
+import { db } from '../lib/firebase-admin';
 import { LEAGUE_CONVERSION_RATES, DATA_CONSTANTS } from '../core/constants';
-import { collection, query, where, getDocsFromServer, writeBatch, doc, limit, orderBy } from 'firebase/firestore';
 
 export class DataService {
     static async getLeagueContext(league: string): Promise<LeagueContext> {
@@ -26,8 +24,12 @@ export class DataService {
     }
 
     private static async fetchHistoricalData(league: string): Promise<MatchHistory[]> {
-        const q = query(collection(db, 'historicalMatches'), where('league', '==', league), orderBy('date', 'desc'), limit(DATA_CONSTANTS.MATCH_LIMIT));
-        const snap = await getDocsFromServer(q);
+        const snap = await db.collection('historicalMatches')
+            .where('league', '==', league)
+            .orderBy('date', 'desc')
+            .limit(DATA_CONSTANTS.MATCH_LIMIT)
+            .get();
+            
         const verifiedMatches = snap.docs.map(d => ({ ...d.data(), isVerified: true } as MatchHistory));
 
         if (verifiedMatches.length < DATA_CONSTANTS.SYNC_THRESHOLD) {
@@ -50,10 +52,10 @@ export class DataService {
         const CHUNK_SIZE = 500;
         for (let i = 0; i < newMatches.length; i += CHUNK_SIZE) {
             const chunk = newMatches.slice(i, i + CHUNK_SIZE);
-            const batch = writeBatch(db);
+            const batch = db.batch();
             chunk.forEach(m => {
                 const id = `${m.date}_${m.homeTeam}_${m.awayTeam}`;
-                batch.set(doc(db, 'historicalMatches', id), m, { merge: true });
+                batch.set(db.collection('historicalMatches').doc(id), m, { merge: true });
             });
             await batch.commit();
         }

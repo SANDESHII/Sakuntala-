@@ -1,6 +1,6 @@
-import { doc, getDoc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db } from '../lib/firebase-admin';
 import { AnalysisResult } from '../types';
+import { Timestamp } from "firebase-admin/firestore";
 
 export class CacheService {
     private static COLLECTION = 'analysis_cache';
@@ -8,11 +8,11 @@ export class CacheService {
 
     static async get(key: string): Promise<AnalysisResult | null> {
         try {
-            const docRef = doc(db, this.COLLECTION, key);
-            const snap = await getDoc(docRef);
+            const snap = await db.collection(this.COLLECTION).doc(key).get();
             
-            if (snap.exists()) {
+            if (snap.exists) {
                 const data = snap.data();
+                if (!data) return null;
                 const timestamp = data.timestamp as Timestamp;
                 
                 // Check TTL
@@ -29,10 +29,9 @@ export class CacheService {
 
     static async set(key: string, result: AnalysisResult): Promise<void> {
         try {
-            const docRef = doc(db, this.COLLECTION, key);
-            await setDoc(docRef, {
+            await db.collection(this.COLLECTION).doc(key).set({
                 result,
-                timestamp: serverTimestamp()
+                timestamp: Timestamp.now()
             });
         } catch (error) {
             console.error('Cache Write Error:', error);

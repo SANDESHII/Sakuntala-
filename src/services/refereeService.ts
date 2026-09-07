@@ -1,5 +1,4 @@
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db } from '../lib/firebase-admin';
 import { RefereeProfile } from '../types';
 
 const VERIFIED_REGISTRY: Record<string, RefereeProfile> = {
@@ -31,9 +30,9 @@ export class RefereeService {
 
         // 2. Check Firestore (Verified History Cache)
         try {
-            const refDoc = await getDoc(doc(db, 'referee_profiles', id));
-            if (refDoc.exists()) {
-                return refDoc.data() as RefereeProfile;
+            const snap = await db.collection('referee_profiles').doc(id).get();
+            if (snap.exists) {
+                return snap.data() as RefereeProfile;
             }
         } catch (error) {
             console.error('Referee lookup failed:', error);
@@ -51,7 +50,11 @@ export class RefereeService {
         const id = p.name.toUpperCase().replace(/\s+/g, '_');
         // Only allow syncing if it's not already in the hardcoded registry to prevent tampering
         if (!VERIFIED_REGISTRY[id]) {
-            // Logic to save to Firestore would go here
+            try {
+                await db.collection('referee_profiles').doc(id).set(p);
+            } catch (error) {
+                console.error('Referee sync failed:', error);
+            }
         }
     }
 }

@@ -1,7 +1,8 @@
 import { MatchHistory, TeamStats, LeagueContext, LeagueTraits } from '../types';
 import { FootballDataProvider } from './data/footballDataProvider';
 import { DixonColes } from '../core/math';
-import { db } from '../lib/firebase-admin';
+import { db } from '../lib/firebase';
+import { collection, query, where, orderBy, limit, getDocs, writeBatch, doc } from 'firebase/firestore';
 import { LEAGUE_CONVERSION_RATES, DATA_CONSTANTS } from '../core/constants';
 
 export class DataService {
@@ -24,38 +25,48 @@ export class DataService {
     }
 
     private static async fetchHistoricalData(league: string): Promise<MatchHistory[]> {
-        const snap = await db.collection('historicalMatches')
-            .where('league', '==', league)
-            .orderBy('date', 'desc')
-            .limit(DATA_CONSTANTS.MATCH_LIMIT)
-            .get();
+        try {
+            const matchesRef = collection(db, 'historicalMatches');
+            const q = query(
+                matchesRef,
+                where('league', '==', league),
+                orderBy('date', 'desc'),
+                limit(DATA_CONSTANTS.MATCH_LIMIT)
+            );
             
-        const verifiedMatches = snap.docs.map(d => ({ ...d.data(), isVerified: true } as MatchHistory));
+            const snap = await getDocs(q);
+            const verifiedMatches = snap.docs.map(d => ({ ...d.data(), isVerified: true } as MatchHistory));
 
-        if (verifiedMatches.length < DATA_CONSTANTS.SYNC_THRESHOLD) {
-            const externalMatches = await FootballDataProvider.fetchBacklog(league, 2);
-            const verifiedKeys = new Set(verifiedMatches.map(m => `${m.date}_${m.homeTeam}_${m.awayTeam}`));
-            const delta = externalMatches.filter(m => !verifiedKeys.has(`${m.date}_${m.homeTeam}_${m.awayTeam}`)).map(m => ({ ...m, isVerified: true }));
-            if (delta.length > 0) { await this.persistNewMatches(delta); }
-            return [...verifiedMatches, ...delta];
-        } else {
-            const latestStr = verifiedMatches.reduce((max, m) => new Date(m.date) > new Date(max) ? m.date : max, verifiedMatches[0]?.date || '1900-01-01');
-            const currentSeason = FootballDataProvider.getCurrentSeasonString();
-            const live = await FootballDataProvider.fetchSeasonData(league, currentSeason);
-            const delta = live.filter(m => new Date(m.date) > new Date(latestStr)).map(m => ({ ...m, isVerified: true }));
-            if (delta.length > 0) { await this.persistNewMatches(delta); return [...verifiedMatches, ...delta]; }
+            if (verifiedMatches.length < DATA_CONSTANTS.SYNC_THRESHOLD) {
+                const externalMatches = await FootballDataProvider.fetchBacklog(league, 2);
+                const verifiedKeys = new Set(verifiedMatches.map(m => `${m.date}_${m.homeTeam}_${m.awayTeam}`));
+                const delta = externalMatches.filter(m => !verifiedKeys.has(`${m.date}_${m.homeTeam}_${m.awayTeam}`)).map(m => ({ ...m, isVerified: true }));
+                if (delta.length > 0) { await this.persistNewMatches(delta); }
+                return [...verifiedMatches, ...delta];
+            } else {
+                const latestStr = verifiedMatches.reduce((max, m) => new Date(m.date) > new Date(max) ? m.date : max, verifiedMatches[0]?.date || '1900-01-01');
+                const currentSeason = FootballDataProvider.getCurrentSeasonString();
+                const live = await FootballDataProvider.fetchSeasonData(league, currentSeason);
+                const delta = live.filter(m => new Date(m.date) > new Date(latestStr)).map(m => ({ ...m, isVerified: true }));
+                if (delta.length > 0) { await this.persistNewMatches(delta); return [...verifiedMatches, ...delta]; }
+            }
+            return verifiedMatches;
+        } catch (error) {
+            console.error('Historical data fetch failed:', error);
+            // Fallback to empty if initial fetch fails to prevent crash
+            return [];
         }
-        return verifiedMatches;
     }
 
     private static async persistNewMatches(newMatches: MatchHistory[]) {
         const CHUNK_SIZE = 500;
         for (let i = 0; i < newMatches.length; i += CHUNK_SIZE) {
             const chunk = newMatches.slice(i, i + CHUNK_SIZE);
-            const batch = db.batch();
+            const batch = writeBatch(db);
             chunk.forEach(m => {
                 const id = `${m.date}_${m.homeTeam}_${m.awayTeam}`;
-                batch.set(db.collection('historicalMatches').doc(id), m, { merge: true });
+                const docRef = doc(db, 'historicalMatches', id);
+                batch.set(docRef, m, { merge: true });
             });
             await batch.commit();
         }

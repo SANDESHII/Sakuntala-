@@ -1,6 +1,6 @@
-import { db } from '../lib/firebase-admin';
+import { db } from '../lib/firebase';
 import { AnalysisResult } from '../types';
-import { Timestamp } from "firebase-admin/firestore";
+import { doc, getDoc, setDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 
 export class CacheService {
     private static COLLECTION = 'analysis_cache';
@@ -8,9 +8,10 @@ export class CacheService {
 
     static async get(key: string): Promise<AnalysisResult | null> {
         try {
-            const snap = await db.collection(this.COLLECTION).doc(key).get();
+            const docRef = doc(db, this.COLLECTION, key);
+            const snap = await getDoc(docRef);
             
-            if (snap.exists) {
+            if (snap.exists()) {
                 const data = snap.data();
                 if (!data) return null;
                 const timestamp = data.timestamp as Timestamp;
@@ -21,7 +22,7 @@ export class CacheService {
                 }
             }
             return null;
-        } catch (error) {
+        } catch (error: any) {
             console.error('Cache Read Error:', error);
             return null;
         }
@@ -29,11 +30,12 @@ export class CacheService {
 
     static async set(key: string, result: AnalysisResult): Promise<void> {
         try {
-            await db.collection(this.COLLECTION).doc(key).set({
+            const docRef = doc(db, this.COLLECTION, key);
+            await setDoc(docRef, {
                 result,
-                timestamp: Timestamp.now()
+                timestamp: serverTimestamp()
             });
-        } catch (error) {
+        } catch (error: any) {
             console.error('Cache Write Error:', error);
         }
     }

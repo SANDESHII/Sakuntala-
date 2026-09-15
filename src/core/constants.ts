@@ -8,7 +8,7 @@ export const DATA_CONSTANTS = { SHRINKAGE_K: 12, DEFAULT_LEAGUE_AVG: 1.35, MIN_S
 export const BAYESIAN_CONFIG = { BASE_TRUST: 0.23, PURITY_SCALE: 0.4 }; // Calibrated via grid search on EPL data
 export const ELITE_LEAGUES = ['EPL', 'LA_LIGA', 'BUNDESLIGA', 'SERIE_A', 'LIGUE_1', 'UCL'];
 export const LOADING_MESSAGES = [
-    "Initializing Stochastic Engine...", "Ingesting De-Censored Data...", "Modeling Tail-Risk Variance...",
-    "Sampling Overdispersion...", "Projecting Clinical Edge...", "Finalizing Neural Signal..."
+    "Initializing Stochastic Engine...", "Ingesting Statistical Context...", "Modeling Tail-Risk Variance...",
+    "Sampling Overdispersion...", "Projecting Convergence...", "Finalizing Quantitative Signal..."
 ];
 

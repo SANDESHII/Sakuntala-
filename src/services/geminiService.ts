@@ -13,7 +13,7 @@ const MODEL = 'gemini-3.7-flash', SYSTEM_PROMPT = `Expert Quantitative Football 
 3. CHECKSUM: Verify (Season Goals / Matches). 
 4. ADVERSARIAL: Compare FBRef vs Understat. Discard if >10% variance. 
 5. MARKET SYNC: Sync with Pinnacle/Betfair. 
-6. NO NARRATIVE: Atoms only. Output strictly valid JSON.
+6. NO NARRATIVE: Quantitative units only. Output strictly valid JSON.
 7. REFEREE IDENTIFICATION: Only identify the Referee Name. Do NOT return or guess statistics (avg cards, penalties, etc.). Our deterministic database will handle the numbers.`;
 
 const AI_SCHEMA = {

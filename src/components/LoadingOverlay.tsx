@@ -25,7 +25,7 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({ loading, stage, 
                 <p className="text-[11px] font-black tracking-[0.5em] text-white uppercase">
                     {messages[stage]}
                 </p>
-                <p className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest">Processing Tactical Atoms</p>
+                <p className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest">Processing Statistical Context</p>
             </div>
         </div>
     ) : null

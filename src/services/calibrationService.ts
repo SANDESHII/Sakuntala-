@@ -28,7 +28,15 @@ export class CalibrationService {
                     const h = DataService.standardize({ ...ProfileService.computeBaseline(m.homeTeam, history, m.date), name: m.homeTeam });
                     const a = DataService.standardize({ ...ProfileService.computeBaseline(m.awayTeam, history, m.date), name: m.awayTeam });
                     
-                    const math = MatchEngine.calculate(h, a, { date: m.date, marketOdds: { pinnacleOver15: 1.5, pinnacleUnder35: 1.5 } }, undefined, { baseTrust: base, purityScale: scale });
+                    const math = MatchEngine.calculate(h, a, { 
+                        date: m.date, 
+                        marketOdds: { 
+                            pinnacleOver15: m.pinnacleOver15, 
+                            pinnacleUnder15: m.pinnacleUnder15,
+                            pinnacleUnder35: m.pinnacleUnder35,
+                            pinnacleOver35: m.pinnacleOver35
+                        } 
+                    }, undefined, { baseTrust: base, purityScale: scale });
                     
                     const tg = (m.homeGoals || 0) + (m.awayGoals || 0);
                     const isO = tg > 1.5;

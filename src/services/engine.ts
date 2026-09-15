@@ -1,9 +1,14 @@
 import { TeamStats, MatchContext, AnalysisResult } from '../types';
-import { DixonColes, MonteCarloSimulator } from '../core/math';
+import { MonteCarloSimulator } from '../core/math';
 import { MatchContextService } from './matchContext';
 import { DATA_CONSTANTS, LEAGUE_CONFIGS, BAYESIAN_CONFIG } from '../core/constants';
+import { EnsembleEngine } from './ensembleEngine';
 
 export class MatchEngine {
+    private static ensemble = new EnsembleEngine();
+
+    static getEnsemble() { return this.ensemble; }
+
     static calculate(home: TeamStats, away: TeamStats, context: MatchContext, rhoData = { rho: -0.11, sigmaRho: 0.05 }, calibration?: { baseTrust: number, purityScale: number }): AnalysisResult {
         const config_bayesian = calibration || { baseTrust: BAYESIAN_CONFIG.BASE_TRUST, purityScale: BAYESIAN_CONFIG.PURITY_SCALE };
         const config = LEAGUE_CONFIGS[context.league || 'EPL'] || LEAGUE_CONFIGS.STANDARD;
@@ -28,21 +33,18 @@ export class MatchEngine {
 
         if (context.referee && context.referee.gamesOfficiated) { 
             const leagueAvgPen = 0.2;
-            const k = DATA_CONSTANTS.SHRINKAGE_K; // 12
+            const k = DATA_CONSTANTS.SHRINKAGE_K;
             const n = context.referee.gamesOfficiated;
             const raw = context.referee.avgPenaltiesPerGame;
-            // Shrink toward league average: more games = more trust in raw data
             const shrunk = (n * raw + k * leagueAvgPen) / (n + k);
             const rE = 1 + (shrunk - leagueAvgPen) * 0.2;
             hL *= rE; aM *= rE; 
         }
-        
 
-
-
-        const matrix = DixonColes.calculateScoreMatrix(hL, aM, rhoData.rho);
-        const pO15_raw = DixonColes.calculateOverUnder(matrix, 1.5);
-        const pU35_raw = 1 - DixonColes.calculateOverUnder(matrix, 3.5);
+        // --- ENSEMBLE PREDICTION [FIX-10] ---
+        const ensembleResult = this.ensemble.predict(hL, aM, 0.15, 8);
+        const pO15_raw = ensembleResult.pOver15;
+        const pU35_raw = ensembleResult.pUnder35;
         
         // --- DYNAMIC OVERROUND REMOVAL ---
         const oddsO15 = context.marketOdds?.pinnacleOver15 || 1.50;
@@ -50,9 +52,11 @@ export class MatchEngine {
         const oddsU35 = context.marketOdds?.pinnacleUnder35 || 1.50;
         const oddsO35 = context.marketOdds?.pinnacleOver35;
         
+        const isDefaultOdds = !context.marketOdds?.pinnacleOver15 && !context.marketOdds?.pinnacleUnder35;
+        
         const computeOverround = (o1: number, o2?: number) => {
             if (o2) return (1/o1 + 1/o2) - 1;
-            return 0.04; // Conservative fallback for Pinnacle (4%)
+            return 0.04;
         };
 
         const overroundO15 = computeOverround(oddsO15, oddsU15);
@@ -81,20 +85,19 @@ export class MatchEngine {
         const mP_raw = type === 'OVER_15' ? mP_O15_raw : mP_U35_raw;
         const rawEdge = type === 'OVER_15' ? edgeO15 : edgeU35;
 
-        const edge = Math.min(rawEdge, 0.12); // SAFETY CAP: Prevent over-betting on anomalies/hallucinations
-        const p_bet = mP_raw + edge; // Probability used for stake calculation
+        const edge = Math.min(rawEdge, 0.12);
+        const p_bet = mP_raw + edge;
         const b = mOdds - 1;
         
-        // --- IMPROVED: Kelly scaling based on data purity and edge magnitude ---
         const kellyFraction = 0.15 * purity * (0.5 + (edge / 0.12));
         const stake = Math.max(0, (b * p_bet - (1 - p_bet)) / b) * kellyFraction; 
-        const hasEdge = edge > 0.025; // Professional threshold
+        const hasEdge = edge > 0.025 && !isDefaultOdds;
 
         const sim = MonteCarloSimulator.run(hL, aM, type === 'UNDER_35' ? 3.5 : 1.5, type === 'UNDER_35', rhoData.rho);
         
         return {
             probability: Math.round(p * 100),
-            summary: hasEdge ? `Edge detected. Model sees ${Math.round(p * 100)}% true probability. Market implies ${Math.round(mP * 100)}%.` : `No Edge. Market odds (${mOdds.toFixed(2)}) are efficient.`,
+            summary: hasEdge ? `Edge detected. Ensemble sees ${Math.round(p * 100)}% true probability. Market implies ${Math.round(mP * 100)}%.` : `No Edge. Market odds (${mOdds.toFixed(2)}) are efficient.`,
             homeStats: home, awayStats: away, homeXG: hL, awayXG: aM,
             minimumExpectancy: sim.confidenceInterval[0], potentialCeiling: sim.confidenceInterval[1],
             predictionType: type, predictionLabel: type === 'OVER_15' ? 'Over 1.5 Goals' : 'Under 3.5 Goals',
@@ -102,7 +105,7 @@ export class MatchEngine {
             recommendedStake: Math.round(stake * 1000) / 10, verdict: hasEdge ? 'EXECUTE_BET' : 'NO_BET',
             purity: Math.round(purity * 100), signalStrength: p, context,
             dataSource: (home.dataPurity <= 0.1 && away.dataPurity <= 0.1) ? 'FALLBACK_STATIC' : 'LIVE',
-            surety: { confidenceScore: p, edgeValue: Math.round(edge * 100) }
+            surety: { confidenceScore: ensembleResult.confidence, edgeValue: Math.round(edge * 100) }
         };
     }
 }

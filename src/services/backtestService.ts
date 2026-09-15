@@ -33,9 +33,21 @@ export class BacktestService {
             const history = all.filter(prev => new Date(prev.date) < new Date(m.date));
             const h = DataService.standardize({ ...ProfileService.computeBaseline(m.homeTeam, history, m.date), name: m.homeTeam });
             const a = DataService.standardize({ ...ProfileService.computeBaseline(m.awayTeam, history, m.date), name: m.awayTeam });
-            const math = MatchEngine.calculate(h, a, { date: m.date });
+            const math = MatchEngine.calculate(h, a, { 
+                date: m.date,
+                marketOdds: {
+                    pinnacleOver15: m.pinnacleOver15,
+                    pinnacleUnder15: m.pinnacleUnder15,
+                    pinnacleOver35: m.pinnacleOver35,
+                    pinnacleUnder35: m.pinnacleUnder35
+                }
+            });
             const tg = (m.homeGoals || 0) + (m.awayGoals || 0), isO = tg > 1.5, isU = tg < 3.5;
             const outcome = math.predictionType === 'OVER_15' ? isO : isU;
+            
+            // Train the Ensemble [FIX-10]
+            MatchEngine.getEnsemble().updateAll(math.homeXG, math.awayXG, isO, isU);
+
             const brier = Math.pow((math.probability / 100) - (outcome ? 1 : 0), 2);
 
             totalB += brier;
@@ -60,43 +72,5 @@ export class BacktestService {
             calibrationUsed: { baseTrust: BAYESIAN_CONFIG.BASE_TRUST, purityScale: BAYESIAN_CONFIG.PURITY_SCALE },
             matches: results
         };
-    }
-
-    static async calibrate(league: string = 'EPL'): Promise<{ baseTrust: number; purityScale: number; brierScore: number }> {
-        const { matches: all } = await DataService.getLeagueContext(league);
-        const samples = all.filter(m => m.homeGoals != null).slice(-BACKTEST_CONFIG.SAMPLE_SIZE);
-    
-        let bestBrier = Infinity;
-        let bestConfig = { baseTrust: 0.05, purityScale: 0.8 };
-    
-        // Grid search over plausible ranges
-        for (let baseTrust = 0.02; baseTrust <= 0.30; baseTrust += 0.03) {
-            for (let purityScale = 0.3; purityScale <= 1.0; purityScale += 0.1) {
-                let totalBrier = 0;
-                for (const m of samples) {
-                    const history = all.filter(prev => new Date(prev.date) < new Date(m.date));
-                    const h = DataService.standardize({
-                        ...ProfileService.computeBaseline(m.homeTeam, history, m.date),
-                        name: m.homeTeam
-                    });
-                    const a = DataService.standardize({
-                        ...ProfileService.computeBaseline(m.awayTeam, history, m.date),
-                        name: m.awayTeam
-                    });
-                    const math = MatchEngine.calculate(h, a, { date: m.date }, undefined,
-                        { baseTrust, purityScale });
-                    const tg = (m.homeGoals || 0) + (m.awayGoals || 0);
-                    const isO = tg > 1.5, isU = tg < 3.5;
-                    const outcome = math.predictionType === 'OVER_15' ? isO : isU;
-                    totalBrier += Math.pow((math.probability / 100) - (outcome ? 1 : 0), 2);
-                }
-                const avgBrier = totalBrier / samples.length;
-                if (avgBrier < bestBrier) {
-                    bestBrier = avgBrier;
-                    bestConfig = { baseTrust, purityScale };
-                }
-            }
-        }
-        return { ...bestConfig, brierScore: bestBrier };
     }
 }

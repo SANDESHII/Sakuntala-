@@ -47,7 +47,7 @@ export const BacktestDisplay: React.FC = () => {
         <div className="space-y-12">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
                 <div className="space-y-2">
-                    <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-wider">Neural Integrity Audit</h3>
+                    <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-wider">Quantitative Integrity Audit</h3>
                     <p className="text-3xl font-bold text-white tracking-tight uppercase">Stochastic Audit</p>
                 </div>
                 <div className="flex flex-wrap gap-4 w-full md:w-auto">
@@ -87,9 +87,9 @@ export const BacktestDisplay: React.FC = () => {
                     >
                         {[
                             { label: 'Total Samples', value: summary.totalMatches, icon: Activity },
-                            { label: 'Brier Entropy', value: summary.brierScore.toFixed(4), icon: BarChart3, detail: 'Mean Squared Error' },
-                            { label: 'Purity Score', value: summary.highPurityBrierScore.toFixed(4), icon: CheckCircle2, detail: `N=${summary.highPurityMatches} High Purity` },
-                            { label: 'Convergence', value: `${((summary.over15Accuracy + summary.under35Accuracy) / 2).toFixed(1)}%`, icon: CheckCircle2 }
+                            { label: 'Brier Entropy', value: summary.brierScore?.toFixed(4) || '0.0000', icon: BarChart3, detail: 'Mean Squared Error' },
+                            { label: 'Purity Score', value: summary.highPurityBrierScore?.toFixed(4) || '0.0000', icon: CheckCircle2, detail: `N=${summary.highPurityMatches} High Purity` },
+                            { label: 'Convergence', value: `${(((summary.over15Accuracy || 0) + (summary.under35Accuracy || 0)) / 2)?.toFixed(1) || '0.0'}%`, icon: CheckCircle2 }
                         ].map((stat, i) => (
                             <div key={i} className="p-10 bg-neutral-950 border border-neutral-900 rounded-3xl space-y-6 hover:bg-neutral-900 transition-all">
                                 <div className="flex items-center justify-between">
@@ -111,7 +111,7 @@ export const BacktestDisplay: React.FC = () => {
                                         <div className="flex justify-between items-start">
                                             <span className="text-[10px] font-black text-white uppercase tracking-widest">{seg.segment}</span>
                                             <span className="text-[10px] font-bold uppercase px-3 py-1 bg-neutral-950 border border-neutral-800 text-emerald-500 rounded-lg">
-                                                Win: {(seg.hitRate * 100).toFixed(1)}%
+                                                Win: {(seg.hitRate * 100)?.toFixed(1) || '0.0'}%
                                             </span>
                                         </div>
                                         <div className="space-y-3">
@@ -128,7 +128,7 @@ export const BacktestDisplay: React.FC = () => {
                                         </div>
                                         <div className="flex items-center justify-between pt-6 border-t border-neutral-800/50">
                                             <span className="text-[10px] text-neutral-600 font-bold uppercase">Avg Edge</span>
-                                            <span className="text-xl font-bold text-white tabular-nums tracking-tighter">+{(seg.avgEdge * 100).toFixed(2)} pts</span>
+                                            <span className="text-xl font-bold text-white tabular-nums tracking-tighter">+{(seg.avgEdge * 100)?.toFixed(2) || '0.00'} pts</span>
                                         </div>
                                     </div>
                                 ))}
@@ -169,7 +169,7 @@ export const BacktestDisplay: React.FC = () => {
                                                     </span>
                                                 </td>
                                                 <td className="px-8 py-6 text-center">
-                                                    {item.marketEdge !== undefined ? (
+                                                    {item.marketEdge !== undefined && item.marketEdge !== null ? (
                                                         <span className={`text-xs font-bold ${item.marketEdge > 0.05 ? 'text-emerald-500' : 'text-neutral-500'}`}>
                                                             {item.marketEdge > 0 ? '+' : ''}{(item.marketEdge * 100).toFixed(1)}
                                                         </span>

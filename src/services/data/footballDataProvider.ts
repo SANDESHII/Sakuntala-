@@ -29,7 +29,12 @@ export class FootballDataProvider {
             homeShotsOnTarget: hst, awayShotsOnTarget: ast,
             homeRedCards: this.sanitize(row.HR ?? row.homeRedCards),
             awayRedCards: this.sanitize(row.AR ?? row.awayRedCards),
-            league
+            league,
+            // Extract odds if available (Pinnacle preferred, fallback to Avg)
+            pinnacleOver15: this.sanitize(row['PS>1.5'] || row['Avg>1.5'] || row['B365>1.5']) || undefined,
+            pinnacleUnder15: this.sanitize(row['PS<1.5'] || row['Avg<1.5'] || row['B365<1.5']) || undefined,
+            pinnacleOver35: this.sanitize(row['PS>3.5'] || row['Avg>3.5'] || row['B365>3.5']) || undefined,
+            pinnacleUnder35: this.sanitize(row['PS<3.5'] || row['Avg<3.5'] || row['B365<3.5']) || undefined
         };
     }
 

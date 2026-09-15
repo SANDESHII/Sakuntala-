@@ -61,8 +61,8 @@ export const AnalysisForm: React.FC<AnalysisFormProps> = ({
         </div>
         <div className="mt-16 flex items-center justify-between p-8 bg-neutral-900 border border-neutral-800">
             <div className="space-y-1">
-                <span className="text-xs font-black text-white uppercase tracking-widest">Neural Research Protocol</span>
-                <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-tight">Real-time tactical signal grounding active</p>
+                <span className="text-xs font-black text-white uppercase tracking-widest">Grounding Protocol</span>
+                <p className="text-[10px] text-neutral-600 font-bold uppercase tracking-tight">Search-based tactical signal ingestion active</p>
             </div>
             <button 
                 type="button" 
@@ -77,7 +77,7 @@ export const AnalysisForm: React.FC<AnalysisFormProps> = ({
             disabled={loading || !home || !away} 
             className={`w-full mt-12 py-10 font-black tracking-[0.2em] text-sm uppercase transition-all ${loading || !home || !away ? 'bg-neutral-900 text-neutral-700' : 'bg-white text-black hover:bg-emerald-500'}`}
         >
-            {loading ? 'CALCULATING VARIANCES...' : 'GENERATE SANCTIFIED REPORT'}
+            {loading ? 'CALCULATING VARIANCES...' : 'GENERATE QUANTITATIVE REPORT'}
         </button>
     </form>
 );

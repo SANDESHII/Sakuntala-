@@ -1,9 +1,50 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700;800&display=swap');
-@tailwind base; @tailwind components; @tailwind utilities;
-@layer base {
-  body { @apply bg-black text-emerald-500 font-mono selection:bg-emerald-500/20 uppercase overflow-x-hidden; }
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { @apply bg-black; }
-  ::-webkit-scrollbar-thumb { @apply bg-emerald-950 rounded-full hover:bg-emerald-800 transition-colors; }
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --color-emerald-500: #10b981;
+  --color-emerald-950: #022c22;
 }
-.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+
+@layer base {
+  body {
+    @apply bg-[#050505] text-neutral-300 font-sans selection:bg-emerald-500/20 antialiased overflow-x-hidden;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-white tracking-tight;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-neutral-800 rounded-full hover:bg-neutral-700 transition-colors;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-[#050505];
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-neutral-900 rounded-full hover:bg-neutral-800 transition-colors;
+}

@@ -16,12 +16,46 @@
         }
       },
       "required": ["result", "timestamp"]
+    },
+    "MatchHistory": {
+      "title": "Match History",
+      "description": "Historical football match data for quantitative modeling",
+      "type": "object",
+      "properties": {
+        "homeTeam": { "type": "string" },
+        "awayTeam": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "homeGoals": { "type": "number" },
+        "awayGoals": { "type": "number" },
+        "league": { "type": "string" }
+      },
+      "required": ["homeTeam", "awayTeam", "date", "homeGoals", "awayGoals"]
+    },
+    "RefereeProfile": {
+      "title": "Referee Profile",
+      "description": "Statistical profile of a football official",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "avgCardsPerGame": { "type": "number" },
+        "avgPenaltiesPerGame": { "type": "number" },
+        "tendency": { "type": "string" }
+      },
+      "required": ["name", "avgCardsPerGame", "avgPenaltiesPerGame", "tendency"]
     }
   },
   "firestore": {
     "/analysis_cache/{cacheId}": {
       "schema": "AnalysisCache",
       "description": "Collection of cached match analyses"
+    },
+    "/historicalMatches/{matchId}": {
+      "schema": "MatchHistory",
+      "description": "Collection of historical match data"
+    },
+    "/referee_profiles/{refId}": {
+      "schema": "RefereeProfile",
+      "description": "Collection of referee profiles"
     }
   }
 }

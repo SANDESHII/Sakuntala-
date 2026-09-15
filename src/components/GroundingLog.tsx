@@ -24,7 +24,7 @@ export const GroundingLog: React.FC<GroundingLogProps> = ({ context }) => {
                     <p className="text-sm text-neutral-500 font-medium max-w-xl">Every quantitative atom is cross-verified against institutional data feeds (FBRef, Understat, Opta) and real-time market signals.</p>
                 </div>
                 <div className="px-6 py-3 bg-neutral-900 border border-neutral-800 rounded-xl">
-                    <span className="text-[10px] font-bold text-white uppercase tracking-widest">Protocol v2.4 SANCTIFIED</span>
+                    <span className="text-[10px] font-bold text-white uppercase tracking-widest">Protocol v2.4 VERIFIED</span>
                 </div>
             </div>
 

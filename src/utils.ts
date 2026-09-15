@@ -1,5 +1,32 @@
-export async function fetchWithTimeout(r:string,o:any={},t=10000){const c=new AbortController(),i=setTimeout(()=>c.abort(),t);const h={...o.headers};const k = (typeof process !== 'undefined' && process.env ? process.env.VITE_INTERNAL_API_KEY : null) || (typeof (import.meta as any).env !== 'undefined' ? (import.meta as any).env.VITE_INTERNAL_API_KEY : null);if(k)h['x-api-key']=k;try{const res=await fetch(r,{...o,headers:h,signal:c.signal});clearTimeout(i);return res;}catch(e){clearTimeout(i);throw e;}}
-export async function retry<T>(f:()=>Promise<T>,r=3,d=1000):Promise<T>{try{return await f();}catch(e){if(r===0)throw e;await new Promise(x=>setTimeout(x,d));return retry(f,r-1,d*2);}}
+export async function fetchWithTimeout(url: string, options: any = {}, timeout = 10000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    
+    const headers = { ...options.headers };
+    const apiKey = (typeof process !== 'undefined' && process.env?.VITE_INTERNAL_API_KEY) || 
+                   (typeof (import.meta as any).env !== 'undefined' ? (import.meta as any).env.VITE_INTERNAL_API_KEY : null);
+    
+    if (apiKey) headers['x-api-key'] = apiKey;
+    
+    try {
+        const response = await fetch(url, { ...options, headers, signal: controller.signal });
+        clearTimeout(id);
+        return response;
+    } catch (e) {
+        clearTimeout(id);
+        throw e;
+    }
+}
+
+export async function retry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
+    try {
+        return await fn();
+    } catch (e) {
+        if (retries === 0) throw e;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return retry(fn, retries - 1, delay * 2);
+    }
+}
 
 export function sanitizeForFirestore(obj: any): any {
     if (obj === null || typeof obj !== 'object') return obj;

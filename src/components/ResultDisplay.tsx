@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Zap, Shield, Target, Activity, LucideIcon, Binary } from 'lucide-react';
+import { Zap, Shield, Target, Activity, LucideIcon, Binary, ChevronRight } from 'lucide-react';
 import { AnalysisResult, AnalysisConfidence } from '../types';
 
 interface ResultGridProps {
@@ -9,14 +9,16 @@ interface ResultGridProps {
 }
 
 const StatCard: React.FC<{ label: string; value: string | number; subValue?: string; icon: LucideIcon }> = ({ label, value, subValue, icon: Icon }) => (
-    <div className="bg-neutral-900/30 p-10 rounded-2xl border border-neutral-900 flex flex-col justify-between space-y-8 hover:bg-neutral-900/50 transition-all group shadow-sm">
+    <div className="bg-neutral-900/40 p-10 rounded-[32px] border border-neutral-800/50 flex flex-col justify-between space-y-10 hover:bg-neutral-900/60 transition-all group shadow-sm">
         <div className="flex items-center justify-between">
-            <span className="text-[11px] font-black text-neutral-500 uppercase tracking-[0.2em]">{label}</span>
-            <Icon className="w-4 h-4 text-neutral-700 group-hover:text-emerald-500 transition-colors" />
+            <span className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.25em]">{label}</span>
+            <div className="p-2 bg-neutral-800/50 rounded-xl group-hover:bg-emerald-500/10 transition-colors">
+                <Icon className="w-4 h-4 text-neutral-600 group-hover:text-emerald-500 transition-colors" />
+            </div>
         </div>
-        <div className="space-y-2">
-            <h4 className="text-5xl font-black text-white tracking-tighter tabular-nums leading-none">{value}</h4>
-            <p className="text-[10px] font-black text-neutral-600 uppercase tracking-widest leading-none">{subValue}</p>
+        <div className="space-y-3">
+            <h4 className="text-6xl font-black text-white tracking-tighter tabular-nums leading-none">{value}</h4>
+            <p className="text-[10px] font-black text-neutral-600 uppercase tracking-[0.2em] leading-none">{subValue}</p>
         </div>
     </div>
 );
@@ -25,61 +27,70 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
     return (
         <div className="space-y-24">
             {/* Header Status */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-10 pb-16 border-b border-neutral-900/50">
-                <div className="space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-12 pb-16 border-b border-neutral-900">
+                <div className="space-y-8">
                     <div className="flex items-center gap-4">
-                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse" />
-                        <span className="text-[10px] font-black tracking-[0.3em] text-neutral-600 uppercase">
-                            {analysis.dataSource === 'LIVE' ? 'Neural Signal Integrity: 100%' : 'Archetype Projection Mode'}
-                        </span>
+                        <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse" />
+                            <span className="text-[9px] font-black tracking-[0.2em] text-emerald-500 uppercase">
+                                {analysis.dataSource === 'LIVE' ? 'Quantitative Signal Integrity: 100%' : 'Archetype Projection Mode'}
+                            </span>
+                        </div>
                     </div>
-                    <h2 className="text-7xl md:text-8xl font-black text-white tracking-tighter leading-[0.8] uppercase max-w-2xl">
-                        {analysis.predictionLabel}
-                    </h2>
+                    <div className="space-y-2">
+                        <span className="text-[10px] font-black text-neutral-600 uppercase tracking-[0.4em]">Proprietary Forecast</span>
+                        <h2 className="text-7xl md:text-8xl font-black text-white tracking-tighter leading-[0.8] uppercase max-w-2xl">
+                            {analysis.predictionLabel}
+                        </h2>
+                    </div>
                 </div>
-                <div className="flex flex-col items-end gap-3">
-                    <span className="text-9xl font-black text-emerald-500 tracking-tighter leading-none drop-shadow-2xl shadow-emerald-500/10">{analysis.probability}%</span>
-                    <span className="text-[11px] font-black text-neutral-600 uppercase tracking-[0.25em]">Probability Signal</span>
+                <div className="flex flex-col items-end gap-4">
+                    <div className="text-right">
+                        <span className="text-[11px] font-black text-neutral-500 uppercase tracking-[0.3em] block mb-2">Probability Confidence</span>
+                        <span className="text-9xl font-black text-white tracking-tighter leading-none drop-shadow-2xl">{analysis.probability}%</span>
+                    </div>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
-                <div className="lg:col-span-8 space-y-16">
+                <div className="lg:col-span-8 space-y-20">
                     {/* Primary Metrics */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                         <StatCard label="Model Edge" value={`${analysis.edge > 0 ? '+' : ''}${analysis.edge}%`} subValue="Alpha vs Market" icon={Zap} />
                         <StatCard label="Risk Unit" value={`${analysis.recommendedStake}%`} subValue="Optimal Allocation" icon={Shield} />
-                        <StatCard label="Live Odds" value={analysis.marketOdds.toFixed(2)} subValue="True Value Anchor" icon={Target} />
+                        <StatCard label="Live Odds" value={analysis.marketOdds?.toFixed(2) || '0.00'} subValue="True Value Anchor" icon={Target} />
                     </div>
 
                     {/* Team Deep Dive */}
-                    <div className="bg-neutral-900/20 border border-neutral-900/80 rounded-[40px] p-16">
-                        <div className="flex items-center gap-4 mb-16">
-                            <Binary className="w-5 h-5 text-emerald-500" />
-                            <h3 className="text-[11px] font-black text-neutral-400 uppercase tracking-[0.3em]">Scoring Architectures</h3>
+                    <div className="bg-neutral-900/30 border border-neutral-800 rounded-[48px] p-12 lg:p-16">
+                        <div className="flex items-center justify-between mb-16">
+                            <div className="flex items-center gap-4">
+                                <Binary className="w-5 h-5 text-emerald-500" />
+                                <h3 className="text-[11px] font-black text-neutral-400 uppercase tracking-[0.3em]">Scoring Architectures</h3>
+                            </div>
+                            <span className="text-[10px] font-bold text-neutral-700 uppercase tracking-widest">Adjusted Poisson Variance</span>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-20">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-24">
                             {[
                                 { team: analysis.homeStats, xG: analysis.homeXG, role: 'HOME' },
                                 { team: analysis.awayStats, xG: analysis.awayXG, role: 'AWAY' }
                             ].map((item, idx) => (
                                 <div key={idx} className="space-y-12">
-                                    <div className="space-y-1">
-                                        <span className="text-[10px] font-bold text-neutral-700 uppercase tracking-widest">{item.role}</span>
-                                        <h4 className="text-3xl font-black text-white tracking-tighter uppercase">{item.team.name}</h4>
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/30" />
+                                            <span className="text-[10px] font-black text-neutral-600 uppercase tracking-widest">{item.role} SIDE</span>
+                                        </div>
+                                        <h4 className="text-4xl font-black text-white tracking-tighter uppercase">{item.team.name}</h4>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-12">
-                                        <div className="space-y-3">
-                                            <span className="text-[10px] text-neutral-600 font-bold uppercase tracking-widest">Adjusted xG</span>
-                                            <p className="text-4xl font-bold text-white tabular-nums tracking-tighter">{item.xG.toFixed(2)}</p>
+                                    <div className="grid grid-cols-2 gap-y-12 gap-x-8">
+                                        <div className="space-y-3 p-6 bg-neutral-800/20 rounded-3xl border border-neutral-800/50">
+                                            <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest block">Adjusted xG</span>
+                                            <p className="text-4xl font-black text-white tabular-nums tracking-tighter">{item.xG?.toFixed(2) || '0.00'}</p>
                                         </div>
-                                        <div className="space-y-3">
-                                            <span className="text-[10px] text-neutral-600 font-bold uppercase tracking-widest">Stability</span>
-                                            <p className="text-4xl font-bold text-emerald-500 tabular-nums tracking-tighter">{item.team.defensiveStability.toFixed(2)}</p>
-                                        </div>
-                                        <div className="space-y-3">
-                                            <span className="text-[10px] text-neutral-600 font-bold uppercase tracking-widest">Tactical Bias</span>
-                                            <p className="text-4xl font-bold text-white tabular-nums tracking-tighter">{item.team.homeAwayBias.toFixed(2)}</p>
+                                        <div className="space-y-3 p-6 bg-neutral-800/20 rounded-3xl border border-neutral-800/50">
+                                            <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest block">Stability</span>
+                                            <p className="text-4xl font-black text-emerald-500 tabular-nums tracking-tighter">{item.team.defensiveStability?.toFixed(2) || '0.00'}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -87,84 +98,97 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
                         </div>
                     </div>
 
-                    {/* Tactical Narrative */}
-                    <div className="space-y-6">
-                        <div className="flex items-center gap-2">
-                            <Activity className="w-4 h-4 text-neutral-500" />
-                            <h3 className="text-sm font-bold text-white uppercase tracking-wider">Tactical Reasoning</h3>
+                    {/* Tactical Summary */}
+                    <div className="p-12 bg-[#0a0a0a] rounded-[40px] border border-neutral-900 space-y-8 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+                            <Activity className="w-32 h-32 text-white" />
                         </div>
-                        <p className="text-lg text-neutral-400 leading-relaxed max-w-3xl italic">
+                        <div className="flex items-center gap-3 relative z-10">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                            <h3 className="text-xs font-black text-white uppercase tracking-widest">Tactical Analysis Summary</h3>
+                        </div>
+                        <p className="text-xl text-neutral-400 leading-relaxed max-w-3xl font-medium relative z-10 italic">
                             "{analysis.summary}"
                         </p>
                     </div>
                 </div>
 
-                <div className="lg:col-span-4 space-y-8">
-                    {/* Verdict Card: Syndicate Trading Mode */}
-                    <div className="bg-emerald-500 p-10 rounded-2xl text-neutral-950 space-y-8">
-                        <div className="space-y-2">
-                            <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Trading Signal</span>
-                            <h2 className="text-5xl font-black tracking-tighter uppercase leading-none">
-                                {analysis.verdict === 'EXECUTE_BET' ? 'EXECUTE BET' : 'NO BET'}
+                <div className="lg:col-span-4 space-y-10">
+                    {/* Verdict Card */}
+                    <div className="bg-emerald-500 p-12 rounded-[40px] text-neutral-950 space-y-10 shadow-2xl shadow-emerald-500/10 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-6">
+                            <Zap className="w-12 h-12 text-black/5" />
+                        </div>
+                        <div className="space-y-3">
+                            <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">System Verdict</span>
+                            <h2 className="text-6xl font-black tracking-tighter uppercase leading-none">
+                                {analysis.verdict === 'EXECUTE_BET' ? 'EXECUTE' : 'HOLD'}
                             </h2>
                         </div>
-                        <p className="text-sm font-medium leading-relaxed">
+                        <p className="text-sm font-bold leading-relaxed uppercase tracking-tight">
                             {analysis.verdict === 'EXECUTE_BET' 
-                                ? `Positive Expected Value (+EV) identified. Recommended risk: ${analysis.recommendedStake}% of bankroll.`
-                                : "Market is efficient. No mathematical edge exists. Preserve capital."}
+                                ? `Positive Expected Value (+EV) identified. Allocation: ${analysis.recommendedStake}% of available bankroll.`
+                                : "Market is highly efficient. No measurable edge found. Preservation protocol active."}
                         </p>
                         
                         {analysis.verdict === 'EXECUTE_BET' && (
-                            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-neutral-950/20">
+                            <div className="grid grid-cols-2 gap-8 pt-8 border-t border-black/10">
                                 <div>
-                                    <span className="text-[10px] font-bold uppercase opacity-60">Model Edge</span>
-                                    <p className="text-2xl font-black">+{analysis.edge}%</p>
+                                    <span className="text-[10px] font-black uppercase opacity-60 tracking-widest block mb-1">Model Edge</span>
+                                    <p className="text-3xl font-black tabular-nums">+{analysis.edge}%</p>
                                 </div>
                                 <div>
-                                    <span className="text-[10px] font-bold uppercase opacity-60">Target Odds</span>
-                                    <p className="text-2xl font-black">{analysis.marketOdds?.toFixed(2)}</p>
+                                    <span className="text-[10px] font-black uppercase opacity-60 tracking-widest block mb-1">Entry Odds</span>
+                                    <p className="text-3xl font-black tabular-nums">{analysis.marketOdds?.toFixed(2) || '0.00'}</p>
                                 </div>
                             </div>
                         )}
+                        
+                        <button className="w-full py-5 bg-black text-white text-[10px] font-black uppercase tracking-[0.3em] rounded-2xl hover:bg-neutral-900 transition-colors flex items-center justify-center gap-2">
+                            View Deep Audit <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
                     </div>
 
-                    {/* Audit Info */}
-                    <div className="p-8 border border-neutral-900 rounded-2xl space-y-8">
-                        <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-widest flex items-center gap-2">
-                            <Target className="w-3 h-3" /> Technical Audit
-                        </h4>
-                        <div className="space-y-6">
+                    {/* Technical Audit */}
+                    <div className="p-10 border border-neutral-800 bg-neutral-900/20 rounded-[40px] space-y-10">
+                        <div className="flex items-center justify-between">
+                            <h4 className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.3em] flex items-center gap-2">
+                                <Target className="w-3 h-3" /> Technical Audit
+                            </h4>
+                            <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded">v2.4</span>
+                        </div>
+                        <div className="space-y-8">
                             <div className="space-y-3">
-                                <div className="flex justify-between text-[10px] font-bold uppercase text-neutral-400">
+                                <div className="flex justify-between text-[10px] font-black uppercase text-neutral-400 tracking-widest">
                                     <span>Signal Purity</span>
                                     <span>{analysis.purity}%</span>
                                 </div>
                                 <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
-                                    <div className="h-full bg-emerald-500" style={{ width: `${analysis.purity}%` }} />
+                                    <div className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" style={{ width: `${analysis.purity}%` }} />
                                 </div>
                             </div>
                             {analysis.context.referee && (
-                                <div className="pt-6 border-t border-neutral-900 space-y-4">
-                                    <span className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest">Referee Influence</span>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm font-bold text-white">{analysis.context.referee.name}</span>
-                                        <span className="text-[10px] px-2 py-1 bg-neutral-900 rounded text-neutral-400 font-bold uppercase tracking-tight">
+                                <div className="pt-8 border-t border-neutral-800 space-y-4">
+                                    <span className="text-[10px] font-black text-neutral-600 uppercase tracking-[0.2em] block">Match Official Influence</span>
+                                    <div className="flex justify-between items-center bg-neutral-900/50 p-4 rounded-2xl border border-neutral-800/50">
+                                        <span className="text-sm font-black text-white tracking-tight uppercase">{analysis.context.referee.name}</span>
+                                        <span className="text-[9px] px-2.5 py-1 bg-neutral-800 rounded-lg text-neutral-400 font-black uppercase tracking-tight">
                                             {analysis.context.referee.tendency}
                                         </span>
                                     </div>
                                 </div>
                             )}
                             {analysis.context.audit && (
-                                <div className="pt-6 border-t border-neutral-900 grid grid-cols-2 gap-y-6 gap-x-4">
+                                <div className="pt-8 border-t border-neutral-800 grid grid-cols-2 gap-y-8 gap-x-6">
                                     {[
-                                        { label: 'Signal Integrity', value: analysis.context.audit.signalIntegrity },
-                                        { label: 'Variance Mode', value: analysis.context.audit.redCardRegime },
-                                        { label: 'Recency Alpha', value: analysis.context.audit.alphaAdjustment },
-                                        { label: 'Data Fidelity', value: analysis.context.audit.dataReliability }
+                                        { label: 'Integrity', value: analysis.context.audit.signalIntegrity },
+                                        { label: 'Variance', value: analysis.context.audit.redCardRegime },
+                                        { label: 'Recency', value: analysis.context.audit.alphaAdjustment },
+                                        { label: 'Fidelity', value: analysis.context.audit.dataReliability }
                                     ].map((item, i) => (
-                                        <div key={i} className="space-y-1">
-                                            <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest block leading-none">{item.label}</span>
-                                            <p className="text-[10px] font-bold text-neutral-400 leading-tight">{item.value}</p>
+                                        <div key={i} className="space-y-1.5">
+                                            <span className="text-[9px] font-black text-neutral-600 uppercase tracking-widest block leading-none">{item.label}</span>
+                                            <p className="text-[10px] font-black text-neutral-400 leading-tight uppercase tracking-tight">{item.value}</p>
                                         </div>
                                     ))}
                                 </div>

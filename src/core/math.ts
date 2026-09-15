@@ -24,6 +24,13 @@ export class DixonColes {
         }
         return { rho: r, sigmaRho: fC < 0 ? Math.sqrt(-1 / fC) : 0.05 };
     }
+    static getContextRho(hTier: number, aTier: number, isDerby: boolean): number {
+        let r = -0.11;
+        if (isDerby) r -= 0.04;
+        const gap = Math.abs(hTier - aTier);
+        if (gap >= 2) r += 0.03;
+        return Math.max(-0.22, Math.min(-0.02, r));
+    }
 }
 
 export class BivariatePoisson {

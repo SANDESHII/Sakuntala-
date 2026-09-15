@@ -4,7 +4,6 @@ import { createServer as createViteServer } from "vite";
 import { BacktestService } from "./src/services/backtestService";
 import { DataService } from "./src/services/dataService";
 import { performAnalysis } from "./src/services/geminiService";
-import { CalibrationService } from "./src/services/calibrationService";
 import rateLimit from "express-rate-limit";
 
 async function startServer() {
@@ -52,14 +51,6 @@ async function startServer() {
       res.json(await BacktestService.runBacktest((req.query.league as string) || 'EPL'));
     } catch (e) {
       res.status(500).json({ error: "Audit sequence failed." });
-    }
-  });
-
-  app.get("/api/calibrate", auth, async (req, res) => {
-    try {
-      res.json(await CalibrationService.calibrate((req.query.league as string) || 'EPL'));
-    } catch (e) {
-      res.status(500).json({ error: "Calibration sequence failed." });
     }
   });
 

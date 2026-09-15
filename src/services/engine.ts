@@ -6,6 +6,8 @@ import { EnsembleEngine } from './ensembleEngine';
 
 // ============================================================
 // [FIX-8] POWER METHOD OVERROUND REMOVAL
+// Binary search for α such that Σ odds_i^(-α) = 1
+// Handles favorite-longshot bias that proportional method ignores
 // ============================================================
 function removeOverroundPower(odds: number[]): number[] {
     if (odds.length === 0) return [];
@@ -24,6 +26,8 @@ function removeOverroundPower(odds: number[]): number[] {
 
 // ============================================================
 // [FIX-5] SIGMOID DEFENSIVE ADJUSTMENT
+// Bounded [0.5, 1.5]. Linear formula allows extreme teams to
+// produce unrealistic xG. Sigmoid prevents that.
 // ============================================================
 function sigmoidDefensiveAdjustment(
     rawXGA: number,
@@ -36,6 +40,9 @@ function sigmoidDefensiveAdjustment(
 
 // ============================================================
 // [FIX-11] EXPLICIT 0-0 MODELING
+// 0-0 is ~8% of matches. Has specific predictors (defensive
+// quality, ref strictness, derby) that DC doesn't capture.
+// Blended 60% DC / 40% feature-based.
 // ============================================================
 function estimateP00(
     homeXG: number,
@@ -53,7 +60,7 @@ function estimateP00(
 }
 
 // ============================================================
-// MAIN ENGINE
+// MAIN ENGINE — ALL 7 FIXES INTEGRATED
 // ============================================================
 export class MatchEngine {
     private static ensemble = new EnsembleEngine();
@@ -74,7 +81,9 @@ export class MatchEngine {
         const hXGA = context.homeSeasonXGA || home.avgXGA;
         const aXGA = context.awaySeasonXGA || away.avgXGA;
 
+        // ========================================
         // [FIX-5] Sigmoid defensive adjustment
+        // ========================================
         const hD = sigmoidDefensiveAdjustment(hXGA, lAvg, home.defensiveStability);
         const aD = sigmoidDefensiveAdjustment(aXGA, lAvg, away.defensiveStability);
 
@@ -107,13 +116,19 @@ export class MatchEngine {
             aM *= rE;
         }
 
+        // ========================================
         // [FIX-2] Context-dependent rho
+        // Uses getContextRho from math.ts if tiers available
+        // ========================================
         let rho = rhoData.rho;
-        if (context.homeTier && context.awayTier) {
+        if (context.homeTier !== undefined && context.awayTier !== undefined) {
             rho = DixonColes.getContextRho(context.homeTier, context.awayTier, context.isDerby || false);
         }
 
-        // [FIX-11] Build score matrix + 0-0 adjustment
+        // ========================================
+        // [FIX-11] 0-0 explicit modeling
+        // Build matrix, adjust 0-0 cell, renormalize
+        // ========================================
         const baseMatrix = DixonColes.calculateScoreMatrix(hL, aM, rho);
         const p00_dc = baseMatrix[0][0];
         const p00_feature = estimateP00(
@@ -135,12 +150,16 @@ export class MatchEngine {
             }
         }
 
-        // Ensemble prediction [FIX-10] — already integrated
+        // ========================================
+        // Ensemble prediction [FIX-10] — already done
+        // ========================================
         const ensembleResult = this.ensemble.predict(hL, aM, 0.15, 8);
         const pO15_raw = ensembleResult.pOver15;
         const pU35_raw = ensembleResult.pUnder35;
 
+        // ========================================
         // [FIX-8] Power method overround removal
+        // ========================================
         const oddsO15 = context.marketOdds?.pinnacleOver15 || 1.50;
         const oddsU15 = context.marketOdds?.pinnacleUnder15;
         const oddsU35 = context.marketOdds?.pinnacleUnder35 || 1.50;
@@ -167,12 +186,20 @@ export class MatchEngine {
             mPU35 = mP_U35_raw / (1 + overround);
         }
 
+        // ========================================
         // [FIX-6] Dynamic Bayesian blending
+        // ========================================
         const purity = ((home.dataPurity || 0.1) + (away.dataPurity || 0.1)) / 2;
+
+        // Market efficiency: tighter spread = more efficient
         const marketSpreadO15 = oddsU15 ? Math.abs(1 / oddsO15 + 1 / oddsU15 - 1) : 0.04;
         const marketSpreadU35 = oddsO35 ? Math.abs(1 / oddsU35 + 1 / oddsO35 - 1) : 0.04;
         const marketEfficiency = 1 / ((marketSpreadO15 + marketSpreadU35) / 2 + 0.01);
+
+        // Model confidence: purity × sample size factor
         const modelConfidence = purity * (context.sampleSize ? Math.min(1, context.sampleSize / 200) : 0.5);
+
+        // Dynamic weight: model vs market
         const dynamicModelWeight = modelConfidence / (modelConfidence + marketEfficiency * 0.1);
         const modelWeight = Math.max(0.15, Math.min(0.65, dynamicModelWeight));
 
@@ -192,7 +219,13 @@ export class MatchEngine {
         const edge = Math.min(rawEdge, 0.12);
         const b = mOdds - 1;
 
+        // ========================================
         // [FIX-7] Bayesian Kelly with uncertainty
+        // OLD (BROKEN): kellyFraction = 0.15 * purity * (0.5 + edge/0.12)
+        //   → At edge=0, still bets 7.5%. Never produces zero.
+        // NEW: Use CI lower bound × 0.25 × purity
+        //   → If CI crosses zero, stake = 0. Correct.
+        // ========================================
         const sim = MonteCarloSimulator.run(hL, aM, type === 'UNDER_35' ? 3.5 : 1.5, type === 'UNDER_35', rho);
         const p_conservative = sim.confidenceInterval[0];
         const f_star_raw = Math.max(0, (b * p_conservative - (1 - p_conservative)) / b);

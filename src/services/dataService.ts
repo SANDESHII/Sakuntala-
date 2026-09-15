@@ -4,6 +4,7 @@ import { DixonColes } from '../core/math';
 import { db } from '../lib/firebase';
 import { collection, query, where, orderBy, limit, getDocs, writeBatch, doc } from 'firebase/firestore';
 import { LEAGUE_CONVERSION_RATES, DATA_CONSTANTS } from '../core/constants';
+import { sanitizeForFirestore } from '../utils';
 
 export class DataService {
     static async getLeagueContext(league: string): Promise<LeagueContext> {
@@ -66,7 +67,7 @@ export class DataService {
             chunk.forEach(m => {
                 const id = `${m.date}_${m.homeTeam}_${m.awayTeam}`;
                 const docRef = doc(db, 'historicalMatches', id);
-                batch.set(docRef, m, { merge: true });
+                batch.set(docRef, sanitizeForFirestore(m), { merge: true });
             });
             await batch.commit();
         }

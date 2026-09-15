@@ -1,6 +1,7 @@
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { RefereeProfile } from '../types';
+import { sanitizeForFirestore } from '../utils';
 
 const VERIFIED_REGISTRY: Record<string, RefereeProfile> = {
     'MICHAEL_OLIVER': { name: 'Michael Oliver', avgCardsPerGame: 3.5, avgPenaltiesPerGame: 0.2, homeWinRate: 0.48, tendency: 'AVERAGE', gamesOfficiated: 120 },
@@ -54,7 +55,7 @@ export class RefereeService {
         if (!VERIFIED_REGISTRY[id]) {
             try {
                 const docRef = doc(db, 'referee_profiles', id);
-                await setDoc(docRef, p);
+                await setDoc(docRef, sanitizeForFirestore(p));
             } catch (error) {
                 console.error('Referee sync failed:', error);
             }

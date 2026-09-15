@@ -1,6 +1,7 @@
 import { db } from '../lib/firebase';
 import { AnalysisResult } from '../types';
 import { doc, getDoc, setDoc, serverTimestamp, Timestamp } from "firebase/firestore";
+import { sanitizeForFirestore } from '../utils';
 
 export class CacheService {
     private static COLLECTION = 'analysis_cache';
@@ -31,10 +32,10 @@ export class CacheService {
     static async set(key: string, result: AnalysisResult): Promise<void> {
         try {
             const docRef = doc(db, this.COLLECTION, key);
-            await setDoc(docRef, {
+            await setDoc(docRef, sanitizeForFirestore({
                 result,
                 timestamp: serverTimestamp()
-            });
+            }));
         } catch (error: any) {
             console.error('Cache Write Error:', error);
         }

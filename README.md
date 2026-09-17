@@ -1,1 +1,9 @@
-# Alpha Terminal: Quantitative Football AI. Predicts Match Probability using Dixon-Coles and Neural xG extraction. Focused on Over 1.5/Under 3.5 Goal Markets across Europe Top 5.
+# Alpha Terminal
+
+Football prediction system using Dixon-Coles statistical modeling. Focused on Over 1.5 and Under 3.5 Goal Markets.
+
+## Core Features
+- Dixon-Coles statistical engine
+- Monte Carlo simulations
+- Kelly criterion stake calculation
+- Historical backtesting module

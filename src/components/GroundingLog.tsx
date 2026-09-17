@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { ExternalLink, AlertTriangle } from 'lucide-react';
 import { MatchContext } from '../types';
@@ -18,13 +17,10 @@ export const GroundingLog: React.FC<GroundingLogProps> = ({ context }) => {
                 <div className="space-y-4">
                     <div className="flex items-center gap-3">
                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        <h3 className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em]">Live Grounding Logic</h3>
+                        <h3 className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em]">Data Verification</h3>
                     </div>
                     <h2 className="text-4xl font-black text-white tracking-tighter uppercase leading-none">Source Verification</h2>
-                    <p className="text-sm text-neutral-500 font-medium max-w-xl">Every quantitative atom is cross-verified against institutional data feeds (FBRef, Understat, Opta) and real-time market signals.</p>
-                </div>
-                <div className="px-6 py-3 bg-neutral-900 border border-neutral-800 rounded-xl">
-                    <span className="text-[10px] font-bold text-white uppercase tracking-widest">Protocol v2.4 VERIFIED</span>
+                    <p className="text-sm text-neutral-500 font-medium max-w-xl">Quantitative data cross-verified against historical data feeds and statistical baselines.</p>
                 </div>
             </div>
 
@@ -32,7 +28,7 @@ export const GroundingLog: React.FC<GroundingLogProps> = ({ context }) => {
                 <div className="bg-neutral-900 border-l-2 border-red-500 p-8 space-y-4">
                     <div className="flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4 text-red-500" />
-                        <span className="text-[10px] font-bold text-white uppercase tracking-widest">Critical Variance Alerts</span>
+                        <span className="text-[10px] font-bold text-white uppercase tracking-widest">Variance Alerts</span>
                     </div>
                     <div className="space-y-2">
                         {varianceAlerts.map((alert, i) => (

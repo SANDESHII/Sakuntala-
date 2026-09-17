@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Zap, Shield, Target, Activity, LucideIcon, Binary, ChevronRight } from 'lucide-react';
 import { AnalysisResult, AnalysisConfidence } from '../types';
@@ -29,16 +28,8 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
             {/* Header Status */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-12 pb-16 border-b border-neutral-900">
                 <div className="space-y-8">
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse" />
-                            <span className="text-[9px] font-black tracking-[0.2em] text-emerald-500 uppercase">
-                                {analysis.dataSource === 'LIVE' ? 'Quantitative Signal Integrity: 100%' : 'Archetype Projection Mode'}
-                            </span>
-                        </div>
-                    </div>
                     <div className="space-y-2">
-                        <span className="text-[10px] font-black text-neutral-600 uppercase tracking-[0.4em]">Proprietary Forecast</span>
+                        <span className="text-[10px] font-black text-neutral-600 uppercase tracking-[0.4em]">Prediction</span>
                         <h2 className="text-7xl md:text-8xl font-black text-white tracking-tighter leading-[0.8] uppercase max-w-2xl">
                             {analysis.predictionLabel}
                         </h2>
@@ -46,8 +37,8 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
                 </div>
                 <div className="flex flex-col items-end gap-4">
                     <div className="text-right">
-                        <span className="text-[11px] font-black text-neutral-500 uppercase tracking-[0.3em] block mb-2">Probability Confidence</span>
-                        <span className="text-9xl font-black text-white tracking-tighter leading-none drop-shadow-2xl">{analysis.probability}%</span>
+                        <span className="text-[11px] font-black text-neutral-500 uppercase tracking-[0.3em] block mb-2">Probability</span>
+                        <span className="text-9xl font-black text-white tracking-tighter leading-none">{analysis.probability}%</span>
                     </div>
                 </div>
             </div>
@@ -56,9 +47,9 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
                 <div className="lg:col-span-8 space-y-20">
                     {/* Primary Metrics */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        <StatCard label="Model Edge" value={`${analysis.edge > 0 ? '+' : ''}${analysis.edge}%`} subValue="Alpha vs Market" icon={Zap} />
-                        <StatCard label="Risk Unit" value={`${analysis.recommendedStake}%`} subValue="Optimal Allocation" icon={Shield} />
-                        <StatCard label="Live Odds" value={analysis.marketOdds?.toFixed(2) || '0.00'} subValue="True Value Anchor" icon={Target} />
+                        <StatCard label="Model Edge" value={`${analysis.edge > 0 ? '+' : ''}${analysis.edge}%`} subValue="vs Market" icon={Zap} />
+                        <StatCard label="Stake" value={`${analysis.recommendedStake}%`} subValue="Kelly Criterion" icon={Shield} />
+                        <StatCard label="Odds" value={analysis.marketOdds?.toFixed(2) || '0.00'} subValue="Market Price" icon={Target} />
                     </div>
 
                     {/* Team Deep Dive */}
@@ -66,9 +57,9 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
                         <div className="flex items-center justify-between mb-16">
                             <div className="flex items-center gap-4">
                                 <Binary className="w-5 h-5 text-emerald-500" />
-                                <h3 className="text-[11px] font-black text-neutral-400 uppercase tracking-[0.3em]">Scoring Architectures</h3>
+                                <h3 className="text-[11px] font-black text-neutral-400 uppercase tracking-[0.3em]">Team Statistics</h3>
                             </div>
-                            <span className="text-[10px] font-bold text-neutral-700 uppercase tracking-widest">Adjusted Poisson Variance</span>
+                            <span className="text-[10px] font-bold text-neutral-700 uppercase tracking-widest">Dixon-Coles Model</span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-24">
                             {[
@@ -85,11 +76,11 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
                                     </div>
                                     <div className="grid grid-cols-2 gap-y-12 gap-x-8">
                                         <div className="space-y-3 p-6 bg-neutral-800/20 rounded-3xl border border-neutral-800/50">
-                                            <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest block">Adjusted xG</span>
+                                            <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest block">Expected Goals</span>
                                             <p className="text-4xl font-black text-white tabular-nums tracking-tighter">{item.xG?.toFixed(2) || '0.00'}</p>
                                         </div>
                                         <div className="space-y-3 p-6 bg-neutral-800/20 rounded-3xl border border-neutral-800/50">
-                                            <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest block">Stability</span>
+                                            <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest block">Defense</span>
                                             <p className="text-4xl font-black text-emerald-500 tabular-nums tracking-tighter">{item.team.defensiveStability?.toFixed(2) || '0.00'}</p>
                                         </div>
                                     </div>
@@ -105,7 +96,7 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
                         </div>
                         <div className="flex items-center gap-3 relative z-10">
                             <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                            <h3 className="text-xs font-black text-white uppercase tracking-widest">Tactical Analysis Summary</h3>
+                            <h3 className="text-xs font-black text-white uppercase tracking-widest">Analysis Summary</h3>
                         </div>
                         <p className="text-xl text-neutral-400 leading-relaxed max-w-3xl font-medium relative z-10 italic">
                             "{analysis.summary}"
@@ -120,71 +111,57 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
                             <Zap className="w-12 h-12 text-black/5" />
                         </div>
                         <div className="space-y-3">
-                            <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">System Verdict</span>
+                            <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-60">Verdict</span>
                             <h2 className="text-6xl font-black tracking-tighter uppercase leading-none">
                                 {analysis.verdict === 'EXECUTE_BET' ? 'EXECUTE' : 'HOLD'}
                             </h2>
                         </div>
                         <p className="text-sm font-bold leading-relaxed uppercase tracking-tight">
-                            {analysis.verdict === 'EXECUTE_BET' 
-                                ? `Positive Expected Value (+EV) identified. Allocation: ${analysis.recommendedStake}% of available bankroll.`
-                                : "Market is highly efficient. No measurable edge found. Preservation protocol active."}
+                            {analysis.verdict === 'EXECUTE_BET'
+                                ? `Positive edge detected. Recommended allocation: ${analysis.recommendedStake}% of bankroll.`
+                                : "No measurable edge found. Market is efficient."}
                         </p>
-                        
+
                         {analysis.verdict === 'EXECUTE_BET' && (
                             <div className="grid grid-cols-2 gap-8 pt-8 border-t border-black/10">
                                 <div>
-                                    <span className="text-[10px] font-black uppercase opacity-60 tracking-widest block mb-1">Model Edge</span>
+                                    <span className="text-[10px] font-black uppercase opacity-60 tracking-widest block mb-1">Edge</span>
                                     <p className="text-3xl font-black tabular-nums">+{analysis.edge}%</p>
                                 </div>
                                 <div>
-                                    <span className="text-[10px] font-black uppercase opacity-60 tracking-widest block mb-1">Entry Odds</span>
+                                    <span className="text-[10px] font-black uppercase opacity-60 tracking-widest block mb-1">Odds</span>
                                     <p className="text-3xl font-black tabular-nums">{analysis.marketOdds?.toFixed(2) || '0.00'}</p>
                                 </div>
                             </div>
                         )}
-                        
+
                         <button className="w-full py-5 bg-black text-white text-[10px] font-black uppercase tracking-[0.3em] rounded-2xl hover:bg-neutral-900 transition-colors flex items-center justify-center gap-2">
-                            View Deep Audit <ChevronRight className="w-3.5 h-3.5" />
+                            Details <ChevronRight className="w-3.5 h-3.5" />
                         </button>
                     </div>
 
-                    {/* Technical Audit */}
+                    {/* Technical Details */}
                     <div className="p-10 border border-neutral-800 bg-neutral-900/20 rounded-[40px] space-y-10">
                         <div className="flex items-center justify-between">
                             <h4 className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.3em] flex items-center gap-2">
-                                <Target className="w-3 h-3" /> Technical Audit
+                                <Target className="w-3 h-3" /> Model Details
                             </h4>
-                            <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded">v2.4</span>
                         </div>
                         <div className="space-y-8">
                             <div className="space-y-3">
                                 <div className="flex justify-between text-[10px] font-black uppercase text-neutral-400 tracking-widest">
-                                    <span>Signal Purity</span>
+                                    <span>Data Quality</span>
                                     <span>{analysis.purity}%</span>
                                 </div>
                                 <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
                                     <div className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" style={{ width: `${analysis.purity}%` }} />
                                 </div>
                             </div>
-                            {analysis.context.referee && (
-                                <div className="pt-8 border-t border-neutral-800 space-y-4">
-                                    <span className="text-[10px] font-black text-neutral-600 uppercase tracking-[0.2em] block">Match Official Influence</span>
-                                    <div className="flex justify-between items-center bg-neutral-900/50 p-4 rounded-2xl border border-neutral-800/50">
-                                        <span className="text-sm font-black text-white tracking-tight uppercase">{analysis.context.referee.name}</span>
-                                        <span className="text-[9px] px-2.5 py-1 bg-neutral-800 rounded-lg text-neutral-400 font-black uppercase tracking-tight">
-                                            {analysis.context.referee.tendency}
-                                        </span>
-                                    </div>
-                                </div>
-                            )}
                             {analysis.context.audit && (
                                 <div className="pt-8 border-t border-neutral-800 grid grid-cols-2 gap-y-8 gap-x-6">
                                     {[
-                                        { label: 'Integrity', value: analysis.context.audit.signalIntegrity },
-                                        { label: 'Variance', value: analysis.context.audit.redCardRegime },
-                                        { label: 'Recency', value: analysis.context.audit.alphaAdjustment },
-                                        { label: 'Fidelity', value: analysis.context.audit.dataReliability }
+                                        { label: 'Data Quality', value: analysis.context.audit.signalIntegrity },
+                                        { label: 'Edge Strength', value: analysis.context.audit.alphaAdjustment },
                                     ].map((item, i) => (
                                         <div key={i} className="space-y-1.5">
                                             <span className="text-[9px] font-black text-neutral-600 uppercase tracking-widest block leading-none">{item.label}</span>
@@ -200,4 +177,3 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
         </div>
     );
 };
-

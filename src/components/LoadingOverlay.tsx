@@ -2,11 +2,9 @@ import React from 'react';
 
 interface LoadingOverlayProps {
     loading: boolean;
-    stage: number;
-    messages: string[];
 }
 
-export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({ loading, stage, messages }) => (
+export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({ loading }) => (
     loading ? (
         <div className="fixed inset-0 z-[100] bg-neutral-950 flex flex-col items-center justify-center space-y-16">
             <div className="relative flex items-center justify-center">
@@ -17,15 +15,12 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({ loading, stage, 
                 </div>
             </div>
             <div className="text-center space-y-6">
-                <div className="flex gap-3 justify-center mb-4">
-                    {messages.map((_, i) => (
-                        <div key={i} className={`h-[2px] transition-all duration-700 ${i === stage ? 'bg-white w-12' : 'bg-neutral-900 w-4'}`} />
-                    ))}
-                </div>
-                <p className="text-[11px] font-black tracking-[0.5em] text-white uppercase">
-                    {messages[stage]}
+                <p className="text-[11px] font-black tracking-[0.3em] text-white uppercase">
+                    Analyzing Match Data
                 </p>
-                <p className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest">Processing Statistical Context</p>
+                <p className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest">
+                    Processing...
+                </p>
             </div>
         </div>
     ) : null

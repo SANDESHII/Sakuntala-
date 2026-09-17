@@ -72,12 +72,12 @@ export function runPrediction(
   // Away expected goals (mu)
   let muAway = awayAttackStrength * homeDefenseFactor * leagueAvgGoals * (1 - leagueConfig.homeAdvantage * 0.3);
 
-  // Form adjustment
-  const homeFormFactor = homeData.form.reduce((a: number, b: number) => a + b, 0) / (homeData.form.length * 3);
-  const awayFormFactor = awayData.form.reduce((a: number, b: number) => a + b, 0) / (awayData.form.length * 3);
+  // Momentum (Form) adjustment
+  const homeMomentum = homeData.form.reduce((a: number, b: number) => a + b, 0) / (homeData.form.length * 3);
+  const awayMomentum = awayData.form.reduce((a: number, b: number) => a + b, 0) / (awayData.form.length * 3);
 
-  lambdaHome *= (0.85 + homeFormFactor * 0.3);
-  muAway *= (0.85 + awayFormFactor * 0.3);
+  lambdaHome *= (0.85 + homeMomentum * 0.3);
+  muAway *= (0.85 + awayMomentum * 0.3);
 
   // Clinical edge adjustment
   lambdaHome *= homeData.clinicalEdge;
@@ -93,26 +93,29 @@ export function runPrediction(
   // Generate score matrix
   const scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, rho);
 
-  // Calculate probabilities
-  const over15Prob = DixonColes.calculateOverUnder(scoreMatrix, 1.5);
-  const under35Prob = 1 - DixonColes.calculateOverUnder(scoreMatrix, 3.5);
+  // Calculate raw probabilities
+  const modelProbOver15 = DixonColes.calculateOverUnder(scoreMatrix, 1.5);
+  const modelProbUnder35 = 1 - DixonColes.calculateOverUnder(scoreMatrix, 3.5);
 
   // Generate synthetic market odds (with 5% overround)
   const overround = 1.05;
-  const marketOddsOver15 = overround / over15Prob;
-  const marketOddsUnder35 = overround / under35Prob;
+  const marketOddsOver15 = overround / modelProbOver15;
+  const marketOddsUnder35 = overround / modelProbUnder35;
 
   // Market probabilities (without overround)
   const marketProbOver15 = 1 / marketOddsOver15;
   const marketProbUnder35 = 1 / marketOddsUnder35;
 
+  const marketImpliedOver15 = marketProbOver15;
+  const marketImpliedUnder35 = marketProbUnder35;
+
   // Final probabilities (Blended in original, now single model)
-  const finalProbOver15 = over15Prob;
-  const finalProbUnder35 = under35Prob;
+  const finalProbOver15 = modelProbOver15;
+  const finalProbUnder35 = modelProbUnder35;
 
   // Determine prediction type based on edge
-  const over15Edge = finalProbOver15 - marketProbOver15;
-  const under35Edge = finalProbUnder35 - marketProbUnder35;
+  const over15Edge = finalProbOver15 - marketImpliedOver15;
+  const under35Edge = finalProbUnder35 - marketImpliedUnder35;
 
   let predictionType: 'OVER_15' | 'UNDER_35' | 'NO_BET';
   let predictionLabel: string;
@@ -140,9 +143,8 @@ export function runPrediction(
     marketOdds = marketOddsOver15;
   }
 
-  // Calculate recommended stake using Kelly criterion (fractional)
-  const impliedProb = 1 / marketOdds;
-  const kellyFraction = edge > 0 ? Math.min(0.05, (probability / 100 - impliedProb) / (marketOdds - 1)) * 100 : 0;
+  const marketImpliedProb = marketImpliedOver15; // Just a placeholder for the logic
+  const kellyFraction = edge > 0 ? Math.min(0.05, (probability / 100 - marketImpliedProb) / (marketOdds - 1)) * 100 : 0;
   const recommendedStake = Math.max(0, Math.round(kellyFraction * 10) / 10);
 
   // Verdict
@@ -230,7 +232,7 @@ export function runPrediction(
     purity,
     signalStrength: Math.round((purity * 0.7 + edge * 3) * 10) / 10,
     marketOdds,
-    marketImpliedProb: Math.round(impliedProb * 1000) / 10,
+    marketImpliedProb: Math.round(marketImpliedProb * 1000) / 10,
     edge,
     recommendedStake,
     verdict,

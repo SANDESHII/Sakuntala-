@@ -54,7 +54,6 @@ export const GroundingLog: React.FC<GroundingLogProps> = ({ context }) => {
                                 </a>
                             </div>
                             <div className="space-y-2">
-                                <span className="text-4xl font-bold text-white tabular-nums tracking-tighter">{cite.value}</span>
                                 <div className="flex items-center gap-2">
                                     <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Verified Signal</span>
                                 </div>

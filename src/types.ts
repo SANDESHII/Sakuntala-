@@ -1,3 +1,16 @@
+export interface InternalTeamData {
+  attackStrength: number;
+  defenseStrength: number;
+  avgGoalsScored: number;
+  avgGoalsConceded: number;
+  avgXG: number;
+  avgXGA: number;
+  homeBias: number;
+  form: number[];
+  cleanSheetRate: number;
+  clinicalEdge: number;
+}
+
 export interface TeamStats {
   name: string;
   goalsScored: number;

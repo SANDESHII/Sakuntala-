@@ -157,19 +157,6 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
                                     <div className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" style={{ width: `${analysis.purity}%` }} />
                                 </div>
                             </div>
-                            {analysis.context.audit && (
-                                <div className="pt-8 border-t border-neutral-800 grid grid-cols-2 gap-y-8 gap-x-6">
-                                    {[
-                                        { label: 'Data Quality', value: analysis.context.audit.signalIntegrity },
-                                        { label: 'Edge Strength', value: analysis.context.audit.alphaAdjustment },
-                                    ].map((item, i) => (
-                                        <div key={i} className="space-y-1.5">
-                                            <span className="text-[9px] font-black text-neutral-600 uppercase tracking-widest block leading-none">{item.label}</span>
-                                            <p className="text-[10px] font-black text-neutral-400 leading-tight uppercase tracking-tight">{item.value}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
                         </div>
                     </div>
                 </div>

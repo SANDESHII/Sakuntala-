@@ -27,6 +27,17 @@ export const AnalysisForm: React.FC<AnalysisFormProps> = ({
     ], [home, away, league, time, setHome, setAway, setLeague, setTime]);
 
     // 2. Action Handlers
+    const normalizeLeague = (v: string) => {
+        const upper = v.toUpperCase().trim();
+        const clean = upper.replace(/ /g, '').replace(/_/g, '');
+        if (clean === 'LALIGA' || clean === 'SPAIN') return 'LA_LIGA';
+        if (clean === 'SERIEA' || clean === 'ITALY') return 'SERIE_A';
+        if (clean === 'LIGUE1' || clean === 'FRANCE') return 'LIGUE_1';
+        if (clean === 'EPL' || clean === 'PREMIERLEAGUE' || clean === 'ENGLAND') return 'EPL';
+        if (clean === 'BUNDESLIGA' || clean === 'GERMANY') return 'BUNDESLIGA';
+        return upper;
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!loading && home && away) onAnalyze();
@@ -46,7 +57,10 @@ export const AnalysisForm: React.FC<AnalysisFormProps> = ({
                         <input 
                             type="text" 
                             value={f.val} 
-                            onChange={(e) => f.set(e.target.value.toUpperCase())} 
+                            onChange={(e) => {
+                                const val = e.target.value.toUpperCase();
+                                f.set(f.label === 'League Code' ? normalizeLeague(val) : val);
+                            }} 
                             className="w-full bg-transparent border-b border-neutral-800 px-0 py-4 text-4xl text-white focus:outline-none focus:border-emerald-500 transition-all font-bold placeholder:text-neutral-800 uppercase tracking-tighter" 
                             placeholder={f.placeholder} 
                             autoComplete="off"
@@ -57,14 +71,14 @@ export const AnalysisForm: React.FC<AnalysisFormProps> = ({
                                     <button
                                         key={l}
                                         type="button"
-                                        onClick={() => setLeague(l)}
+                                        onClick={() => setLeague(normalizeLeague(l))}
                                         className={`px-3 py-1 text-[8px] font-black border transition-all ${
                                             league === l 
                                                 ? 'bg-emerald-500 border-emerald-500 text-white' 
                                                 : 'bg-neutral-900 border-neutral-800 text-neutral-500 hover:border-neutral-700'
                                         }`}
                                     >
-                                        {l.replace('_', ' ')}
+                                        {l.replace(/_/g, ' ')}
                                     </button>
                                 ))}
                             </div>

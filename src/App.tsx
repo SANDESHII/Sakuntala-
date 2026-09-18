@@ -30,7 +30,7 @@ export const App: React.FC = () => {
 
             // Import engine dynamically to avoid circular dependencies
             const { runPrediction } = await import('./core/engine');
-            const result = runPrediction(inputs.home, inputs.away, inputs.league);
+            const result = await runPrediction(inputs.home, inputs.away, inputs.league);
             setAnalysis(result);
         } catch (err: any) {
             setError(err.message || 'ANALYSIS FAILED');
@@ -41,7 +41,8 @@ export const App: React.FC = () => {
 
     const loadBacktest = async () => {
         const { runBacktest } = await import('./core/engine');
-        setBacktestSummary(runBacktest());
+        const summary = await runBacktest();
+        setBacktestSummary(summary);
     };
 
     React.useEffect(() => {

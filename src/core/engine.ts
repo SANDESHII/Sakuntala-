@@ -1,6 +1,7 @@
-import { AnalysisResult, TeamStats, MatchContext, Citation } from '../types';
+import { AnalysisResult, TeamStats, MatchContext, Citation, InternalTeamData } from '../types';
 import { TEAM_DATABASE, LEAGUE_CONFIGS } from './constants';
 import { DixonColes } from './math';
+import { FreeDataService } from '../services/freeDataService';
 
 /**
  * Generate data source citations
@@ -40,80 +41,142 @@ function generateVarianceAlerts(homeTeam: string, awayTeam: string, homeData: an
 /**
  * Main prediction engine using Dixon-Coles model
  */
-export function runPrediction(
+export async function runPrediction(
   homeTeam: string,
   awayTeam: string,
   league: string
-): AnalysisResult {
-  const leagueKey = league.toUpperCase().replace(' ', '_');
+): Promise<AnalysisResult> {
+  const leagueKeyRaw = league.toUpperCase().replace(/ /g, '_');
+  const leagueKey = normalizeLeagueKey(leagueKeyRaw);
+  
+  // Smart team lookup
+  const normalizeTeamName = (name: string): string => {
+    return name.toUpperCase().trim().replace(/_/g, ' ').replace(/\s+/g, ' ');
+  };
+
+  const findTeam = (teamName: string, data: Record<string, any>) => {
+    const normalized = normalizeTeamName(teamName);
+    if (data[normalized]) return data[normalized];
+    const withUnderscores = normalized.replace(/ /g, '_');
+    if (data[withUnderscores]) return data[withUnderscores];
+    for (const key of Object.keys(data)) {
+      if (key.includes(normalized) || normalized.includes(key)) {
+        return data[key];
+      }
+    }
+    return null;
+  };
+
   const leagueData = TEAM_DATABASE[leagueKey] || TEAM_DATABASE['EPL'];
   const leagueConfig = LEAGUE_CONFIGS[leagueKey] || LEAGUE_CONFIGS['EPL'];
 
-  // Get team data or generate defaults
-  const homeData = leagueData[homeTeam.toUpperCase()];
-  const awayData = leagueData[awayTeam.toUpperCase()];
+  // Try real data first
+  let homeData: InternalTeamData | null = await FreeDataService.getTeamStats(homeTeam, leagueKey);
+  let awayData: InternalTeamData | null = await FreeDataService.getTeamStats(awayTeam, leagueKey);
 
-  if (!homeData || !awayData) {
-    throw new Error('TEAM_NOT_FOUND_IN_DATABASE');
+  let isHomeGeneric = false;
+  let isAwayGeneric = false;
+  let dataSource: 'LIVE' | 'FALLBACK_STATIC' = 'LIVE';
+
+  if (!homeData) {
+    const staticData = findTeam(homeTeam, leagueData);
+    if (staticData) {
+      homeData = staticData as InternalTeamData;
+    } else {
+      isHomeGeneric = true;
+      dataSource = 'FALLBACK_STATIC';
+      homeData = {
+        attackStrength: 1.15,
+        defenseStrength: 0.90,
+        avgGoalsScored: 1.45,
+        avgGoalsConceded: 1.35,
+        avgXG: 1.40,
+        avgXGA: 1.30,
+        homeBias: leagueConfig.homeAdvantage,
+        form: [1, 1, 1, 1, 1],
+        cleanSheetRate: 0.25,
+        clinicalEdge: 1.0,
+      };
+    }
   }
 
-  // Calculate expected goals using Dixon-Coles framework
-  const leagueAvgGoals = leagueConfig.goalRate * 1.35;
+  if (!awayData) {
+    const staticData = findTeam(awayTeam, leagueData);
+    if (staticData) {
+      awayData = staticData as InternalTeamData;
+    } else {
+      isAwayGeneric = true;
+      dataSource = 'FALLBACK_STATIC';
+      awayData = {
+        attackStrength: 1.15,
+        defenseStrength: 0.90,
+        avgGoalsScored: 1.45,
+        avgGoalsConceded: 1.35,
+        avgXG: 1.40,
+        avgXGA: 1.30,
+        homeBias: 0.2,
+        form: [1, 1, 1, 1, 1],
+        cleanSheetRate: 0.25,
+        clinicalEdge: 1.0,
+      };
+    }
+  }
 
-  // Attack and Defense strengths (Renamed for clarity)
+  // Calculate expected goals
+  const leagueAvgGoals = leagueConfig.goalRate * 1.35;
   const homeAttackStrength = homeData.attackStrength;
   const awayAttackStrength = awayData.attackStrength;
   const homeDefenseFactor = homeData.defenseStrength;
   const awayDefenseFactor = awayData.defenseStrength;
 
-  // Home expected goals (lambda)
   let lambdaHome = homeAttackStrength * awayDefenseFactor * leagueAvgGoals * (1 + leagueConfig.homeAdvantage * 0.5);
-
-  // Away expected goals (mu)
   let muAway = awayAttackStrength * homeDefenseFactor * leagueAvgGoals * (1 - leagueConfig.homeAdvantage * 0.3);
 
-  // Momentum (Form) adjustment
   const homeMomentum = homeData.form.reduce((a: number, b: number) => a + b, 0) / (homeData.form.length * 3);
   const awayMomentum = awayData.form.reduce((a: number, b: number) => a + b, 0) / (awayData.form.length * 3);
 
   lambdaHome *= (0.85 + homeMomentum * 0.3);
   muAway *= (0.85 + awayMomentum * 0.3);
 
-  // Clinical edge adjustment
   lambdaHome *= homeData.clinicalEdge;
   muAway *= awayData.clinicalEdge;
 
-  // Clamp values to reasonable range
   lambdaHome = Math.max(0.3, Math.min(4.0, lambdaHome));
   muAway = Math.max(0.2, Math.min(3.5, muAway));
 
-  // Correlation parameter (rho)
   const rho = -0.12;
-
-  // Generate score matrix
   const scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, rho);
 
-  // Calculate raw probabilities
   const modelProbOver15 = DixonColes.calculateOverUnder(scoreMatrix, 1.5);
   const modelProbUnder35 = 1 - DixonColes.calculateOverUnder(scoreMatrix, 3.5);
 
-  // Generate synthetic market odds (with 5% overround)
   const overround = 1.05;
-  const marketOddsOver15 = overround / modelProbOver15;
-  const marketOddsUnder35 = overround / modelProbUnder35;
+  let marketOddsOver15 = overround / modelProbOver15;
+  let marketOddsUnder35 = overround / modelProbUnder35;
 
-  // Market probabilities (without overround)
-  const marketProbOver15 = 1 / marketOddsOver15;
-  const marketProbUnder35 = 1 / marketOddsUnder35;
+  // Try real odds
+  const liveOdds = await FreeDataService.getLiveOdds(leagueKey);
+  const matchOdds = liveOdds.find((o: any) => 
+    normalizeTeamName(o.home_team).includes(normalizeTeamName(homeTeam)) ||
+    normalizeTeamName(homeTeam).includes(normalizeTeamName(o.home_team))
+  );
 
-  const marketImpliedOver15 = marketProbOver15;
-  const marketImpliedUnder35 = marketProbUnder35;
+  if (matchOdds) {
+    const market = matchOdds.bookmakers[0]?.markets.find((m: any) => m.key === 'totals');
+    if (market) {
+      const o15 = market.outcomes.find((o: any) => o.name === 'Over' && o.point === 1.5);
+      const u35 = market.outcomes.find((o: any) => o.name === 'Under' && o.point === 3.5);
+      if (o15) marketOddsOver15 = o15.price;
+      if (u35) marketOddsUnder35 = u35.price;
+    }
+  }
 
-  // Final probabilities (Blended in original, now single model)
+  const marketImpliedOver15 = 1 / marketOddsOver15;
+  const marketImpliedUnder35 = 1 / marketOddsUnder35;
+
   const finalProbOver15 = modelProbOver15;
   const finalProbUnder35 = modelProbUnder35;
 
-  // Determine prediction type based on edge
   const over15Edge = finalProbOver15 - marketImpliedOver15;
   const under35Edge = finalProbUnder35 - marketImpliedUnder35;
 
@@ -216,7 +279,14 @@ export function runPrediction(
   };
 
   // Generate summary
-  const summary = generateSummary(homeTeam, awayTeam, predictionType, lambdaHome, muAway, edge);
+  let summary = generateSummary(homeTeam, awayTeam, predictionType, lambdaHome, muAway, edge);
+
+  if (isHomeGeneric || isAwayGeneric) {
+    const missing = [];
+    if (isHomeGeneric) missing.push(homeTeam.toUpperCase().trim());
+    if (isAwayGeneric) missing.push(awayTeam.toUpperCase().trim());
+    summary = `⚠️ ${missing.join(', ')} not found in ${leagueKey} database - using league averages. ${summary}`;
+  }
 
   return {
     probability,
@@ -242,8 +312,18 @@ export function runPrediction(
       edgeValue: edge,
       groundingCitations: citations,
     },
-    dataSource: 'LIVE',
+    dataSource,
   };
+}
+
+function normalizeLeagueKey(league: string): string {
+  const l = league.toUpperCase().replace(/_/g, '').replace(/ /g, '').replace(/-/g, '');
+  if (l.includes('LALIGA') || l.includes('SPAIN')) return 'LA_LIGA';
+  if (l.includes('SERIEA') || l.includes('ITALY')) return 'SERIE_A';
+  if (l.includes('LIGUE1') || l.includes('FRANCE')) return 'LIGUE_1';
+  if (l.includes('EPL') || l.includes('PREMIER') || l.includes('ENGLAND')) return 'EPL';
+  if (l.includes('BUNDESLIGA') || l.includes('GERMANY')) return 'BUNDESLIGA';
+  return league;
 }
 
 function generateSummary(
@@ -266,7 +346,7 @@ function generateSummary(
 /**
  * Run backtest simulation
  */
-export function runBacktest() {
+export async function runBacktest() {
   const teams = Object.entries(TEAM_DATABASE);
   const matches: any[] = [];
   let totalOver15Correct = 0;
@@ -292,7 +372,7 @@ export function runBacktest() {
     const homeGoals = Math.floor(Math.random() * 4);
     const awayGoals = Math.floor(Math.random() * 3);
 
-    const prediction = runPrediction(homeTeam, awayTeam, leagueKey.replace('_', ' '));
+    const prediction = await runPrediction(homeTeam, awayTeam, leagueKey.replace('_', ' '));
 
     const isOver15Correct = (homeGoals + awayGoals) >= 2;
     const isUnder35Correct = (homeGoals + awayGoals) <= 3;

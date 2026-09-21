@@ -33,7 +33,7 @@ export const GroundingLog: FC<GroundingLogProps> = ({ analysis }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         {[
           { label: 'Data Source', value: context.league || 'GLOBAL', icon: Globe },
-          { label: 'Market Status', value: analysis.marketOdds > 1.05 ? 'SYNCED' : 'ESTIMATED', icon: Search },
+          { label: 'Market Status', value: analysis.usedRealOdds ? 'LIVE ODDS' : 'NO ODDS', icon: Search },
           { 
             label: 'Integrity Check', 
             value: isIntegrityPassed ? 'PASSED' : 'FAILED', 

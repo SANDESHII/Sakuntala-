@@ -15,7 +15,15 @@ export const BacktestDisplay: FC<BacktestDisplayProps> = ({ summary }) => {
                 animate={{ opacity: 1, y: 0 }}
                 className="grid grid-cols-1 md:grid-cols-4 gap-8"
             >
-                {summary.brierScore === -1 && (
+                {summary.error && (
+                    <div className="md:col-span-4 p-6 bg-red-500/10 border border-red-500/20 rounded-2xl">
+                        <p className="text-red-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-3">
+                            <span className="w-2 h-2 rounded-full bg-red-500" />
+                            {summary.error}
+                        </p>
+                    </div>
+                )}
+                {summary.brierScore === -1 && !summary.error && (
                     <div className="md:col-span-4 p-6 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
                         <p className="text-amber-500 text-[10px] font-black uppercase tracking-widest flex items-center gap-3">
                             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />

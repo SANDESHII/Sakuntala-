@@ -58,6 +58,7 @@ export interface AnalysisResult {
   verdict: 'EXECUTE_BET' | 'NO_BET';
   context: MatchContext;
   dataSource: 'LIVE' | 'FALLBACK_STATIC';
+  usedRealOdds?: boolean;
 }
 
 export interface BacktestMatch {
@@ -92,4 +93,5 @@ export interface BacktestSummary {
   under35Accuracy: number;
   edgeSegments: EdgeSegment[];
   matches: BacktestMatch[];
+  error?: string;
 }

@@ -218,7 +218,7 @@ export async function runPrediction(
     edge = 0;
   }
 
-  const predictionLabel = predictionType === 'NO_BET' ? 'NO EDGE DETECTED' : predictionType.replace('_', ' ') + ' GOALS';
+  const predictionLabel = predictionType === 'NO_BET' ? 'NO EDGE DETECTED' : predictionType === 'OVER_15' ? 'OVER 1.5 GOALS' : 'UNDER 3.5 GOALS';
   
   const p = probability / 100;
   const q = 1 - p;
@@ -277,6 +277,7 @@ export async function runPrediction(
       marketOdds: { pinnacleOver15: marketOddsOver15, pinnacleUnder35: marketOddsUnder35 },
     },
     dataSource,
+    usedRealOdds: !!matchOdds,
   };
 }
 
@@ -311,6 +312,22 @@ function generateSummary(
  * Run backtest simulation using real historical data for grounding
  */
 export async function runBacktest() {
+  if (!FreeDataService.isLiveCapable) {
+    return {
+      totalMatches: 0,
+      brierScore: -1,
+      over15Accuracy: 0,
+      under35Accuracy: 0,
+      edgeSegments: [
+        { segment: 'Low Edge (0-3%)', min: 0, max: 3, count: 0, hits: 0, hitRate: 0, avgEdge: 0 },
+        { segment: 'Mid Edge (3-7%)', min: 3, max: 7, count: 0, hits: 0, hitRate: 0, avgEdge: 0 },
+        { segment: 'High Edge (7%+)', min: 7, max: 100, count: 0, hits: 0, hitRate: 0, avgEdge: 0 },
+      ],
+      matches: [],
+      error: 'API key required. Set VITE_API_FOOTBALL_KEY in .env to enable historical backtesting.',
+    };
+  }
+
   const leagues = ['EPL', 'LA_LIGA', 'BUNDESLIGA', 'SERIE_A', 'LIGUE_1'];
   const matches: any[] = [];
   let totalOver15Correct = 0;

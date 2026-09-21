@@ -40,11 +40,6 @@ export interface MatchContext {
   };
 }
 
-export interface AnalysisConfidence {
-  confidenceScore: number;
-  edgeValue: number;
-}
-
 export interface AnalysisResult {
   probability: number;
   summary: string;
@@ -63,7 +58,6 @@ export interface AnalysisResult {
   verdict: 'EXECUTE_BET' | 'NO_BET';
   context: MatchContext;
   dataSource: 'LIVE' | 'FALLBACK_STATIC';
-  surety?: AnalysisConfidence;
 }
 
 export interface BacktestMatch {

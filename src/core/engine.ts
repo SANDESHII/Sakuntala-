@@ -8,11 +8,9 @@ import * as Calibration from './calibration';
  * Prediction Pipeline Configuration
  */
 const MODEL_CONFIG = {
-  LEAGUE_AVG_GOALS: 1.35,
+  LEAGUE_AVG_GOALS: Calibration.BASE_GOALS,
   HOME_ADVANTAGE_WEIGHT: 0.5,
   AWAY_DEFENSE_WEIGHT: 0.3,
-  MOMENTUM_FLOOR: 0.85,
-  MOMENTUM_CEILING: 0.3,
   EDGE_THRESHOLD: 0.03,
   MAX_LAMBDA: 4.0,
   MIN_LAMBDA: 0.3,
@@ -31,20 +29,20 @@ const normalizeTeamName = (name: string): string => {
  * Smart team lookup using aliases and canonical stats.
  * Returns both the data and the canonical name for league validation.
  */
-const findTeamDetailed = (teamName: string): { data: InternalTeamData; canonicalName: string } | null => {
+const findTeamDetailed = (teamName: string): InternalTeamData | null => {
   const normalized = normalizeTeamName(teamName);
   
-  if (TEAM_STATS[normalized]) return { data: TEAM_STATS[normalized], canonicalName: normalized };
+  if (TEAM_STATS[normalized]) return TEAM_STATS[normalized];
   
   const alias = TEAM_ALIASES[normalized];
   if (alias && TEAM_STATS[alias]) {
-    return { data: TEAM_STATS[alias], canonicalName: alias };
+    return TEAM_STATS[alias];
   }
   
   // Fuzzy match fallback
   const keys = Object.keys(TEAM_STATS);
   const match = keys.find(key => key.includes(normalized) || normalized.includes(key));
-  return match ? { data: TEAM_STATS[match], canonicalName: match } : null;
+  return match ? TEAM_STATS[match] : null;
 };
 
 /**
@@ -64,11 +62,11 @@ async function resolveTeamData(
   if (liveData) return { data: liveData, isGeneric: false, dataSource: 'LIVE' };
 
   // 2. Try Local Database
-  const staticResult = findTeamDetailed(teamName);
-  if (staticResult) {
+  const staticData = findTeamDetailed(teamName);
+  if (staticData) {
     // Neutralize frozen form data if we are in an API-capable environment
     // This prevents "frozen in time" form from polluting the analysis
-    const data = { ...staticResult.data };
+    const data = { ...staticData };
     if (FreeDataService.isLiveCapable) {
       data.form = [1, 1, 1, 1, 1];
     }
@@ -279,10 +277,6 @@ export async function runPrediction(
       marketOdds: { pinnacleOver15: marketOddsOver15, pinnacleUnder35: marketOddsUnder35 },
     },
     dataSource,
-    surety: {
-      confidenceScore: probability,
-      edgeValue: edge
-    }
   };
 }
 

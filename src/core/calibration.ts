@@ -32,32 +32,6 @@ interface MatchData {
   ag: number;
 }
 
-// ── Poisson helpers ────────────────────────────────────────────
-
-const LOG_FACT = [0];
-for (let i = 1; i <= 20; i++) LOG_FACT[i] = LOG_FACT[i - 1] + Math.log(i);
-
-function logPoisson(k: number, lambda: number): number {
-  if (lambda <= 0) return k === 0 ? 0 : -Infinity;
-  if (k < 0 || k >= LOG_FACT.length) return -Infinity;
-  return k * Math.log(lambda) - lambda - LOG_FACT[k];
-}
-
-export function dcLogLikelihood(
-  h: number, a: number,
-  lambda: number, mu: number, rho: number
-): number {
-  let ll = logPoisson(h, lambda) + logPoisson(a, mu);
-  // Tau correction for low scores
-  if (h === 0 && a === 0) ll += Math.log(Math.max(1 - lambda * mu * rho, 1e-10));
-  else if (h === 0 && a === 1) ll += Math.log(Math.max(1 + lambda * rho, 1e-10));
-  else if (h === 1 && a === 0) ll += Math.log(Math.max(1 + mu * rho, 1e-10));
-  else if (h === 1 && a === 1) ll += Math.log(Math.max(1 - rho, 1e-10));
-  return ll;
-}
-
-// ── MLE Fitting ────────────────────────────────────────────────
-
 /**
  * Fit attack/defense parameters via gradient ascent on
  * the Dixon-Coles log-likelihood.
@@ -177,7 +151,7 @@ export async function fitFromAPI(league: string): Promise<FittedLeagueParams> {
 
 // ── Prediction ─────────────────────────────────────────────────
 
-const BASE_GOALS = 1.35; // league-average goals per game
+export const BASE_GOALS = 1.35; // league-average goals per game
 
 /**
  * Compute expected goals (λ, μ) using fitted parameters.
@@ -195,37 +169,4 @@ export function predictGoals(
     lambdaHome: h.attack * a.defense * fitted.homeAdvantage * BASE_GOALS,
     muAway:     a.attack * h.defense * BASE_GOALS,
   };
-}
-
-// ── Calibration ────────────────────────────────────────────────
-
-/**
- * Check if predicted probabilities match actual outcomes.
- *
- * If you predict 70%, did events actually happen ~70% of the time?
- * If not, the model is miscalibrated.
- */
-export function checkCalibration(
-  predictions: { predicted: number; actual: boolean }[],
-  bucketSize = 10
-): { bucket: string; predicted: number; actual: number; count: number }[] {
-  const buckets: Record<string, { sum: number; hits: number; count: number }> = {};
-
-  for (const p of predictions) {
-    const b = Math.floor(p.predicted / bucketSize) * bucketSize;
-    const key = `${b}-${b + bucketSize}%`;
-    if (!buckets[key]) buckets[key] = { sum: 0, hits: 0, count: 0 };
-    buckets[key].sum += p.predicted;
-    buckets[key].hits += p.actual ? 1 : 0;
-    buckets[key].count++;
-  }
-
-  return Object.entries(buckets)
-    .map(([bucket, d]) => ({
-      bucket,
-      predicted: d.sum / d.count,
-      actual: (d.hits / d.count) * 100,
-      count: d.count,
-    }))
-    .sort((a, b) => a.predicted - b.predicted);
 }

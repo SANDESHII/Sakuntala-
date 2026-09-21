@@ -18,7 +18,6 @@ export const BacktestDisplay: React.FC<BacktestDisplayProps> = ({ summary }) => 
                 {[
                     { label: 'Matches Analyzed', value: summary.totalMatches, icon: Activity },
                     { label: 'Accuracy Rate', value: `${(((summary.over15Accuracy || 0) + (summary.under35Accuracy || 0)) / 2)?.toFixed(1) || '0.0'}%`, icon: CheckCircle2 },
-                    { label: 'Model Confidence', value: summary.highPurityMatches, icon: BarChart3, detail: 'High Certainty Samples' },
                     { label: 'Brier Score', value: summary.brierScore?.toFixed(4) || '0.0000', icon: BarChart3, detail: 'Mean Squared Error' }
                 ].map((stat, i) => (
                     <div key={i} className="p-10 bg-zinc-950 border border-zinc-900 rounded-3xl space-y-6 hover:bg-zinc-900 transition-all">

@@ -21,8 +21,6 @@ export interface TeamStats {
   defensiveStability: number;
   form: number[];
   cleanSheets: number;
-  dataPurity: number;
-  redCardPropensity: number;
   clinicalEdge: number;
   homeAwayBias: number;
 }
@@ -98,8 +96,6 @@ export interface EdgeSegment {
 export interface BacktestSummary {
   totalMatches: number;
   brierScore: number;
-  highPurityBrierScore: number;
-  highPurityMatches: number;
   over15Accuracy: number;
   under35Accuracy: number;
   edgeSegments: EdgeSegment[];

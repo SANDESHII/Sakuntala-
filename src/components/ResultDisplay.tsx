@@ -27,12 +27,19 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
             {/* Header Status */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-12 pb-16 border-b border-neutral-900">
                 <div className="space-y-8">
-                    <div className="space-y-2">
-                        <span className="text-[10px] font-black text-neutral-600 uppercase tracking-[0.4em]">Prediction</span>
-                        <h2 className="text-7xl md:text-8xl font-black text-white tracking-tighter leading-[0.8] uppercase max-w-2xl">
-                            {analysis.predictionLabel}
-                        </h2>
+                    <div className="flex items-center gap-3">
+                        <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${
+                            analysis.dataSource === 'LIVE' 
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' 
+                            : 'bg-amber-500/10 border-amber-500/20 text-amber-500'
+                        }`}>
+                            {analysis.dataSource === 'LIVE' ? 'Live API Feed' : 'Historical Fallback'}
+                        </span>
+                        <span className="text-[10px] font-black text-neutral-600 uppercase tracking-[0.4em]">Prediction Engine</span>
                     </div>
+                    <h2 className="text-7xl md:text-8xl font-black text-white tracking-tighter leading-[0.8] uppercase max-w-2xl">
+                        {analysis.predictionLabel}
+                    </h2>
                 </div>
                 <div className="flex flex-col items-end gap-4">
                     <div className="text-right">

@@ -1,5 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { ELITE_LEAGUES } from '../core/constants';
+import { getUpcomingFixtures, FixtureMatch } from '../services/freeDataService';
+import { Calendar } from 'lucide-react';
 
 interface AnalysisFormProps {
     home: string;
@@ -18,6 +20,23 @@ export const AnalysisForm: React.FC<AnalysisFormProps> = ({
     home, setHome, away, setAway, league, setLeague, time, setTime, 
     onAnalyze, loading
 }) => {
+    const [fixtures, setFixtures] = useState<FixtureMatch[]>([]);
+    const [loadingFixtures, setLoadingFixtures] = useState(false);
+
+    useEffect(() => {
+        const fetchFixtures = async () => {
+            setLoadingFixtures(true);
+            try {
+                const data = await getUpcomingFixtures(league, 8);
+                setFixtures(data);
+            } catch (error) {
+                console.error('Fixture Error:', error);
+            } finally {
+                setLoadingFixtures(false);
+            }
+        };
+        fetchFixtures();
+    }, [league]);
     // 1. Defined Field Schema
     const fields = useMemo(() => [
         { label: 'Home Side', val: home, set: setHome, placeholder: 'ARSENAL' },
@@ -98,6 +117,56 @@ export const AnalysisForm: React.FC<AnalysisFormProps> = ({
             >
                 {loading ? 'PROCESSING...' : 'RUN ANALYSIS'}
             </button>
+
+            {/* Upcoming Fixtures Section */}
+            <div className="mt-16 pt-16 border-t border-neutral-900">
+                <div className="flex items-center gap-3 mb-8">
+                    <Calendar className="w-4 h-4 text-emerald-500" />
+                    <h3 className="text-xs font-black text-white uppercase tracking-[0.3em]">Upcoming Fixtures</h3>
+                </div>
+                
+                {loadingFixtures ? (
+                    <div className="text-[10px] text-neutral-600 animate-pulse font-black uppercase tracking-widest">
+                        Syncing league schedule...
+                    </div>
+                ) : fixtures.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {fixtures.map((f, i) => (
+                            <button
+                                key={i}
+                                type="button"
+                                onClick={() => {
+                                    setHome(f.homeTeam);
+                                    setAway(f.awayTeam);
+                                    setTime(new Date(f.kickoff).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+                                }}
+                                className="group p-6 bg-neutral-900/50 border border-neutral-900 text-left hover:border-emerald-500/50 transition-all rounded-xl"
+                            >
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center text-[8px] font-black text-neutral-600 uppercase tracking-tighter">
+                                        <span>{new Date(f.kickoff).toLocaleDateString()}</span>
+                                        <span className="text-emerald-500">{new Date(f.kickoff).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <img src={f.homeLogo} alt="" className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+                                            <span className="text-[10px] font-black text-white truncate">{f.homeTeam}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <img src={f.awayLogo} alt="" className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+                                            <span className="text-[10px] font-black text-white truncate">{f.awayTeam}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-[10px] text-neutral-700 font-black uppercase tracking-widest">
+                        No upcoming fixtures detected in API feed.
+                    </div>
+                )}
+            </div>
         </form>
     );
 };

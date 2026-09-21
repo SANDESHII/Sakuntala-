@@ -57,7 +57,6 @@ async function resolveTeamData(
   data: InternalTeamData; 
   isGeneric: boolean; 
   dataSource: 'LIVE' | 'FALLBACK_STATIC';
-  leagueMismatch?: boolean;
 }> {
   // 1. Try Live API
   const liveData = await FreeDataService.getTeamStats(teamName, leagueKey);
@@ -66,8 +65,6 @@ async function resolveTeamData(
   // 2. Try Local Database
   const staticResult = findTeamDetailed(teamName);
   if (staticResult) {
-    const isLeagueMember = leagueConfig.teams.includes(staticResult.canonicalName);
-    
     // Neutralize frozen form data if we are in an API-capable environment
     // This prevents "frozen in time" form from polluting the analysis
     const data = { ...staticResult.data };
@@ -78,8 +75,7 @@ async function resolveTeamData(
     return { 
       data, 
       isGeneric: false, 
-      dataSource: 'FALLBACK_STATIC',
-      leagueMismatch: !isLeagueMember
+      dataSource: 'FALLBACK_STATIC'
     };
   }
 
@@ -217,14 +213,10 @@ export async function runPrediction(
 
   const summary = generateSummary(homeTeam, awayTeam, predictionType, lambdaHome, muAway, edge);
   const dataSource = homeRes.dataSource === 'LIVE' && awayRes.dataSource === 'LIVE' ? 'LIVE' : 'FALLBACK_STATIC';
-  const hasMismatch = homeRes.leagueMismatch || awayRes.leagueMismatch;
 
   let finalSummary = summary;
   if (homeRes.isGeneric || awayRes.isGeneric) {
     finalSummary = `⚠️ Data Gap: ${[homeRes.isGeneric ? homeTeam : null, awayRes.isGeneric ? awayTeam : null].filter(Boolean).join(', ')} missing. ${summary}`;
-  } else if (hasMismatch) {
-    const mismatchedTeams = [homeRes.leagueMismatch ? homeTeam : null, awayRes.leagueMismatch ? awayTeam : null].filter(Boolean).join(', ');
-    finalSummary = `⚠️ League Mismatch: ${mismatchedTeams} detected in wrong league context (${leagueKey}). Accuracy may be degraded. ${summary}`;
   }
 
   return {

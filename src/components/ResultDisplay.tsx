@@ -1,4 +1,4 @@
-import React from 'react';
+import { FC } from 'react';
 import { Zap, Shield, Target, Activity, LucideIcon, Binary } from 'lucide-react';
 import { AnalysisResult } from '../types';
 
@@ -6,7 +6,7 @@ interface ResultGridProps {
     analysis: AnalysisResult;
 }
 
-const StatCard: React.FC<{ label: string; value: string | number; subValue?: string; icon: LucideIcon }> = ({ label, value, subValue, icon: Icon }) => (
+const StatCard: FC<{ label: string; value: string | number; subValue?: string; icon: LucideIcon }> = ({ label, value, subValue, icon: Icon }) => (
     <div className="bg-neutral-900/40 p-10 rounded-[32px] border border-neutral-800/50 flex flex-col justify-between space-y-10 hover:bg-neutral-900/60 transition-all group shadow-sm">
         <div className="flex items-center justify-between">
             <span className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.25em]">{label}</span>
@@ -21,7 +21,7 @@ const StatCard: React.FC<{ label: string; value: string | number; subValue?: str
     </div>
 );
 
-export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
+export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
     return (
         <div className="space-y-24">
             {/* Header Status */}

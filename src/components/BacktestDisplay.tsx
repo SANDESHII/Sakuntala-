@@ -1,4 +1,4 @@
-import React from 'react';
+import { FC } from 'react';
 import { motion } from 'motion/react';
 import { Activity, CheckCircle2, BarChart3 } from 'lucide-react';
 import { BacktestSummary } from '../types';
@@ -7,7 +7,7 @@ interface BacktestDisplayProps {
     summary: BacktestSummary;
 }
 
-export const BacktestDisplay: React.FC<BacktestDisplayProps> = ({ summary }) => {
+export const BacktestDisplay: FC<BacktestDisplayProps> = ({ summary }) => {
     return (
         <div className="space-y-12">
             <motion.div 

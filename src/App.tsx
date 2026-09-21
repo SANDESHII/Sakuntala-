@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState, useEffect, FC } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AlertCircle, LayoutDashboard, History } from 'lucide-react';
-import { AnalysisResult } from './types';
+import { AnalysisResult, BacktestSummary } from './types';
 import { Header } from './components/Header';
 import { LoadingOverlay } from './components/LoadingOverlay';
 import { AnalysisForm } from './components/AnalysisForm';
@@ -9,13 +9,13 @@ import { ResultGrid } from './components/ResultDisplay';
 import { GroundingLog } from './components/GroundingLog';
 import { BacktestDisplay } from './components/BacktestDisplay';
 
-export const App: React.FC = () => {
+export const App: FC = () => {
     const [inputs, setInputs] = useState({ home: '', away: '', league: 'EPL', time: '' });
     const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
     const [loadingAnalysis, setLoadingAnalysis] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'terminal' | 'backtest'>('terminal');
-    const [backtestSummary, setBacktestSummary] = useState<any>(null);
+    const [backtestSummary, setBacktestSummary] = useState<BacktestSummary | null>(null);
 
     const handleAnalyze = async () => {
         if (loadingAnalysis || !inputs.home || !inputs.away) return;
@@ -39,7 +39,7 @@ export const App: React.FC = () => {
         setBacktestSummary(summary);
     };
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (activeTab === 'backtest' && !backtestSummary) loadBacktest();
     }, [activeTab, backtestSummary]);
 

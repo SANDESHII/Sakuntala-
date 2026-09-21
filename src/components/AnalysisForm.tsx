@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import { useState, useEffect, FormEvent, FC } from 'react';
 import { ELITE_LEAGUES } from '../core/constants';
 import { getUpcomingFixtures, FixtureMatch } from '../services/freeDataService';
 import { Calendar } from 'lucide-react';
@@ -16,7 +16,7 @@ interface AnalysisFormProps {
     loading: boolean;
 }
 
-export const AnalysisForm: React.FC<AnalysisFormProps> = ({ 
+export const AnalysisForm: FC<AnalysisFormProps> = ({ 
     home, setHome, away, setAway, league, setLeague, time, setTime, 
     onAnalyze, loading
 }) => {
@@ -38,12 +38,12 @@ export const AnalysisForm: React.FC<AnalysisFormProps> = ({
         fetchFixtures();
     }, [league]);
     // 1. Defined Field Schema
-    const fields = useMemo(() => [
+    const fields = [
         { label: 'Home Side', val: home, set: setHome, placeholder: 'ARSENAL' },
         { label: 'Away Side', val: away, set: setAway, placeholder: 'CHELSEA' },
         { label: 'League Code', val: league, set: setLeague, placeholder: 'EPL' },
         { label: 'Market Time', val: time, set: setTime, placeholder: '19:45' }
-    ], [home, away, league, time, setHome, setAway, setLeague, setTime]);
+    ];
 
     // 2. Action Handlers
     const normalizeLeague = (v: string) => {
@@ -57,7 +57,7 @@ export const AnalysisForm: React.FC<AnalysisFormProps> = ({
         return upper;
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         if (!loading && home && away) onAnalyze();
     };

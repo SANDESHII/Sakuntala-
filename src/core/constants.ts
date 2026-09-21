@@ -171,33 +171,28 @@ export const TEAM_ALIASES: Record<string, string> = {
 /**
  * League-specific goal rates and home advantage factors
  */
-export const LEAGUE_CONFIGS: Record<string, { goalRate: number; homeAdvantage: number; teams: string[] }> = {
+export const LEAGUE_CONFIGS: Record<string, { goalRate: number; homeAdvantage: number }> = {
   'EPL': { 
     goalRate: 1.02, 
     homeAdvantage: 0.28, 
-    teams: ['ARSENAL', 'MAN_CITY', 'LIVERPOOL', 'CHELSEA', 'TOTTENHAM', 'MAN_UTD', 'NEWCASTLE', 'ASTON_VILLA', 'BRIGHTON', 'WEST_HAM', 'BRENTFORD', 'CRYSTAL_PALACE', 'EVERTON', 'FULHAM', 'WOLVES', 'BOURNEMOUTH', 'NOTTINGHAM_FOREST'] 
   },
   'LA_LIGA': { 
     goalRate: 0.94, 
     homeAdvantage: 0.32, 
-    teams: ['REAL_MADRID', 'BARCELONA', 'ATLETICO', 'SEVILLA', 'REAL_SOCIEDAD', 'VILLARREAL', 'ATHLETIC_BILBAO', 'BETIS', 'VALENCIA', 'GETAFE', 'CELTA_VIGO', 'GIRONA', 'OSASUNA', 'LAS_PALMAS', 'MALLORCA', 'ALAVES', 'CADIZ', 'GRANADA', 'ALMERIA'] 
   },
   'SERIE_A': { 
     goalRate: 0.98, 
     homeAdvantage: 0.26, 
-    teams: ['INTER', 'MILAN', 'JUVENTUS', 'NAPOLI', 'ROMA', 'LAZIO', 'ATALANTA', 'FIORENTINA', 'BOLOGNA', 'TORINO', 'MONZA', 'UDINESE', 'SASSUOLO', 'EMPOLI', 'CAGLIARI', 'GENOA', 'VERONA', 'LECCE', 'SALERNITANA', 'FROSINONE'] 
   },
   'BUNDESLIGA': { 
     goalRate: 1.12, 
     homeAdvantage: 0.24, 
-    teams: ['BAYERN', 'DORTMUND', 'LEVERKUSEN', 'RB_LEIPZIG', 'STUTTGART', 'FRANKFURT', 'WOLFSBURG', 'GLADBACH', 'FREIBURG', 'HOFFENHEIM', 'UNION_BERLIN', 'BOCHUM', 'AUGSBURG', 'MAINZ', 'HERTHA_BERLIN', 'SCHALKE', 'KOLN', 'HEIDENHEIM', 'DARMSTADT'] 
   },
   'LIGUE_1': { 
     goalRate: 0.92, 
     homeAdvantage: 0.30, 
-    teams: ['PSG', 'MARSEILLE', 'MONACO', 'LYON', 'LILLE', 'RENNES', 'NICE', 'LENS', 'STRASBOURG', 'TOULOUSE', 'MONTPELLIER', 'NANTES', 'REIMS', 'BREST', 'LORIENT', 'CLERMONT', 'METZ', 'LE_HAVRE'] 
   },
-  'STANDARD': { goalRate: 1.0, homeAdvantage: 0.25, teams: [] }
+  'STANDARD': { goalRate: 1.0, homeAdvantage: 0.25 }
 };
 
 /**

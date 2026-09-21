@@ -1,10 +1,10 @@
-import React from 'react';
+import { FC } from 'react';
 
 interface LoadingOverlayProps {
     loading: boolean;
 }
 
-export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({ loading }) => (
+export const LoadingOverlay: FC<LoadingOverlayProps> = ({ loading }) => (
     loading ? (
         <div className="fixed inset-0 z-[100] bg-neutral-950 flex flex-col items-center justify-center space-y-16">
             <div className="relative flex items-center justify-center">

@@ -1,4 +1,4 @@
-import React from 'react';
+import { FC } from 'react';
 import { motion } from 'motion/react';
 import { Database, Search, ShieldCheck, Globe, AlertTriangle } from 'lucide-react';
 import { AnalysisResult } from '../types';
@@ -7,7 +7,7 @@ interface GroundingLogProps {
   analysis: AnalysisResult;
 }
 
-export const GroundingLog: React.FC<GroundingLogProps> = ({ analysis }) => {
+export const GroundingLog: FC<GroundingLogProps> = ({ analysis }) => {
   const context = analysis.context;
   
   // Real Integrity Check: verify sane bounds and non-null critical values

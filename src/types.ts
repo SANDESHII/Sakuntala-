@@ -27,13 +27,6 @@ export interface TeamStats {
   homeAwayBias: number;
 }
 
-export interface Citation {
-  source: string;
-  url: string;
-  value: number;
-  timestamp: string;
-}
-
 export interface MatchContext {
   league?: string;
   homeSeasonXG?: number;
@@ -51,22 +44,11 @@ export interface MatchContext {
     pinnacleUnder35?: number;
     pinnacleOver35?: number;
   };
-  groundingLog?: {
-    citations: Citation[];
-    varianceAlerts: string[];
-  };
-  audit?: {
-    signalIntegrity: string;
-    alphaAdjustment: string;
-    dataReliability: string;
-    sampleSize: number;
-  };
 }
 
 export interface AnalysisConfidence {
   confidenceScore: number;
   edgeValue: number;
-  groundingCitations?: Citation[];
 }
 
 export interface AnalysisResult {
@@ -80,15 +62,12 @@ export interface AnalysisResult {
   potentialCeiling: number;
   predictionType: 'OVER_15' | 'UNDER_35' | 'NO_BET';
   predictionLabel: string;
-  purity: number;
-  signalStrength: number;
   marketOdds: number;
   marketImpliedProb: number;
   edge: number;
   recommendedStake: number;
   verdict: 'EXECUTE_BET' | 'NO_BET';
   context: MatchContext;
-  surety: AnalysisConfidence;
   dataSource: 'LIVE' | 'FALLBACK_STATIC';
 }
 
@@ -102,7 +81,6 @@ export interface BacktestMatch {
   prediction: {
     predictionType: 'OVER_15' | 'UNDER_35' | 'NO_BET';
     probability: number;
-    purity: number;
   };
   marketEdge: number;
   isOver15Correct: boolean;

@@ -6,7 +6,6 @@ import { Header } from './components/Header';
 import { LoadingOverlay } from './components/LoadingOverlay';
 import { AnalysisForm } from './components/AnalysisForm';
 import { ResultGrid } from './components/ResultDisplay';
-import { GroundingLog } from './components/GroundingLog';
 import { BacktestDisplay } from './components/BacktestDisplay';
 
 export const App: React.FC = () => {
@@ -25,9 +24,6 @@ export const App: React.FC = () => {
         setAnalysis(null);
 
         try {
-            // Simulate processing time
-            await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
-
             // Import engine dynamically to avoid circular dependencies
             const { runPrediction } = await import('./core/engine');
             const result = await runPrediction(inputs.home, inputs.away, inputs.league);
@@ -144,14 +140,13 @@ export const App: React.FC = () => {
                                 </div>
                             </div>
 
-                            {analysis && analysis.surety && !loadingAnalysis && (
+                            {analysis && !loadingAnalysis && (
                                 <motion.div
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     className="space-y-24"
                                 >
-                                    <ResultGrid analysis={analysis} surety={analysis.surety} />
-                                    <GroundingLog context={analysis.context} />
+                                    <ResultGrid analysis={analysis} />
                                 </motion.div>
                             )}
                         </motion.div>

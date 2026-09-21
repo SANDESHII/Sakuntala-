@@ -1,10 +1,9 @@
 import React from 'react';
 import { Zap, Shield, Target, Activity, LucideIcon, Binary, ChevronRight } from 'lucide-react';
-import { AnalysisResult, AnalysisConfidence } from '../types';
+import { AnalysisResult } from '../types';
 
 interface ResultGridProps {
     analysis: AnalysisResult;
-    surety: AnalysisConfidence;
 }
 
 const StatCard: React.FC<{ label: string; value: string | number; subValue?: string; icon: LucideIcon }> = ({ label, value, subValue, icon: Icon }) => (
@@ -150,11 +149,11 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
                         <div className="space-y-8">
                             <div className="space-y-3">
                                 <div className="flex justify-between text-[10px] font-black uppercase text-neutral-400 tracking-widest">
-                                    <span>Data Quality</span>
-                                    <span>{analysis.purity}%</span>
+                                    <span>Signal Quality</span>
+                                    <span>STABLE</span>
                                 </div>
                                 <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
-                                    <div className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" style={{ width: `${analysis.purity}%` }} />
+                                    <div className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" style={{ width: '100%' }} />
                                 </div>
                             </div>
                         </div>

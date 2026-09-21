@@ -1,42 +1,39 @@
-import { AnalysisResult, TeamStats, MatchContext, Citation, InternalTeamData } from '../types';
-import { TEAM_DATABASE, LEAGUE_CONFIGS } from './constants';
+import { AnalysisResult, TeamStats, MatchContext, InternalTeamData } from '../types';
+import { TEAM_STATS, TEAM_ALIASES, LEAGUE_CONFIGS } from './constants';
 import { DixonColes } from './math';
-import { FreeDataService } from '../services/freeDataService';
+import * as FreeDataService from '../services/freeDataService';
 
 /**
- * Generate data source citations
+ * Normalizes team names for consistent lookup
  */
-function generateCitations(): Citation[] {
-  const sources = [
-    { source: 'FBRef', url: 'https://fbref.com', value: 0.94 },
-    { source: 'Understat', url: 'https://understat.com', value: 0.91 },
-    { source: 'Opta', url: 'https://opta.com', value: 0.97 },
-  ];
-  return sources.map(s => ({
-    ...s,
-    timestamp: `${Math.floor(Math.random() * 24)}h ago`
-  }));
-}
+const normalizeTeamName = (name: string): string => {
+  return name.toUpperCase().trim().replace(/_/g, ' ').replace(/\s+/g, ' ');
+};
 
 /**
- * Generate variance alerts based on team data
+ * Smart team lookup using aliases and canonical stats
  */
-function generateVarianceAlerts(homeTeam: string, awayTeam: string, homeData: any, awayData: any): string[] {
-  const alerts: string[] = [];
-
-  if (homeData.form.filter((f: number) => f === 3).length >= 4) {
-    alerts.push(`${homeTeam} showing exceptional form (4W in last 5). Regression to mean probability: 62%.`);
+const findTeam = (teamName: string): InternalTeamData | null => {
+  const normalized = normalizeTeamName(teamName);
+  
+  // 1. Check direct match in stats
+  if (TEAM_STATS[normalized]) return TEAM_STATS[normalized];
+  
+  // 2. Check aliases
+  const canonicalName = TEAM_ALIASES[normalized];
+  if (canonicalName && TEAM_STATS[canonicalName]) {
+    return TEAM_STATS[canonicalName];
   }
-  if (awayData.form.filter((f: number) => f === 0).length >= 3) {
-    alerts.push(`${awayTeam} poor away form detected. Historical bounce-back rate: 34%.`);
+  
+  // 3. Fuzzy match (fallback)
+  for (const key of Object.keys(TEAM_STATS)) {
+    if (key.includes(normalized) || normalized.includes(key)) {
+      return TEAM_STATS[key];
+    }
   }
-
-  if (alerts.length === 0) {
-    alerts.push('No critical variance detected. Model operating within standard confidence intervals.');
-  }
-
-  return alerts;
-}
+  
+  return null;
+};
 
 /**
  * Main prediction engine using Dixon-Coles model
@@ -48,26 +45,6 @@ export async function runPrediction(
 ): Promise<AnalysisResult> {
   const leagueKeyRaw = league.toUpperCase().replace(/ /g, '_');
   const leagueKey = normalizeLeagueKey(leagueKeyRaw);
-  
-  // Smart team lookup
-  const normalizeTeamName = (name: string): string => {
-    return name.toUpperCase().trim().replace(/_/g, ' ').replace(/\s+/g, ' ');
-  };
-
-  const findTeam = (teamName: string, data: Record<string, any>) => {
-    const normalized = normalizeTeamName(teamName);
-    if (data[normalized]) return data[normalized];
-    const withUnderscores = normalized.replace(/ /g, '_');
-    if (data[withUnderscores]) return data[withUnderscores];
-    for (const key of Object.keys(data)) {
-      if (key.includes(normalized) || normalized.includes(key)) {
-        return data[key];
-      }
-    }
-    return null;
-  };
-
-  const leagueData = TEAM_DATABASE[leagueKey] || TEAM_DATABASE['EPL'];
   const leagueConfig = LEAGUE_CONFIGS[leagueKey] || LEAGUE_CONFIGS['EPL'];
 
   // Try real data first
@@ -79,9 +56,9 @@ export async function runPrediction(
   let dataSource: 'LIVE' | 'FALLBACK_STATIC' = 'LIVE';
 
   if (!homeData) {
-    const staticData = findTeam(homeTeam, leagueData);
+    const staticData = findTeam(homeTeam);
     if (staticData) {
-      homeData = staticData as InternalTeamData;
+      homeData = staticData;
     } else {
       isHomeGeneric = true;
       dataSource = 'FALLBACK_STATIC';
@@ -101,9 +78,9 @@ export async function runPrediction(
   }
 
   if (!awayData) {
-    const staticData = findTeam(awayTeam, leagueData);
+    const staticData = findTeam(awayTeam);
     if (staticData) {
-      awayData = staticData as InternalTeamData;
+      awayData = staticData;
     } else {
       isAwayGeneric = true;
       dataSource = 'FALLBACK_STATIC';
@@ -213,9 +190,6 @@ export async function runPrediction(
   // Verdict
   const verdict = edge > 3 ? 'EXECUTE_BET' : 'NO_BET';
 
-  // Purity score (data quality indicator)
-  const purity = Math.min(98, Math.round(75 + Math.abs(edge) * 3 + Math.random() * 10));
-
   // Generate team stats
   const homeStats: TeamStats = {
     name: homeTeam.toUpperCase(),
@@ -249,10 +223,6 @@ export async function runPrediction(
     homeAwayBias: awayData.homeBias,
   };
 
-  // Citations and variance alerts
-  const citations = generateCitations();
-  const varianceAlerts = generateVarianceAlerts(homeTeam, awayTeam, homeData, awayData);
-
   // Build context
   const context: MatchContext = {
     league: leagueKey,
@@ -269,13 +239,6 @@ export async function runPrediction(
       pinnacleOver15: marketOddsOver15,
       pinnacleUnder35: marketOddsUnder35,
     },
-    groundingLog: { citations, varianceAlerts },
-    audit: {
-      signalIntegrity: purity > 85 ? 'PRISTINE' : 'STABLE',
-      alphaAdjustment: edge > 5 ? 'SIGNIFICANT' : edge > 2 ? 'MODERATE' : 'MINIMAL',
-      dataReliability: 'HIGH FIDELITY',
-      sampleSize: 1200 + Math.floor(Math.random() * 800),
-    }
   };
 
   // Generate summary
@@ -299,19 +262,12 @@ export async function runPrediction(
     potentialCeiling: Math.round((lambdaHome + muAway + 1.5) * 100) / 100,
     predictionType,
     predictionLabel,
-    purity,
-    signalStrength: Math.round((purity * 0.7 + edge * 3) * 10) / 10,
     marketOdds,
     marketImpliedProb: Math.round(marketImpliedProb * 1000) / 10,
     edge,
     recommendedStake,
     verdict,
     context,
-    surety: {
-      confidenceScore: purity,
-      edgeValue: edge,
-      groundingCitations: citations,
-    },
     dataSource,
   };
 }
@@ -344,10 +300,10 @@ function generateSummary(
 }
 
 /**
- * Run backtest simulation
+ * Run backtest simulation (SIMULATED DATA FOR ARCHITECTURAL TESTING)
  */
 export async function runBacktest() {
-  const teams = Object.entries(TEAM_DATABASE);
+  const leagues = Object.keys(LEAGUE_CONFIGS);
   const matches: any[] = [];
   let totalOver15Correct = 0;
   let totalUnder35Correct = 0;
@@ -360,19 +316,21 @@ export async function runBacktest() {
   ];
 
   for (let i = 0; i < 50; i++) {
-    const [leagueKey, leagueTeams] = teams[Math.floor(Math.random() * teams.length)];
-    const teamNames = Object.keys(leagueTeams);
-    const homeIdx = Math.floor(Math.random() * teamNames.length);
-    let awayIdx = Math.floor(Math.random() * teamNames.length);
-    while (awayIdx === homeIdx) awayIdx = Math.floor(Math.random() * teamNames.length);
+    const leagueKey = leagues[Math.floor(Math.random() * leagues.length)];
+    const leagueTeams = LEAGUE_CONFIGS[leagueKey].teams;
+    if (leagueTeams.length < 2) continue;
+    
+    const homeIdx = Math.floor(Math.random() * leagueTeams.length);
+    let awayIdx = Math.floor(Math.random() * leagueTeams.length);
+    while (awayIdx === homeIdx) awayIdx = Math.floor(Math.random() * leagueTeams.length);
 
-    const homeTeam = teamNames[homeIdx];
-    const awayTeam = teamNames[awayIdx];
+    const homeTeam = leagueTeams[homeIdx];
+    const awayTeam = leagueTeams[awayIdx];
 
     const homeGoals = Math.floor(Math.random() * 4);
     const awayGoals = Math.floor(Math.random() * 3);
 
-    const prediction = await runPrediction(homeTeam, awayTeam, leagueKey.replace('_', ' '));
+    const prediction = await runPrediction(homeTeam, awayTeam, leagueKey);
 
     const isOver15Correct = (homeGoals + awayGoals) >= 2;
     const isUnder35Correct = (homeGoals + awayGoals) <= 3;
@@ -395,12 +353,11 @@ export async function runBacktest() {
         homeTeam,
         awayTeam,
         actualScore: [homeGoals, awayGoals] as [number, number],
-        league: leagueKey.replace('_', ' '),
+        league: leagueKey,
       },
       prediction: {
         predictionType: prediction.predictionType,
         probability: prediction.probability,
-        purity: prediction.purity,
       },
       marketEdge: prediction.edge / 100,
       isOver15Correct,
@@ -413,8 +370,9 @@ export async function runBacktest() {
     seg.avgEdge = seg.count > 0 ? (seg.min + seg.max) / 200 : 0;
   }
 
-  const brierScore = 0.18 + Math.random() * 0.05;
-  const highPurityBrierScore = brierScore - 0.03;
+  // Brier scores set to -1 to flag as simulated/not calculated
+  const brierScore = -1;
+  const highPurityBrierScore = -1;
 
   return {
     totalMatches,

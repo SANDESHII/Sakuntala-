@@ -351,15 +351,15 @@ export async function runBacktest() {
     seg.avgEdge = seg.count > 0 ? (seg.min + seg.max) / 200 : 0;
   });
 
-  const brierScoreValue = matches.length > 0 ? matches.reduce((sum, m) => {
-    const predicted = m.prediction.probability / 100;
-    const actual = m.isOver15Correct ? 1 : 0;
-    return sum + Math.pow(predicted - actual, 2);
-  }, 0) / matches.length : -1;
-
   return {
     totalMatches,
-    brierScore: historicalPool.length > 0 ? brierScoreValue : -1,
+    brierScore: matches.length > 0
+      ? matches.reduce((sum, m) => {
+          const predicted = m.prediction.probability / 100;
+          const actual = m.isOver15Correct ? 1 : 0;
+          return sum + Math.pow(predicted - actual, 2);
+        }, 0) / matches.length
+      : -1,
     over15Accuracy: totalMatches > 0 ? (totalOver15Correct / totalMatches) * 100 : 0,
     under35Accuracy: totalMatches > 0 ? (totalUnder35Correct / totalMatches) * 100 : 0,
     edgeSegments,

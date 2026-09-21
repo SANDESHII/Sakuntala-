@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent, FC } from 'react';
+import { useState, useEffect, FC, type FormEvent } from 'react';
 import { ELITE_LEAGUES } from '../core/constants';
 import { getUpcomingFixtures, FixtureMatch } from '../services/freeDataService';
 import { Calendar } from 'lucide-react';

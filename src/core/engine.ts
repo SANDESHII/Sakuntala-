@@ -2,6 +2,7 @@ import { AnalysisResult, InternalTeamData } from '../types';
 import { TEAM_STATS, TEAM_ALIASES, LEAGUE_CONFIGS } from './constants';
 import { DixonColes } from './math';
 import * as FreeDataService from '../services/freeDataService';
+import * as Calibration from './calibration';
 
 /**
  * Prediction Pipeline Configuration
@@ -142,13 +143,37 @@ export async function runPrediction(
   const leagueConfig = LEAGUE_CONFIGS[leagueKey] || LEAGUE_CONFIGS['EPL'];
 
   // Parallel data resolution
-  const [homeRes, awayRes, liveOdds] = await Promise.all([
+  const [homeRes, awayRes, liveOdds, fittedParams] = await Promise.all([
     resolveTeamData(homeTeam, leagueKey, leagueConfig),
     resolveTeamData(awayTeam, leagueKey, leagueConfig),
-    FreeDataService.getLiveOdds(leagueKey)
+    FreeDataService.getLiveOdds(leagueKey),
+    Calibration.fitFromAPI(leagueKey)
   ]);
 
-  const { lambdaHome, muAway, probOver15, probUnder35 } = calculateModelMetrics(homeRes.data, awayRes.data, leagueConfig);
+  // Use MLE fitted goals if available, otherwise fallback to local stats model
+  const mleGoals = Calibration.predictGoals(fittedParams, homeTeam, awayTeam);
+  
+  let lambdaHome: number;
+  let muAway: number;
+  let probOver15: number;
+  let probUnder35: number;
+  let finalRho = -0.13;
+
+  if (mleGoals) {
+    lambdaHome = mleGoals.lambdaHome;
+    muAway = mleGoals.muAway;
+    finalRho = fittedParams.rho;
+    
+    const scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, finalRho);
+    probOver15 = DixonColes.calculateOverUnder(scoreMatrix, 1.5);
+    probUnder35 = 1 - DixonColes.calculateOverUnder(scoreMatrix, 3.5);
+  } else {
+    const metrics = calculateModelMetrics(homeRes.data, awayRes.data, leagueConfig);
+    lambdaHome = metrics.lambdaHome;
+    muAway = metrics.muAway;
+    probOver15 = metrics.probOver15;
+    probUnder35 = metrics.probUnder35;
+  }
 
   // Market odds resolution
   let marketOddsOver15 = 1.05 / probOver15;

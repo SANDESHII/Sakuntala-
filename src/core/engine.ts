@@ -215,6 +215,11 @@ export async function runPrediction(
     marketOdds = marketOddsUnder35;
   }
 
+  // Force zero edge and NO_BET if no live odds are available
+  if (!matchOdds) {
+    edge = 0;
+  }
+
   const predictionLabel = predictionType === 'NO_BET' ? 'NO EDGE DETECTED' : predictionType.replace('_', ' ') + ' GOALS';
   
   const p = probability / 100;
@@ -240,7 +245,9 @@ export async function runPrediction(
   const dataSource = homeRes.dataSource === 'LIVE' && awayRes.dataSource === 'LIVE' ? 'LIVE' : 'FALLBACK_STATIC';
 
   let finalSummary = summary;
-  if (homeRes.isGeneric || awayRes.isGeneric) {
+  if (!matchOdds) {
+    finalSummary = `⚠️ No live odds available — edge cannot be verified. ${summary}`;
+  } else if (homeRes.isGeneric || awayRes.isGeneric) {
     finalSummary = `⚠️ Data Gap: ${[homeRes.isGeneric ? homeTeam : null, awayRes.isGeneric ? awayTeam : null].filter(Boolean).join(', ')} missing. ${summary}`;
   }
 
@@ -259,7 +266,7 @@ export async function runPrediction(
     marketImpliedProb: Math.round((1 / marketOdds) * 1000) / 10,
     edge,
     recommendedStake: Math.max(0, Math.round(kellyFraction * 10) / 10),
-    verdict: edge > 3 ? 'EXECUTE_BET' : 'NO_BET',
+    verdict: (!!matchOdds && edge > 3) ? 'EXECUTE_BET' : 'NO_BET',
     context: {
       league: leagueKey,
       homeSeasonXG: homeRes.data.avgXG * 20,

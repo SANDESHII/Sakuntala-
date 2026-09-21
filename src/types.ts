@@ -33,8 +33,6 @@ export interface MatchContext {
   awaySeasonXGA?: number;
   homeTier?: number;
   awayTier?: number;
-  isDerby?: boolean;
-  sampleSize?: number;
   date?: string;
   marketOdds?: {
     pinnacleOver15?: number;
@@ -75,6 +73,7 @@ export interface BacktestMatch {
     awayTeam: string;
     actualScore: [number, number];
     league: string;
+    isReal?: boolean;
   };
   prediction: {
     predictionType: 'OVER_15' | 'UNDER_35' | 'NO_BET';

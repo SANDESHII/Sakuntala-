@@ -13,6 +13,15 @@ export interface FixtureMatch {
     fixtureId: number;
 }
 
+export interface HistoricalMatch {
+    home: string;
+    away: string;
+    homeGoals: number;
+    awayGoals: number;
+    league: string;
+    date: string;
+}
+
 export async function getTeamStats(teamName: string, league: string) {
     if (!API_FOOTBALL_KEY) return null;
     const leagueId = getLeagueId(league);
@@ -72,6 +81,25 @@ export async function getUpcomingFixtures(league: string, limit: number = 10): P
             kickoff: f.fixture.date,
             league: league,
             fixtureId: f.fixture.id,
+        }));
+    } catch { return []; }
+}
+
+export async function getHistoricalFixtures(league: string, limit: number = 50): Promise<HistoricalMatch[]> {
+    if (!API_FOOTBALL_KEY) return [];
+    const leagueId = getLeagueId(league);
+    try {
+        const response = await axios.get('https://v3.football.api-sports.io/fixtures', {
+            headers: { 'x-apisports-key': API_FOOTBALL_KEY },
+            params: { league: leagueId, season: new Date().getFullYear(), last: limit, status: 'FT' }
+        });
+        return response.data.response.map((f: any) => ({
+            home: f.teams.home.name.toUpperCase(),
+            away: f.teams.away.name.toUpperCase(),
+            homeGoals: f.goals.home,
+            awayGoals: f.goals.away,
+            league,
+            date: f.fixture.date.split('T')[0],
         }));
     } catch { return []; }
 }

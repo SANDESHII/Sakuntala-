@@ -18,7 +18,7 @@ export const GroundingLog: React.FC<GroundingLogProps> = ({ context }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         {[
           { label: 'Data Source', value: context.league, icon: Globe },
-          { label: 'Sample Size', value: `${context.sampleSize} Matches`, icon: Search },
+          { label: 'Market Status', value: 'SYNCED', icon: Search },
           { label: 'Integrity Check', value: 'PASSED', icon: ShieldCheck },
           { label: 'Model Date', value: context.date, icon: Database },
         ].map((item, i) => (

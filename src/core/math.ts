@@ -72,6 +72,24 @@ export class DixonColes {
   }
 
   /**
+   * Sample a random score from the score probability matrix
+   * @param scoreMatrix - Full score probability matrix
+   */
+  static sampleScore(scoreMatrix: number[][]): [number, number] {
+    const random = Math.random();
+    let cumulative = 0;
+    for (let h = 0; h < scoreMatrix.length; h++) {
+      for (let a = 0; a < scoreMatrix[h].length; a++) {
+        cumulative += scoreMatrix[h][a];
+        if (random <= cumulative) {
+          return [h, a];
+        }
+      }
+    }
+    return [0, 0]; // Fallback
+  }
+
+  /**
    * Calculate probability of over/under a goal threshold
    * @param scoreMatrix - Full score probability matrix
    * @param threshold - Goal threshold (e.g., 1.5 for Over 1.5)

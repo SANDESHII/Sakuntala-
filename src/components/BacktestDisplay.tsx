@@ -18,7 +18,12 @@ export const BacktestDisplay: React.FC<BacktestDisplayProps> = ({ summary }) => 
                 {[
                     { label: 'Matches Analyzed', value: summary.totalMatches, icon: Activity },
                     { label: 'Accuracy Rate', value: `${(((summary.over15Accuracy || 0) + (summary.under35Accuracy || 0)) / 2)?.toFixed(1) || '0.0'}%`, icon: CheckCircle2 },
-                    { label: 'Brier Score', value: summary.brierScore?.toFixed(4) || '0.0000', icon: BarChart3, detail: 'Mean Squared Error' }
+                    { 
+                        label: 'Brier Score', 
+                        value: summary.brierScore === -0.5 ? 'MIXED' : (summary.brierScore?.toFixed(4) || '0.0000'), 
+                        icon: BarChart3, 
+                        detail: summary.brierScore === -0.5 ? 'Real + Simulated' : 'Mean Squared Error' 
+                    }
                 ].map((stat, i) => (
                     <div key={i} className="p-10 bg-zinc-950 border border-zinc-900 rounded-3xl space-y-6 hover:bg-zinc-900 transition-all">
                         <div className="flex items-center justify-between">
@@ -88,6 +93,13 @@ export const BacktestDisplay: React.FC<BacktestDisplayProps> = ({ summary }) => 
                                             <div className="flex flex-col gap-1">
                                                 <div className="flex items-center gap-3">
                                                     <span className="text-sm font-bold text-white uppercase tracking-tight">{item.match.homeTeam} — {item.match.awayTeam}</span>
+                                                    <span className={`text-[8px] font-black px-2 py-0.5 rounded border ${
+                                                        item.match.isReal 
+                                                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' 
+                                                        : 'bg-zinc-800 border-zinc-700 text-zinc-500'
+                                                    }`}>
+                                                        {item.match.isReal ? 'REAL' : 'SIM'}
+                                                    </span>
                                                 </div>
                                                 <span className="text-[10px] text-zinc-600 font-medium uppercase tracking-widest">{item.match.league}</span>
                                             </div>

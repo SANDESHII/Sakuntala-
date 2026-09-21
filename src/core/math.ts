@@ -1,3 +1,9 @@
+// Pre-compute log factorials for k up to 20 for numerical stability and performance
+const LOG_FACTORIAL = [0];
+for (let i = 1; i <= 20; i++) {
+  LOG_FACTORIAL[i] = LOG_FACTORIAL[i - 1] + Math.log(i);
+}
+
 /**
  * Dixon-Coles statistical model for football score prediction
  * Reference: Dixon, M. J., & Coles, S. G. (1997). "Modelling Association Football Scores and Inefficiencies in the Football Betting Market"
@@ -9,10 +15,8 @@ export class DixonColes {
    */
   static poisson(k: number, lambda: number): number {
     if (lambda <= 0) return k === 0 ? 1 : 0;
-    if (k < 0) return 0;
-    let logFact = 0;
-    for (let i = 2; i <= k; i++) logFact += Math.log(i);
-    return Math.exp(k * Math.log(lambda) - lambda - logFact);
+    if (k < 0 || k >= LOG_FACTORIAL.length) return 0;
+    return Math.exp(k * Math.log(lambda) - lambda - LOG_FACTORIAL[k]);
   }
 
   /**
@@ -48,13 +52,13 @@ export class DixonColes {
    * Generate full score probability matrix using Dixon-Coles model
    * @param lambdaHome - Home team expected goals
    * @param muAway - Away team expected goals
-   * @param rho - Correlation parameter (default: -0.11)
+   * @param rho - Correlation parameter (default: -0.13)
    * @param maxGoals - Maximum goals to consider (default: 8)
    */
   static calculateScoreMatrix(
     lambdaHome: number,
     muAway: number,
-    rho: number = -0.11,
+    rho: number = -0.13,
     maxGoals: number = 8
   ): number[][] {
     const matrix = Array.from({ length: maxGoals + 1 }, (_, h) =>
@@ -69,24 +73,6 @@ export class DixonColes {
     // Normalize to ensure probabilities sum to 1
     const total = matrix.reduce((sum, row) => sum + row.reduce((s, p) => s + p, 0), 0);
     return matrix.map(row => row.map(p => p / (total || 1)));
-  }
-
-  /**
-   * Sample a random score from the score probability matrix
-   * @param scoreMatrix - Full score probability matrix
-   */
-  static sampleScore(scoreMatrix: number[][]): [number, number] {
-    const random = Math.random();
-    let cumulative = 0;
-    for (let h = 0; h < scoreMatrix.length; h++) {
-      for (let a = 0; a < scoreMatrix[h].length; a++) {
-        cumulative += scoreMatrix[h][a];
-        if (random <= cumulative) {
-          return [h, a];
-        }
-      }
-    }
-    return [0, 0]; // Fallback
   }
 
   /**

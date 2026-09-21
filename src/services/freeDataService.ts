@@ -3,6 +3,8 @@ import axios from 'axios';
 const API_FOOTBALL_KEY = import.meta.env.VITE_API_FOOTBALL_KEY || '';
 const ODDS_API_KEY = import.meta.env.VITE_ODDS_API_KEY || '';
 
+export const isLiveCapable = !!API_FOOTBALL_KEY && !!ODDS_API_KEY;
+
 export interface FixtureMatch {
     homeTeam: string;
     awayTeam: string;
@@ -39,6 +41,7 @@ export async function getTeamStats(teamName: string, league: string) {
         const stats = statsResponse.data.response;
         const played = stats.fixtures.played.total;
         if (!played) return null;
+        const formStr = typeof stats.form === 'string' ? stats.form : '';
         return {
             attackStrength: (stats.goals.for.total / played) / 1.35,
             defenseStrength: (stats.goals.against.total / played) / 1.35,
@@ -47,11 +50,14 @@ export async function getTeamStats(teamName: string, league: string) {
             avgXG: (stats.goals.for.total / played) * 0.95,
             avgXGA: (stats.goals.against.total / played) * 1.05,
             homeBias: 0.3,
-            form: stats.form.split('').slice(-5).map((r: string) => r === 'W' ? 3 : r === 'D' ? 1 : 0),
+            form: formStr.split('').slice(-5).map((r: string) => r === 'W' ? 3 : r === 'D' ? 1 : 0),
             cleanSheetRate: stats.clean_sheet.total / played,
             clinicalEdge: 1.0
         };
-    } catch { return null; }
+    } catch (err) {
+        console.warn(`[FreeData] Failed to fetch stats for ${teamName}:`, err);
+        return null;
+    }
 }
 
 export async function getLiveOdds(league: string) {
@@ -62,7 +68,10 @@ export async function getLiveOdds(league: string) {
             params: { apiKey: ODDS_API_KEY, regions: 'eu,uk', markets: 'totals', oddsFormat: 'decimal' }
         });
         return response.data;
-    } catch { return []; }
+    } catch (err) {
+        console.warn(`[FreeData] Failed to fetch live odds for ${league}:`, err);
+        return [];
+    }
 }
 
 export async function getUpcomingFixtures(league: string, limit: number = 10): Promise<FixtureMatch[]> {
@@ -82,7 +91,10 @@ export async function getUpcomingFixtures(league: string, limit: number = 10): P
             league: league,
             fixtureId: f.fixture.id,
         }));
-    } catch { return []; }
+    } catch (err) {
+        console.warn(`[FreeData] Failed to fetch upcoming fixtures for ${league}:`, err);
+        return [];
+    }
 }
 
 export async function getHistoricalFixtures(league: string, limit: number = 50): Promise<HistoricalMatch[]> {
@@ -91,7 +103,7 @@ export async function getHistoricalFixtures(league: string, limit: number = 50):
     try {
         const response = await axios.get('https://v3.football.api-sports.io/fixtures', {
             headers: { 'x-apisports-key': API_FOOTBALL_KEY },
-            params: { league: leagueId, season: new Date().getFullYear(), last: limit, status: 'FT' }
+            params: { league: leagueId, season: 2024, last: limit, status: 'FT' }
         });
         return response.data.response.map((f: any) => ({
             home: f.teams.home.name.toUpperCase(),
@@ -101,7 +113,10 @@ export async function getHistoricalFixtures(league: string, limit: number = 50):
             league,
             date: f.fixture.date.split('T')[0],
         }));
-    } catch { return []; }
+    } catch (err) {
+        console.warn(`[FreeData] Failed to fetch historical fixtures for ${league}:`, err);
+        return [];
+    }
 }
 
 function getLeagueId(league: string): number {

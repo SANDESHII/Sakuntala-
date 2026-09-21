@@ -15,14 +15,22 @@ export const BacktestDisplay: React.FC<BacktestDisplayProps> = ({ summary }) => 
                 animate={{ opacity: 1, y: 0 }}
                 className="grid grid-cols-1 md:grid-cols-4 gap-8"
             >
+                {summary.brierScore === -1 && (
+                    <div className="md:col-span-4 p-6 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
+                        <p className="text-amber-500 text-[10px] font-black uppercase tracking-widest flex items-center gap-3">
+                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                            Warning: Backtest utilizes synthetic Poisson-simulated scores. Data does not reflect historical predictive validation.
+                        </p>
+                    </div>
+                )}
                 {[
                     { label: 'Matches Analyzed', value: summary.totalMatches, icon: Activity },
                     { label: 'Accuracy Rate', value: `${(((summary.over15Accuracy || 0) + (summary.under35Accuracy || 0)) / 2)?.toFixed(1) || '0.0'}%`, icon: CheckCircle2 },
                     { 
                         label: 'Brier Score', 
-                        value: summary.brierScore === -0.5 ? 'MIXED' : (summary.brierScore?.toFixed(4) || '0.0000'), 
+                        value: summary.brierScore === -1 ? 'SIMULATED' : (summary.brierScore?.toFixed(4) || '0.0000'), 
                         icon: BarChart3, 
-                        detail: summary.brierScore === -0.5 ? 'Real + Simulated' : 'Mean Squared Error' 
+                        detail: summary.brierScore === -1 ? 'Synthetic Projection' : 'Mean Squared Error' 
                     }
                 ].map((stat, i) => (
                     <div key={i} className="p-10 bg-zinc-950 border border-zinc-900 rounded-3xl space-y-6 hover:bg-zinc-900 transition-all">

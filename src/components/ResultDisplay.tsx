@@ -1,5 +1,5 @@
 import React from 'react';
-import { Zap, Shield, Target, Activity, LucideIcon, Binary, ChevronRight } from 'lucide-react';
+import { Zap, Shield, Target, Activity, LucideIcon, Binary } from 'lucide-react';
 import { AnalysisResult } from '../types';
 
 interface ResultGridProps {
@@ -140,10 +140,6 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
                                 </div>
                             </div>
                         )}
-
-                        <button className="w-full py-5 bg-black text-white text-[10px] font-black uppercase tracking-[0.3em] rounded-2xl hover:bg-neutral-900 transition-colors flex items-center justify-center gap-2">
-                            Details <ChevronRight className="w-3.5 h-3.5" />
-                        </button>
                     </div>
 
                     {/* Technical Details */}
@@ -157,10 +153,10 @@ export const ResultGrid: React.FC<ResultGridProps> = ({ analysis }) => {
                             <div className="space-y-3">
                                 <div className="flex justify-between text-[10px] font-black uppercase text-neutral-400 tracking-widest">
                                     <span>Signal Quality</span>
-                                    <span>STABLE</span>
+                                    <span>{analysis.dataSource === 'LIVE' ? 'VERIFIED' : 'FALLBACK'}</span>
                                 </div>
                                 <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
-                                    <div className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" style={{ width: '100%' }} />
+                                    <div className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" style={{ width: analysis.dataSource === 'LIVE' ? '100%' : '60%' }} />
                                 </div>
                             </div>
                         </div>

@@ -36,9 +36,7 @@ export interface MatchContext {
   date?: string;
   marketOdds?: {
     pinnacleOver15?: number;
-    pinnacleUnder15?: number;
     pinnacleUnder35?: number;
-    pinnacleOver35?: number;
   };
 }
 
@@ -65,6 +63,7 @@ export interface AnalysisResult {
   verdict: 'EXECUTE_BET' | 'NO_BET';
   context: MatchContext;
   dataSource: 'LIVE' | 'FALLBACK_STATIC';
+  surety?: AnalysisConfidence;
 }
 
 export interface BacktestMatch {

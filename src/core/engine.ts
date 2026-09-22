@@ -136,7 +136,8 @@ export async function runPrediction(
   homeTeam: string,
   awayTeam: string,
   league: string,
-  fittedOverride: Calibration.FittedLeagueParams | null = null
+  fittedOverride: Calibration.FittedLeagueParams | null = null,
+  historicalOddsOverride: any = null
 ): Promise<AnalysisResult> {
   const leagueKey = normalizeLeagueKey(league.toUpperCase().replace(/ /g, '_'));
   const leagueConfig = LEAGUE_CONFIGS[leagueKey] || LEAGUE_CONFIGS['EPL'];
@@ -145,7 +146,7 @@ export async function runPrediction(
   const [homeRes, awayRes, liveOdds, fittedParams] = await Promise.all([
     resolveTeamData(homeTeam, leagueKey, leagueConfig),
     resolveTeamData(awayTeam, leagueKey, leagueConfig),
-    FreeDataService.getLiveOdds(leagueKey),
+    historicalOddsOverride ? Promise.resolve([]) : FreeDataService.getLiveOdds(leagueKey),
     fittedOverride ? Promise.resolve(fittedOverride) : Calibration.fitFromAPI(leagueKey)
   ]);
 
@@ -179,29 +180,38 @@ export async function runPrediction(
   let marketOddsUnder35 = 1.05 / probUnder35; // synthetic fallback
   let over15Real = false;
   let under35Real = false;
+  let matchOdds: any = null;
 
-  const matchOdds = liveOdds.find((o: any) => 
-    normalizeTeamName(o.home_team).includes(normalizeTeamName(homeTeam)) ||
-    normalizeTeamName(homeTeam).includes(normalizeTeamName(o.home_team))
-  );
+  over15Real = !!historicalOddsOverride?.over15;
+  under35Real = !!historicalOddsOverride?.under35;
 
-  if (matchOdds) {
-    matchOdds.bookmakers.forEach((bm: any) => {
-      const market = bm.markets.find((m: any) => m.key === 'totals');
-      if (market) {
-        const o15 = market.outcomes.find((o: any) => o.name === 'Over' && o.point === 1.5);
-        const u35 = market.outcomes.find((o: any) => o.name === 'Under' && o.point === 3.5);
-        
-        if (o15 && (!over15Real || o15.price > marketOddsOver15)) {
-          marketOddsOver15 = o15.price;
-          over15Real = true;
+  if (historicalOddsOverride) {
+    marketOddsOver15 = historicalOddsOverride.over15 || marketOddsOver15;
+    marketOddsUnder35 = historicalOddsOverride.under35 || marketOddsUnder35;
+  } else {
+    matchOdds = liveOdds.find((o: any) => 
+      normalizeTeamName(o.home_team).includes(normalizeTeamName(homeTeam)) ||
+      normalizeTeamName(homeTeam).includes(normalizeTeamName(o.home_team))
+    );
+
+    if (matchOdds) {
+      matchOdds.bookmakers.forEach((bm: any) => {
+        const market = bm.markets.find((m: any) => m.key === 'totals');
+        if (market) {
+          const o15 = market.outcomes.find((o: any) => o.name === 'Over' && o.point === 1.5);
+          const u35 = market.outcomes.find((o: any) => o.name === 'Under' && o.point === 3.5);
+          
+          if (o15 && (!over15Real || o15.price > marketOddsOver15)) {
+            marketOddsOver15 = o15.price;
+            over15Real = true;
+          }
+          if (u35 && (!under35Real || u35.price > marketOddsUnder35)) {
+            marketOddsUnder35 = u35.price;
+            under35Real = true;
+          }
         }
-        if (u35 && (!under35Real || u35.price > marketOddsUnder35)) {
-          marketOddsUnder35 = u35.price;
-          under35Real = true;
-        }
-      }
-    });
+      });
+    }
   }
 
   const over15Edge = probOver15 - (1 / marketOddsOver15);
@@ -259,8 +269,8 @@ export async function runPrediction(
   const dataSource = homeRes.dataSource === 'LIVE' && awayRes.dataSource === 'LIVE' ? 'LIVE' : 'FALLBACK_STATIC';
 
   let finalSummary = summary;
-  if (!matchOdds) {
-    finalSummary = `⚠️ No live odds available — edge cannot be verified. ${summary}`;
+  if (!chosenMarketReal) {
+    finalSummary = `⚠️ No real odds available — edge cannot be verified. ${summary}`;
   } else if (homeRes.isGeneric || awayRes.isGeneric) {
     finalSummary = `⚠️ Data Gap: ${[homeRes.isGeneric ? homeTeam : null, awayRes.isGeneric ? awayTeam : null].filter(Boolean).join(', ')} missing. ${summary}`;
   }
@@ -280,7 +290,7 @@ export async function runPrediction(
     marketImpliedProb: Math.round((1 / marketOdds) * 1000) / 10,
     edge,
     recommendedStake: Math.max(0, Math.round(kellyFraction * 10) / 10),
-    verdict: (!!matchOdds && edge > 3) ? 'EXECUTE_BET' : 'NO_BET',
+    verdict: (chosenMarketReal && edge > 3) ? 'EXECUTE_BET' : 'NO_BET',
     context: {
       league: leagueKey,
       homeSeasonXG: homeRes.data.avgXG * 20,
@@ -293,7 +303,7 @@ export async function runPrediction(
       marketOdds: { pinnacleOver15: marketOddsOver15, pinnacleUnder35: marketOddsUnder35 },
     },
     dataSource,
-    usedRealOdds: !!matchOdds,
+    usedRealOdds: chosenMarketReal,
   };
 }
 
@@ -382,7 +392,13 @@ export async function runBacktest() {
   }
 
   for (const match of evalPool) {
-    const prediction = await runPrediction(match.home, match.away, match.league, fittedByLeague[match.league]);
+    const prediction = await runPrediction(
+        match.home, 
+        match.away, 
+        match.league, 
+        fittedByLeague[match.league],
+        match.takenPrices
+    );
     const hGoals = match.homeGoals;
     const aGoals = match.awayGoals;
     

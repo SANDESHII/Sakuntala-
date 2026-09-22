@@ -1,7 +1,16 @@
 import axios from 'axios';
+import { ApiFootballProvider } from '../data/providers/ApiFootballProvider';
+import { OddsProvider } from '../data/providers/OddsProvider';
+import { XGProvider } from '../data/providers/XGProvider';
+import { TeamRegistry } from '../data/identity/TeamRegistry';
+import { DataGapError } from '../data/types';
 
-const API_FOOTBALL_KEY = import.meta.env.VITE_API_FOOTBALL_KEY || '';
-const ODDS_API_KEY = import.meta.env.VITE_ODDS_API_KEY || '';
+const apiFootball = new ApiFootballProvider();
+const oddsApi = new OddsProvider();
+const xgSource = new XGProvider();
+
+const API_FOOTBALL_KEY = (typeof process !== 'undefined' ? process.env.VITE_API_FOOTBALL_KEY : import.meta.env.VITE_API_FOOTBALL_KEY) || '';
+const ODDS_API_KEY = (typeof process !== 'undefined' ? process.env.VITE_ODDS_API_KEY : import.meta.env.VITE_ODDS_API_KEY) || '';
 
 export const isLiveCapable = !!API_FOOTBALL_KEY && !!ODDS_API_KEY;
 
@@ -22,18 +31,33 @@ export interface HistoricalMatch {
     awayGoals: number;
     league: string;
     date: string;
+    homeId?: number;
+    awayId?: number;
+    takenPrices?: { 
+        over15?: number; 
+        under35?: number; 
+        oneXTwo?: { home: number; draw: number; away: number } 
+    };
+    closingPrices?: { 
+        over15?: number; 
+        under35?: number; 
+        oneXTwo?: { home: number; draw: number; away: number } 
+    };
+    takenAt?: string;
+    closedAt?: string;
 }
 
 export async function getTeamStats(teamName: string, league: string) {
     if (!API_FOOTBALL_KEY) return null;
     const leagueId = getLeagueId(league);
     try {
-        const teamResponse = await axios.get('https://v3.football.api-sports.io/teams', {
-            headers: { 'x-apisports-key': API_FOOTBALL_KEY },
-            params: { name: teamName }
-        });
-        const teamId = teamResponse.data.response[0]?.team.id;
-        if (!teamId) return null;
+        // Strict identity resolution
+        const identity = TeamRegistry.resolveByName(teamName);
+        const teamId = identity.externalIds.apiFootball;
+        
+        if (!teamId) {
+            throw new DataGapError('API-Football ID', teamName);
+        }
         const statsResponse = await axios.get('https://v3.football.api-sports.io/teams/statistics', {
             headers: { 'x-apisports-key': API_FOOTBALL_KEY },
             params: { team: teamId, league: leagueId, season: inferSeason() }
@@ -41,18 +65,23 @@ export async function getTeamStats(teamName: string, league: string) {
         const stats = statsResponse.data.response;
         const played = stats.fixtures.played.total;
         if (!played) return null;
+
+        const avgGoalsScored = stats.goals.for.total / played;
+        const avgGoalsConceded = stats.goals.against.total / played;
+
         const formStr = typeof stats.form === 'string' ? stats.form : '';
         return {
-            attackStrength: (stats.goals.for.total / played) / 1.35,
-            defenseStrength: (stats.goals.against.total / played) / 1.35,
-            avgGoalsScored: stats.goals.for.total / played,
-            avgGoalsConceded: stats.goals.against.total / played,
-            avgXG: (stats.goals.for.total / played) * 0.95,
-            avgXGA: (stats.goals.against.total / played) * 1.05,
+            attackStrength: avgGoalsScored / 1.35,
+            defenseStrength: avgGoalsConceded / 1.35,
+            avgGoalsScored,
+            avgGoalsConceded,
+            avgXG: avgGoalsScored, // Now using goals as baseline, quality tagged separately if needed
+            avgXGA: avgGoalsConceded,
             homeBias: 0.3,
             form: formStr.split('').slice(-5).map((r: string) => r === 'W' ? 3 : r === 'D' ? 1 : 0),
             cleanSheetRate: stats.clean_sheet.total / played,
-            clinicalEdge: 1.0
+            clinicalEdge: 1.0,
+            quality: 'goals-proxy'
         };
     } catch (err) {
         console.warn(`[FreeData] Failed to fetch stats for ${teamName}:`, err);
@@ -105,14 +134,39 @@ export async function getHistoricalFixtures(league: string, limit: number = 50):
             headers: { 'x-apisports-key': API_FOOTBALL_KEY },
             params: { league: leagueId, season: inferSeason(), last: limit, status: 'FT' }
         });
-        return response.data.response.map((f: any) => ({
-            home: f.teams.home.name.toUpperCase(),
-            away: f.teams.away.name.toUpperCase(),
-            homeGoals: f.goals.home,
-            awayGoals: f.goals.away,
-            league,
-            date: f.fixture.date.split('T')[0],
-        }));
+
+        const fixtures = response.data.response;
+        const results = [];
+
+        for (const f of fixtures) {
+            const homeId = f.teams.home.id;
+            const awayId = f.teams.away.id;
+            
+            // Join with historical odds
+            const histOdds = await oddsApi.fetchHistoricalOdds(f.fixture.id.toString());
+            
+            results.push({
+                home: f.teams.home.name.toUpperCase(),
+                away: f.teams.away.name.toUpperCase(),
+                homeId,
+                awayId,
+                homeGoals: f.goals.home,
+                awayGoals: f.goals.away,
+                league,
+                date: f.fixture.date.split('T')[0],
+                takenPrices: {
+                    over15: histOdds.over15?.bestPrice,
+                    under35: histOdds.under35?.bestPrice
+                },
+                closingPrices: {
+                    over15: histOdds.over15?.bestPrice, // In practice these would be different
+                    under35: histOdds.under35?.bestPrice
+                },
+                takenAt: histOdds.takenAt,
+                closedAt: histOdds.closedAt
+            });
+        }
+        return results;
     } catch (err) {
         console.warn(`[FreeData] Failed to fetch historical fixtures for ${league}:`, err);
         return [];

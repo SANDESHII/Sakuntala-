@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "backtest": "tsx scripts/backtest.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -16,7 +17,8 @@
     "lucide-react": "^0.577.0",
     "motion": "^13.4.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

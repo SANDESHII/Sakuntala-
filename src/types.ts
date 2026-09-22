@@ -9,6 +9,14 @@ export interface InternalTeamData {
   form: number[];
   cleanSheetRate: number;
   clinicalEdge: number;
+  homeAttackStrength?: number;
+  awayAttackStrength?: number;
+  homeDefenseStrength?: number;
+  awayDefenseStrength?: number;
+  rollingXG?: number[];
+  restDays?: number;
+  strengthOfSchedule?: number;
+  quality?: 'high' | 'medium' | 'low' | 'goals-proxy';
 }
 
 export interface TeamStats {

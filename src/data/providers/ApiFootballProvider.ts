@@ -33,6 +33,8 @@ export class ApiFootballProvider extends BaseProvider {
       date: f.fixture.date,
       home: TeamRegistry.resolveById('apiFootball', f.teams.home.id).id,
       away: TeamRegistry.resolveById('apiFootball', f.teams.away.id).id,
+      homeId: f.teams.home.id,
+      awayId: f.teams.away.id,
       homeGoals: f.goals.home,
       awayGoals: f.goals.away,
       league: league.toUpperCase(),
@@ -57,7 +59,7 @@ export class ApiFootballProvider extends BaseProvider {
         for: stats.goals.for.average.total,
         against: stats.goals.against.average.total
       },
-      cleanSheets: stats.clean_sheets.total,
+      cleanSheets: stats.clean_sheet.total, // Fixed: API-Football uses singular 'clean_sheet' in stats response
       provenance: this.getProvenance('high', season)
     };
   }

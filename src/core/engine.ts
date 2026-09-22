@@ -391,6 +391,11 @@ export async function runBacktest() {
     console.error('Historical Fetch Error:', err);
   }
 
+  let totalPnl = 0;
+  let totalStake = 0;
+  let totalClvSum = 0;
+  let clvCount = 0;
+
   for (const match of evalPool) {
     const prediction = await runPrediction(
         match.home, 
@@ -408,6 +413,26 @@ export async function runBacktest() {
 
     if (prediction.predictionType === 'NO_BET') continue;
 
+    // PnL & CLV Calculation
+    const stake = prediction.recommendedStake;
+    const takenOdds = prediction.marketOdds;
+    const closingOdds = prediction.predictionType === 'OVER_15' 
+      ? match.closingPrices?.over15 
+      : match.closingPrices?.under35;
+
+    const isHit = prediction.predictionType === 'OVER_15' ? isOver15Correct : isUnder35Correct;
+    const pnl = isHit ? (stake * takenOdds - stake) : -stake;
+    
+    totalPnl += pnl;
+    totalStake += stake;
+
+    let clv = 0;
+    if (closingOdds && closingOdds > 1) {
+      clv = (takenOdds / closingOdds - 1) * 100;
+      totalClvSum += clv;
+      clvCount++;
+    }
+
     if (prediction.predictionType === 'OVER_15') {
       over15Predictions++;
       if (isOver15Correct) totalOver15Correct++;
@@ -423,8 +448,7 @@ export async function runBacktest() {
     if (segIdx !== -1) {
       edgeSegments[segIdx].count++;
       edgeSums[segIdx] += absEdge / 100;
-      const isCorrect = prediction.predictionType === 'OVER_15' ? isOver15Correct : isUnder35Correct;
-      if (isCorrect) edgeSegments[segIdx].hits++;
+      if (isHit) edgeSegments[segIdx].hits++;
     }
 
     matches.push({
@@ -442,6 +466,11 @@ export async function runBacktest() {
       marketEdge: prediction.edge / 100,
       isOver15Correct,
       isUnder35Correct,
+      pnl,
+      clv,
+      stake,
+      takenOdds,
+      closingOdds
     });
   }
 
@@ -461,6 +490,9 @@ export async function runBacktest() {
       : -1,
     over15Accuracy: over15Predictions > 0 ? (totalOver15Correct / over15Predictions) * 100 : 0,
     under35Accuracy: under35Predictions > 0 ? (totalUnder35Correct / under35Predictions) * 100 : 0,
+    totalPnl: Math.round(totalPnl * 100) / 100,
+    totalYield: totalStake > 0 ? (totalPnl / totalStake) * 100 : 0,
+    avgClv: clvCount > 0 ? totalClvSum / clvCount : 0,
     edgeSegments,
     matches: matches.slice(0, 20),
   };

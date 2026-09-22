@@ -84,6 +84,11 @@ export interface BacktestMatch {
   marketEdge: number;
   isOver15Correct: boolean;
   isUnder35Correct: boolean;
+  pnl: number;
+  clv: number;
+  stake: number;
+  takenOdds: number;
+  closingOdds?: number;
 }
 
 export interface EdgeSegment {
@@ -99,6 +104,9 @@ export interface BacktestSummary {
   brierScore: number;
   over15Accuracy: number;
   under35Accuracy: number;
+  totalPnl: number;
+  totalYield: number;
+  avgClv: number;
   edgeSegments: EdgeSegment[];
   matches: BacktestMatch[];
   error?: string;

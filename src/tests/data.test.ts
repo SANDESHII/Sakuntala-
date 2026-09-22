@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { TeamRegistry } from '../data/identity/TeamRegistry';
 import { runPrediction } from '../core/engine';
 import * as FreeDataService from '../services/freeDataService';
+import { OddsProvider } from '../data/providers/OddsProvider';
+import { DataGapError } from '../data/types';
 
 describe('Data Layer Regressions', () => {
   it('should never resolve generic names like "Manchester" to an arbitrary team', () => {
@@ -34,10 +36,38 @@ describe('Data Layer Regressions', () => {
     expect(result2.recommendedStake).toBe(0);
   });
 
-  it('should accurately calculate CLV metrics', () => {
-    const taken = 2.10;
-    const closing = 1.95;
-    const clv = (taken / closing - 1) * 100;
-    expect(clv).toBeCloseTo(7.69, 2);
+  it('should join historical odds by (sport, kickoff, teamNames) correctly', async () => {
+    const oddsProvider = new OddsProvider();
+    
+    // Mock the fetchSnapshot to return a specific match
+    const snapshotSpy = vi.spyOn(oddsProvider as any, 'fetchSnapshot').mockResolvedValue([
+      {
+        home_team: 'Arsenal',
+        away_team: 'Chelsea',
+        bookmakers: [{
+          markets: [{
+            key: 'totals',
+            outcomes: [
+              { name: 'Over', price: 1.95, point: 1.5 },
+              { name: 'Under', price: 2.10, point: 3.5 }
+            ]
+          }]
+        }]
+      }
+    ]);
+
+    const result = await oddsProvider.fetchHistoricalOdds('soccer_epl', '2024-01-01T15:00:00Z', 'Arsenal', 'Chelsea');
+    
+    expect(snapshotSpy).toHaveBeenCalled();
+    expect(result.over15?.bestPrice).toBe(1.95);
+    expect(result.under35?.bestPrice).toBe(2.10);
+  });
+
+  it('should throw DataGapError if no match found in snapshot', async () => {
+    const oddsProvider = new OddsProvider();
+    vi.spyOn(oddsProvider as any, 'fetchSnapshot').mockResolvedValue([]);
+
+    await expect(oddsProvider.fetchHistoricalOdds('soccer_epl', '2024-01-01T15:00:00Z', 'Arsenal', 'Chelsea'))
+      .rejects.toThrow(DataGapError);
   });
 });

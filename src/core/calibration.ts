@@ -112,13 +112,12 @@ export function fitDixonColes(
     lr *= 0.998;
   }
 
-  // Normalize so average = 1.0
+  // Normalize so average = 1.0 (only one side needed to preserve base rate)
   const avgA = teams.reduce((s, t) => s + atk[t], 0) / teams.length;
-  const avgD = teams.reduce((s, t) => s + def[t], 0) / teams.length;
 
   const result: Record<string, FittedTeamParams> = {};
   for (const t of teams) {
-    result[t] = { attack: atk[t] / avgA, defense: def[t] / avgD };
+    result[t] = { attack: atk[t] / avgA, defense: def[t] };
   }
 
   return { homeAdvantage: gamma, rho, teams: result };
@@ -162,11 +161,15 @@ export function predictGoals(
   homeTeam: string,
   awayTeam: string
 ): { lambdaHome: number; muAway: number } | null {
-  const h = fitted.teams[homeTeam];
-  const a = fitted.teams[awayTeam];
+  const hKey = homeTeam.toUpperCase();
+  const aKey = awayTeam.toUpperCase();
+  
+  const h = fitted.teams[hKey];
+  const a = fitted.teams[aKey];
+  
   if (!h || !a) return null;
   return {
-    lambdaHome: h.attack * a.defense * fitted.homeAdvantage * BASE_GOALS,
-    muAway:     a.attack * h.defense * BASE_GOALS,
+    lambdaHome: h.attack * a.defense * fitted.homeAdvantage,
+    muAway:     a.attack * h.defense,
   };
 }

@@ -135,7 +135,8 @@ function calculateModelMetrics(
 export async function runPrediction(
   homeTeam: string,
   awayTeam: string,
-  league: string
+  league: string,
+  fittedOverride: Calibration.FittedLeagueParams | null = null
 ): Promise<AnalysisResult> {
   const leagueKey = normalizeLeagueKey(league.toUpperCase().replace(/ /g, '_'));
   const leagueConfig = LEAGUE_CONFIGS[leagueKey] || LEAGUE_CONFIGS['EPL'];
@@ -145,7 +146,7 @@ export async function runPrediction(
     resolveTeamData(homeTeam, leagueKey, leagueConfig),
     resolveTeamData(awayTeam, leagueKey, leagueConfig),
     FreeDataService.getLiveOdds(leagueKey),
-    Calibration.fitFromAPI(leagueKey)
+    fittedOverride ? Promise.resolve(fittedOverride) : Calibration.fitFromAPI(leagueKey)
   ]);
 
   // Use MLE fitted goals if available, otherwise fallback to local stats model
@@ -173,9 +174,11 @@ export async function runPrediction(
     probUnder35 = metrics.probUnder35;
   }
 
-  // Market odds resolution
-  let marketOddsOver15 = 1.05 / probOver15;
-  let marketOddsUnder35 = 1.05 / probUnder35;
+  // Market odds resolution - scanning all bookmakers for best real price per leg
+  let marketOddsOver15 = 1.05 / probOver15; // synthetic fallback
+  let marketOddsUnder35 = 1.05 / probUnder35; // synthetic fallback
+  let over15Real = false;
+  let under35Real = false;
 
   const matchOdds = liveOdds.find((o: any) => 
     normalizeTeamName(o.home_team).includes(normalizeTeamName(homeTeam)) ||
@@ -183,13 +186,22 @@ export async function runPrediction(
   );
 
   if (matchOdds) {
-    const market = matchOdds.bookmakers[0]?.markets.find((m: any) => m.key === 'totals');
-    if (market) {
-      const o15 = market.outcomes.find((o: any) => o.name === 'Over' && o.point === 1.5);
-      const u35 = market.outcomes.find((o: any) => o.name === 'Under' && o.point === 3.5);
-      if (o15) marketOddsOver15 = o15.price;
-      if (u35) marketOddsUnder35 = u35.price;
-    }
+    matchOdds.bookmakers.forEach((bm: any) => {
+      const market = bm.markets.find((m: any) => m.key === 'totals');
+      if (market) {
+        const o15 = market.outcomes.find((o: any) => o.name === 'Over' && o.point === 1.5);
+        const u35 = market.outcomes.find((o: any) => o.name === 'Under' && o.point === 3.5);
+        
+        if (o15 && (!over15Real || o15.price > marketOddsOver15)) {
+          marketOddsOver15 = o15.price;
+          over15Real = true;
+        }
+        if (u35 && (!under35Real || u35.price > marketOddsUnder35)) {
+          marketOddsUnder35 = u35.price;
+          under35Real = true;
+        }
+      }
+    });
   }
 
   const over15Edge = probOver15 - (1 / marketOddsOver15);
@@ -213,14 +225,18 @@ export async function runPrediction(
     marketOdds = marketOddsUnder35;
   }
 
-  // Force zero edge and NO_BET if no live odds are available
-  if (!matchOdds) {
+  // Force zero edge if the chosen market is synthetic
+  const chosenMarketReal = predictionType === 'OVER_15' ? over15Real
+    : predictionType === 'UNDER_35' ? under35Real : false;
+  
+  if (!chosenMarketReal) {
     edge = 0;
   }
 
   const predictionLabel = predictionType === 'NO_BET' ? 'NO EDGE DETECTED' : predictionType === 'OVER_15' ? 'OVER 1.5 GOALS' : 'UNDER 3.5 GOALS';
   
-  const p = probability / 100;
+  // Kelly precision - use unrounded probability
+  const p = predictionType === 'OVER_15' ? probOver15 : predictionType === 'UNDER_35' ? probUnder35 : probability / 100;
   const q = 1 - p;
   const b = marketOdds - 1;
   const kellyFraction = edge > 0 ? Math.min(0.05, ((p * b - q) / b)) * 100 : 0;
@@ -332,6 +348,8 @@ export async function runBacktest() {
   const matches: any[] = [];
   let totalOver15Correct = 0;
   let totalUnder35Correct = 0;
+  let over15Predictions = 0;
+  let under35Predictions = 0;
   let totalMatches = 0;
 
   const edgeSegments = [
@@ -339,18 +357,32 @@ export async function runBacktest() {
     { segment: 'Mid Edge (3-7%)', min: 3, max: 7, count: 0, hits: 0, hitRate: 0, avgEdge: 0 },
     { segment: 'High Edge (7%+)', min: 7, max: 100, count: 0, hits: 0, hitRate: 0, avgEdge: 0 },
   ];
+  const edgeSums = [0, 0, 0];
 
-  // Fetch real historical data from major leagues
-  let historicalPool: any[] = [];
+  const fittedByLeague: Record<string, Calibration.FittedLeagueParams> = {};
+  const evalPool: any[] = [];
+
   try {
-    const results = await Promise.all(leagues.map(l => FreeDataService.getHistoricalFixtures(l, 10)));
-    historicalPool = results.flat();
+    await Promise.all(leagues.map(async l => {
+      const raw = await FreeDataService.getHistoricalFixtures(l, 100);
+      if (raw.length < 30) return;
+      
+      const sorted = raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      const leagueEval = sorted.slice(-20);
+      const leagueTrain = sorted.slice(0, -20).map(m => ({
+        home: m.home, away: m.away, hg: m.homeGoals, ag: m.awayGoals
+      }));
+
+      fittedByLeague[l] = Calibration.fitDixonColes(leagueTrain);
+      evalPool.push(...leagueEval);
+    }));
   } catch (err) {
     console.error('Historical Fetch Error:', err);
   }
 
-  for (const match of historicalPool) {
-    const prediction = await runPrediction(match.home, match.away, match.league);
+  for (const match of evalPool) {
+    const prediction = await runPrediction(match.home, match.away, match.league, fittedByLeague[match.league]);
     const hGoals = match.homeGoals;
     const aGoals = match.awayGoals;
     
@@ -358,17 +390,25 @@ export async function runBacktest() {
     const isOver15Correct = totalGoals >= 2;
     const isUnder35Correct = totalGoals <= 3;
 
-    if (prediction.predictionType === 'OVER_15' && isOver15Correct) totalOver15Correct++;
-    if (prediction.predictionType === 'UNDER_35' && isUnder35Correct) totalUnder35Correct++;
+    if (prediction.predictionType === 'NO_BET') continue;
+
+    if (prediction.predictionType === 'OVER_15') {
+      over15Predictions++;
+      if (isOver15Correct) totalOver15Correct++;
+    } else if (prediction.predictionType === 'UNDER_35') {
+      under35Predictions++;
+      if (isUnder35Correct) totalUnder35Correct++;
+    }
     
     totalMatches++;
 
     const absEdge = Math.abs(prediction.edge);
-    const segment = edgeSegments.find(s => absEdge >= s.min && absEdge < s.max);
-    if (segment) {
-      segment.count++;
+    const segIdx = edgeSegments.findIndex(s => absEdge >= s.min && absEdge < s.max);
+    if (segIdx !== -1) {
+      edgeSegments[segIdx].count++;
+      edgeSums[segIdx] += absEdge / 100;
       const isCorrect = prediction.predictionType === 'OVER_15' ? isOver15Correct : isUnder35Correct;
-      if (isCorrect) segment.hits++;
+      if (isCorrect) edgeSegments[segIdx].hits++;
     }
 
     matches.push({
@@ -389,9 +429,9 @@ export async function runBacktest() {
     });
   }
 
-  edgeSegments.forEach(seg => {
+  edgeSegments.forEach((seg, i) => {
     seg.hitRate = seg.count > 0 ? seg.hits / seg.count : 0;
-    seg.avgEdge = seg.count > 0 ? (seg.min + seg.max) / 200 : 0;
+    seg.avgEdge = seg.count > 0 ? edgeSums[i] / seg.count : 0;
   });
 
   return {
@@ -399,12 +439,12 @@ export async function runBacktest() {
     brierScore: matches.length > 0
       ? matches.reduce((sum, m) => {
           const predicted = m.prediction.probability / 100;
-          const actual = m.isOver15Correct ? 1 : 0;
+          const actual = m.prediction.predictionType === 'UNDER_35' ? (m.isUnder35Correct ? 1 : 0) : (m.isOver15Correct ? 1 : 0);
           return sum + Math.pow(predicted - actual, 2);
         }, 0) / matches.length
       : -1,
-    over15Accuracy: totalMatches > 0 ? (totalOver15Correct / totalMatches) * 100 : 0,
-    under35Accuracy: totalMatches > 0 ? (totalUnder35Correct / totalMatches) * 100 : 0,
+    over15Accuracy: over15Predictions > 0 ? (totalOver15Correct / over15Predictions) * 100 : 0,
+    under35Accuracy: under35Predictions > 0 ? (totalUnder35Correct / under35Predictions) * 100 : 0,
     edgeSegments,
     matches: matches.slice(0, 20),
   };

@@ -1,6 +1,6 @@
-// Pre-compute log factorials for k up to 20 for numerical stability and performance
+// Pre-compute log factorials for k up to 40 for numerical stability and performance
 const LOG_FACTORIAL = [0];
-for (let i = 1; i <= 20; i++) {
+for (let i = 1; i <= 40; i++) {
   LOG_FACTORIAL[i] = LOG_FACTORIAL[i - 1] + Math.log(i);
 }
 
@@ -59,7 +59,7 @@ export class DixonColes {
     lambdaHome: number,
     muAway: number,
     rho: number = -0.13,
-    maxGoals: number = 8
+    maxGoals: number = 12
   ): number[][] {
     const matrix = Array.from({ length: maxGoals + 1 }, (_, h) =>
       Array.from({ length: maxGoals + 1 }, (_, a) => {

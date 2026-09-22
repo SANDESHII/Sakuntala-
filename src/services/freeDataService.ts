@@ -36,7 +36,7 @@ export async function getTeamStats(teamName: string, league: string) {
         if (!teamId) return null;
         const statsResponse = await axios.get('https://v3.football.api-sports.io/teams/statistics', {
             headers: { 'x-apisports-key': API_FOOTBALL_KEY },
-            params: { team: teamId, league: leagueId, season: new Date().getFullYear() }
+            params: { team: teamId, league: leagueId, season: inferSeason() }
         });
         const stats = statsResponse.data.response;
         const played = stats.fixtures.played.total;
@@ -80,7 +80,7 @@ export async function getUpcomingFixtures(league: string, limit: number = 10): P
     try {
         const response = await axios.get('https://v3.football.api-sports.io/fixtures', {
             headers: { 'x-apisports-key': API_FOOTBALL_KEY },
-            params: { league: leagueId, season: new Date().getFullYear(), next: limit, status: 'NS' }
+            params: { league: leagueId, season: inferSeason(), next: limit, status: 'NS' }
         });
         return response.data.response.map((f: any) => ({
             homeTeam: f.teams.home.name.toUpperCase(),
@@ -103,7 +103,7 @@ export async function getHistoricalFixtures(league: string, limit: number = 50):
     try {
         const response = await axios.get('https://v3.football.api-sports.io/fixtures', {
             headers: { 'x-apisports-key': API_FOOTBALL_KEY },
-            params: { league: leagueId, season: 2024, last: limit, status: 'FT' }
+            params: { league: leagueId, season: inferSeason(), last: limit, status: 'FT' }
         });
         return response.data.response.map((f: any) => ({
             home: f.teams.home.name.toUpperCase(),
@@ -127,4 +127,12 @@ function getLeagueId(league: string): number {
 function getOddsSportKey(league: string): string {
     const map: Record<string, string> = { 'EPL': 'soccer_epl', 'LA_LIGA': 'soccer_spain_la_liga', 'BUNDESLIGA': 'soccer_germany_bundesliga', 'SERIE_A': 'soccer_italy_serie_a', 'LIGUE_1': 'soccer_france_ligue_one' };
     return map[league.toUpperCase()] || 'soccer_epl';
+}
+
+function inferSeason(): number {
+    const now = new Date();
+    const month = now.getMonth(); // 0-indexed (0=Jan, 6=July)
+    const year = now.getFullYear();
+    // If we're before July, the season started in the previous year
+    return month < 6 ? year - 1 : year;
 }

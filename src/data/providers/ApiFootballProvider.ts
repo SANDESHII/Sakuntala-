@@ -26,20 +26,28 @@ export class ApiFootballProvider {
       }
     );
 
-    return data.response.map((f: any) => ({
-      id: f.fixture.id,
-      date: f.fixture.date,
-      home: TeamRegistry.resolveById('apiFootball', f.teams.home.id).id,
-      away: TeamRegistry.resolveById('apiFootball', f.teams.away.id).id,
-      homeId: f.teams.home.id,
-      awayId: f.teams.away.id,
-      homeLogo: f.teams.home.logo,
-      awayLogo: f.teams.away.logo,
-      homeGoals: f.goals.home,
-      awayGoals: f.goals.away,
-      league: league.toUpperCase(),
-      provenance: this.getProvenance('high', season)
-    }));
+    return data.response
+      .map((f: any) => {
+        try {
+          return {
+            id: f.fixture.id,
+            date: f.fixture.date,
+            home: TeamRegistry.resolveById('apiFootball', f.teams.home.id).id,
+            away: TeamRegistry.resolveById('apiFootball', f.teams.away.id).id,
+            homeId: f.teams.home.id,
+            awayId: f.teams.away.id,
+            homeLogo: f.teams.home.logo,
+            awayLogo: f.teams.away.logo,
+            homeGoals: f.goals.home,
+            awayGoals: f.goals.away,
+            league: league.toUpperCase(),
+            provenance: this.getProvenance('high', season)
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter((f: any): f is NonNullable<typeof f> => f !== null);
   }
 
   async fetchTeamStats(teamId: number, leagueId: number, season: number) {

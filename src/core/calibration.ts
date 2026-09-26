@@ -17,6 +17,8 @@ import * as FreeDataService from '../services/freeDataService';
 export interface FittedTeamParams {
   attack: number;   // α — attacking strength (1.0 = league average)
   defense: number;  // β — defensive strength (1.0 = league average)
+  matchCount: number;
+  lowConfidence: boolean;
 }
 
 export interface FittedLeagueParams {
@@ -47,7 +49,13 @@ export function fitDixonColes(
   if (matches.length === 0) return { homeAdvantage: 1.25, rho: -0.13, teams: {} };
 
   const teamSet = new Set<string>();
-  for (const m of matches) { teamSet.add(m.home); teamSet.add(m.away); }
+  const matchCounts: Record<string, number> = {};
+  for (const m of matches) { 
+    teamSet.add(m.home); 
+    teamSet.add(m.away); 
+    matchCounts[m.home] = (matchCounts[m.home] || 0) + 1;
+    matchCounts[m.away] = (matchCounts[m.away] || 0) + 1;
+  }
   const teams = Array.from(teamSet);
 
   // Init at 1.0 (league average)
@@ -107,9 +115,14 @@ export function fitDixonColes(
 
     // Update (gradient ascent)
     const n = matches.length;
+    const REG_LAMBDA = 0.5; // L2 penalty coefficient for shrinkage towards 1.0
     for (const t of teams) {
-      atk[t] = Math.max(0.2, Math.min(3.0, atk[t] + lr * gA[t] / n));
-      def[t] = Math.max(0.2, Math.min(3.0, def[t] + lr * gD[t] / n));
+      // Shrinkage: d/d(param) [ -REG_LAMBDA * (param - 1)^2 ] = -2 * REG_LAMBDA * (param - 1)
+      const penaltyA = -2 * REG_LAMBDA * (atk[t] - 1);
+      const penaltyD = -2 * REG_LAMBDA * (def[t] - 1);
+
+      atk[t] = Math.max(0.2, Math.min(3.0, atk[t] + lr * (gA[t] + penaltyA) / n));
+      def[t] = Math.max(0.2, Math.min(3.0, def[t] + lr * (gD[t] + penaltyD) / n));
     }
     gamma = Math.max(0.8, Math.min(2.0, gamma + lr * gG / n));
     rho   = Math.max(-0.5, Math.min(0.0, rho + lr * gR / n));
@@ -121,7 +134,13 @@ export function fitDixonColes(
 
   const result: Record<string, FittedTeamParams> = {};
   for (const t of teams) {
-    result[t] = { attack: atk[t] / avgA, defense: def[t] };
+    const count = matchCounts[t] || 0;
+    result[t] = { 
+      attack: atk[t] / avgA, 
+      defense: def[t],
+      matchCount: count,
+      lowConfidence: count < 6
+    };
   }
 
   return { homeAdvantage: gamma, rho, teams: result };
@@ -136,17 +155,26 @@ const TTL = 6 * 60 * 60 * 1000; // 6 hours
  * Fit parameters from real historical data via API.
  * Cached for 6 hours.
  */
-export async function fitFromAPI(league: string): Promise<FittedLeagueParams> {
-  const c = cache[league];
+export async function fitFromAPI(league: string, asOfDate?: string): Promise<FittedLeagueParams> {
+  const cacheKey = asOfDate ? `${league}_${asOfDate}` : league;
+  const c = cache[cacheKey];
   if (c && Date.now() - c.ts < TTL) return c.params;
 
-  const raw = await FreeDataService.getHistoricalFixtures(league, 100);
+  const raw = await FreeDataService.getHistoricalFixtures(league, 150);
   if (raw.length < 20) return { homeAdvantage: 1.25, rho: -0.13, teams: {} };
 
-  const now = Date.now();
-  const matches: MatchData[] = raw.map(m => {
+  const cutoff = asOfDate ? new Date(asOfDate).getTime() : Date.now();
+  const filtered = raw.filter(m => new Date(m.date).getTime() < cutoff);
+  
+  if (filtered.length < 20) {
+     // If too few games before cutoff, fallback to global or at least more games
+     if (asOfDate) return fitFromAPI(league); // recursive fallback to current
+     return { homeAdvantage: 1.25, rho: -0.13, teams: {} };
+  }
+
+  const matches: MatchData[] = filtered.map(m => {
     const kickoffTs = new Date(m.date).getTime();
-    const diffDays = Math.max(0, (now - kickoffTs) / (1000 * 60 * 60 * 24));
+    const diffDays = Math.max(0, (cutoff - kickoffTs) / (1000 * 60 * 60 * 24));
     return {
       home: m.home,
       away: m.away,
@@ -157,7 +185,7 @@ export async function fitFromAPI(league: string): Promise<FittedLeagueParams> {
   });
 
   const fitted = fitDixonColes(matches, 500, 0.01);
-  cache[league] = { params: fitted, ts: Date.now() };
+  cache[cacheKey] = { params: fitted, ts: Date.now() };
   return fitted;
 }
 
@@ -173,7 +201,7 @@ export function predictGoals(
   fitted: FittedLeagueParams,
   homeTeam: string,
   awayTeam: string
-): { lambdaHome: number; muAway: number } | null {
+): { lambdaHome: number; muAway: number; lowConfidence: boolean } | null {
   const hKey = homeTeam.toUpperCase();
   const aKey = awayTeam.toUpperCase();
   
@@ -184,5 +212,6 @@ export function predictGoals(
   return {
     lambdaHome: h.attack * a.defense * fitted.homeAdvantage,
     muAway:     a.attack * h.defense,
+    lowConfidence: h.lowConfidence || a.lowConfidence
   };
 }

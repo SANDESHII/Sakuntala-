@@ -28,8 +28,6 @@ export class OddsProvider {
    * "Taken" odds are sampled ~24h before kickoff.
    */
   async fetchHistoricalOdds(sport: string, kickoff: string, homeTeam: string, awayTeam: string): Promise<HistoricalPrices> {
-    if (!API_KEY) throw new DataGapError('ODDS_API_KEY', 'Environment');
-
     // Sample 'taken' odds 24h before kickoff
     const kickoffDate = new Date(kickoff);
     const takenDate = new Date(kickoffDate.getTime() - 24 * 60 * 60 * 1000);
@@ -72,6 +70,8 @@ export class OddsProvider {
   }
 
   private async fetchSnapshot(sport: string, date: string): Promise<any[]> {
+    if (!API_KEY) throw new DataGapError('ODDS_API_KEY', 'Environment');
+
     return await fetchWithRetry<any[]>(
       this.source,
       `https://api.the-odds-api.com/v4/historical/sports/${sport}/odds`,

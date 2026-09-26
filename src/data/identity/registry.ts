@@ -1,5 +1,6 @@
 import { TeamIdentity, DataGapError } from '../../types';
 import { TEAM_STATS, TEAM_ALIASES } from '../../core/constants';
+import { API_FOOTBALL_MAPPINGS, THE_ODDS_API_MAPPINGS } from './mappings';
 
 const registry = new Map<string, TeamIdentity>();
 const idMaps = {
@@ -13,15 +14,6 @@ function add(identity: TeamIdentity) {
   if (identity.externalIds.theOddsApi) idMaps.theOddsApi.set(identity.externalIds.theOddsApi, identity.id);
 }
 
-function updateExternalIds(id: string, externalIds: TeamIdentity['externalIds']) {
-  const identity = registry.get(id);
-  if (identity) {
-    identity.externalIds = { ...identity.externalIds, ...externalIds };
-    if (externalIds.apiFootball) idMaps.apiFootball.set(externalIds.apiFootball, id);
-    if (externalIds.theOddsApi) idMaps.theOddsApi.set(externalIds.theOddsApi, id);
-  }
-}
-
 // Initialize
 Object.keys(TEAM_STATS).forEach(canonicalName => {
   add({
@@ -30,16 +22,12 @@ Object.keys(TEAM_STATS).forEach(canonicalName => {
     aliases: Object.entries(TEAM_ALIASES)
       .filter(([_, canonical]) => canonical === canonicalName)
       .map(([alias, _]) => alias),
-    externalIds: {}
+    externalIds: {
+      apiFootball: API_FOOTBALL_MAPPINGS[canonicalName],
+      theOddsApi: THE_ODDS_API_MAPPINGS[canonicalName]
+    }
   });
 });
-
-updateExternalIds('ARSENAL', { apiFootball: 42, theOddsApi: 'Arsenal' });
-updateExternalIds('MAN_CITY', { apiFootball: 50, theOddsApi: 'Manchester City' });
-updateExternalIds('LIVERPOOL', { apiFootball: 40, theOddsApi: 'Liverpool' });
-updateExternalIds('CHELSEA', { apiFootball: 49, theOddsApi: 'Chelsea' });
-updateExternalIds('TOTTENHAM', { apiFootball: 47, theOddsApi: 'Tottenham' });
-updateExternalIds('MAN_UTD', { apiFootball: 33, theOddsApi: 'Manchester United' });
 
 export const TeamRegistry = {
   resolveById(source: keyof TeamIdentity['externalIds'], id: string | number): TeamIdentity {

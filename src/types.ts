@@ -8,7 +8,6 @@ export interface InternalTeamData {
   homeBias: number;
   form: number[];
   cleanSheetRate: number;
-  clinicalEdge: number;
   quality?: 'high' | 'medium' | 'low' | 'goals-proxy';
 }
 
@@ -81,7 +80,6 @@ export interface TeamStats {
   defensiveStability: number;
   form: number[];
   cleanSheets: number;
-  clinicalEdge: number;
   homeAwayBias: number;
 }
 
@@ -123,6 +121,9 @@ export interface AnalysisResult {
   verdict: 'EXECUTE_BET' | 'NO_BET';
   context: MatchContext;
   dataSource: 'LIVE' | 'FALLBACK_STATIC';
+  modelSource: 'MLE_FITTED' | 'HEURISTIC_FALLBACK';
+  isLowConfidence?: boolean;
+  isCalibrated?: boolean;
   usedRealOdds?: boolean;
   goalDistribution?: GoalDistribution[];
 }
@@ -155,6 +156,7 @@ export interface EdgeSegment {
   hits: number;
   hitRate: number;
   avgEdge: number;
+  avgClv: number;
 }
 
 export interface BacktestSummary {

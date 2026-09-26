@@ -35,6 +35,12 @@ export const BacktestDisplay: FC<BacktestDisplayProps> = ({ summary }) => {
                     { label: 'Matches Analyzed', value: summary.totalMatches, icon: Activity },
                     { label: 'Accuracy Rate', value: `${(((summary.over15Accuracy || 0) + (summary.under35Accuracy || 0)) / 2)?.toFixed(1) || '0.0'}%`, icon: CheckCircle2 },
                     { 
+                        label: 'Profit/Loss', 
+                        value: `${summary.totalPnl > 0 ? '+' : ''}${summary.totalPnl.toFixed(1)}u`, 
+                        icon: BarChart3,
+                        detail: `Yield: ${summary.totalYield.toFixed(2)}%`
+                    },
+                    { 
                         label: 'Brier Score', 
                         value: summary.brierScore === -1 ? 'SIMULATED' : (summary.brierScore?.toFixed(4) || '0.0000'), 
                         icon: BarChart3, 
@@ -76,9 +82,17 @@ export const BacktestDisplay: FC<BacktestDisplayProps> = ({ summary }) => {
                                         />
                                     </div>
                                 </div>
-                                <div className="flex items-center justify-between pt-6 border-t border-zinc-800/50">
-                                    <span className="text-[10px] text-zinc-600 font-bold uppercase">Avg Edge</span>
-                                    <span className="text-xl font-bold text-white tabular-nums tracking-tighter">+{(seg.avgEdge * 100)?.toFixed(2) || '0.00'}</span>
+                                <div className="space-y-2 pt-6 border-t border-zinc-800/50">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] text-zinc-600 font-bold uppercase">Avg Edge</span>
+                                        <span className="text-lg font-bold text-white tabular-nums tracking-tighter">+{(seg.avgEdge * 100)?.toFixed(2) || '0.00'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] text-zinc-600 font-bold uppercase">Avg CLV</span>
+                                        <span className={`text-lg font-bold tabular-nums tracking-tighter ${seg.avgClv > 0 ? 'text-emerald-500' : seg.avgClv < 0 ? 'text-red-400' : 'text-zinc-500'}`}>
+                                            {seg.avgClv > 0 ? '+' : ''}{seg.avgClv?.toFixed(2) || '0.00'}%
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         ))}

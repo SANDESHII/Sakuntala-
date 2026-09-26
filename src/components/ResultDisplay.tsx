@@ -36,6 +36,11 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                         }`}>
                             {analysis.dataSource === 'LIVE' ? 'Live API Feed' : 'Historical Fallback'}
                         </span>
+                        {analysis.isCalibrated && (
+                            <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border bg-purple-500/10 border-purple-500/20 text-purple-500">
+                                Calibrated
+                            </span>
+                        )}
                         <span className="text-[10px] font-black text-neutral-600 uppercase tracking-[0.4em]">Prediction Engine</span>
                     </div>
                     <h2 className="text-7xl md:text-8xl font-black text-white tracking-tighter leading-[0.8] uppercase max-w-2xl">
@@ -194,7 +199,9 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                         <p className="text-sm font-bold leading-relaxed uppercase tracking-tight">
                             {analysis.verdict === 'EXECUTE_BET'
                                 ? `Positive edge detected. Recommended allocation: ${analysis.recommendedStake}% of bankroll.`
-                                : "No measurable edge found. Market is efficient."}
+                                : analysis.isLowConfidence
+                                    ? "Bet withheld: Insufficient data for reliable fitting."
+                                    : "No measurable edge found. Market is efficient."}
                         </p>
 
                         {analysis.verdict === 'EXECUTE_BET' && (
@@ -226,6 +233,33 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                                 </div>
                                 <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
                                     <div className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" style={{ width: analysis.dataSource === 'LIVE' ? '100%' : '60%' }} />
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                <div className="flex justify-between text-[10px] font-black uppercase text-neutral-400 tracking-widest">
+                                    <span>Model Method</span>
+                                    <span>{analysis.modelSource === 'MLE_FITTED' ? 'MLE FITTED' : 'HEURISTIC'}</span>
+                                </div>
+                                <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
+                                    <div className="h-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" style={{ width: analysis.modelSource === 'MLE_FITTED' ? '100%' : '40%' }} />
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                <div className="flex justify-between text-[10px] font-black uppercase text-neutral-400 tracking-widest">
+                                    <span>Sample Confidence</span>
+                                    <span>{analysis.isLowConfidence ? 'LOW' : 'HIGH'}</span>
+                                </div>
+                                <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
+                                    <div className={`h-full ${analysis.isLowConfidence ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: analysis.isLowConfidence ? '30%' : '100%' }} />
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                <div className="flex justify-between text-[10px] font-black uppercase text-neutral-400 tracking-widest">
+                                    <span>Calibration</span>
+                                    <span>{analysis.isCalibrated ? 'ENABLED' : 'NONE'}</span>
+                                </div>
+                                <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
+                                    <div className={`h-full ${analysis.isCalibrated ? 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)]' : 'bg-neutral-800'}`} style={{ width: analysis.isCalibrated ? '100%' : '10%' }} />
                                 </div>
                             </div>
                         </div>

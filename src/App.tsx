@@ -24,7 +24,14 @@ export const App: FC = () => {
         setAnalysis(null);
         try {
             const { runPrediction } = await import('./core/engine');
-            const result = await runPrediction(inputs.home, inputs.away, inputs.league);
+            const result = await runPrediction(
+                inputs.home, 
+                inputs.away, 
+                inputs.league, 
+                null, 
+                null, 
+                backtestSummary?.edgeSegments
+            );
             setAnalysis(result);
         } catch (err: any) { 
             setError(err.message || 'ANALYSIS FAILED'); 

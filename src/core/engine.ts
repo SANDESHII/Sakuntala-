@@ -1,9 +1,11 @@
 import { AnalysisResult, InternalTeamData } from '../types';
-import { TEAM_STATS, TEAM_ALIASES, LEAGUE_CONFIGS } from './constants';
+import { TEAM_STATS, LEAGUE_CONFIGS } from './constants';
 import { DixonColes } from './math';
 import * as FreeDataService from '../services/freeDataService';
 import * as Calibration from './calibration';
+import { FeatureEngine } from './features';
 import { normalizeLeagueToId } from '../data/utils';
+import { TeamRegistry } from '../data/identity/registry';
 
 /**
  * Prediction Pipeline Configuration
@@ -17,22 +19,19 @@ const MODEL_CONFIG = {
   MIN_LAMBDA: 0.3,
   MAX_MU: 3.5,
   MIN_MU: 0.2,
+  KELLY_FRACTION: 0.35, // 1/3 Kelly discount for model error
 };
 
 /**
- * Smart team lookup using aliases and canonical stats.
+ * Smart team lookup using TeamRegistry for safe canonical resolution.
  */
 const findTeamDetailed = (teamName: string): InternalTeamData | null => {
-  const normalized = teamName.toUpperCase().trim().replace(/_/g, ' ').replace(/\s+/g, ' ');
-  
-  if (TEAM_STATS[normalized]) return TEAM_STATS[normalized];
-  
-  const alias = TEAM_ALIASES[normalized];
-  if (alias && TEAM_STATS[alias]) {
-    return TEAM_STATS[alias];
+  try {
+    const identity = TeamRegistry.resolveByName(teamName);
+    return TEAM_STATS[identity.id] ?? null;
+  } catch {
+    return null; // Fall through to league-average, don't guess
   }
-  
-  return null;
 };
 
 /**
@@ -41,17 +40,28 @@ const findTeamDetailed = (teamName: string): InternalTeamData | null => {
 async function resolveTeamData(
   teamName: string, 
   leagueKey: string, 
-  leagueConfig: any
+  leagueConfig: any,
+  asOfDate?: string
 ): Promise<{ 
   data: InternalTeamData; 
   isGeneric: boolean; 
   dataSource: 'LIVE' | 'FALLBACK_STATIC';
 }> {
-  // 1. Try Live API
+  // 1. Point-in-time historical mode
+  if (asOfDate) {
+    const historicalData = await FeatureEngine.computeFeatures(teamName, leagueKey, asOfDate);
+    return {
+      data: historicalData,
+      isGeneric: historicalData.quality === 'low',
+      dataSource: 'FALLBACK_STATIC'
+    };
+  }
+
+  // 2. Try Live API
   const liveData = await FreeDataService.getTeamStats(teamName, leagueKey);
   if (liveData) return { data: liveData, isGeneric: false, dataSource: 'LIVE' };
 
-  // 2. Try Local Database
+  // 3. Try Local Database
   const staticData = findTeamDetailed(teamName);
   if (staticData) {
     const data = { ...staticData };
@@ -80,7 +90,6 @@ async function resolveTeamData(
       homeBias: leagueConfig.homeAdvantage,
       form: [1, 1, 1, 1, 1],
       cleanSheetRate: 0.25,
-      clinicalEdge: 1.0,
     }
   };
 }
@@ -98,10 +107,6 @@ function calculateModelMetrics(
   // Base xG calculation
   let lambdaHome = homeData.attackStrength * awayData.defenseStrength * leagueAvg * (1 + leagueConfig.homeAdvantage * MODEL_CONFIG.HOME_ADVANTAGE_WEIGHT);
   let muAway = awayData.attackStrength * homeData.defenseStrength * leagueAvg * (1 - leagueConfig.homeAdvantage * MODEL_CONFIG.AWAY_DEFENSE_WEIGHT);
-
-  // Clinical edge scaling (Primary performance multiplier)
-  lambdaHome *= homeData.clinicalEdge;
-  muAway *= awayData.clinicalEdge;
 
   // Sanity clamping
   lambdaHome = Math.max(MODEL_CONFIG.MIN_LAMBDA, Math.min(MODEL_CONFIG.MAX_LAMBDA, lambdaHome));
@@ -125,17 +130,19 @@ export async function runPrediction(
   awayTeam: string,
   league: string,
   fittedOverride: Calibration.FittedLeagueParams | null = null,
-  historicalOddsOverride: any = null
+  historicalOddsOverride: any = null,
+  calibrationContext: any[] | null = null,
+  asOfDate?: string
 ): Promise<AnalysisResult> {
   const leagueKey = normalizeLeagueToId(league).toString();
   const leagueConfig = LEAGUE_CONFIGS[leagueKey] || LEAGUE_CONFIGS['EPL'];
 
   // Parallel data resolution
   const [homeRes, awayRes, liveOdds, fittedParams] = await Promise.all([
-    resolveTeamData(homeTeam, leagueKey, leagueConfig),
-    resolveTeamData(awayTeam, leagueKey, leagueConfig),
+    resolveTeamData(homeTeam, leagueKey, leagueConfig, asOfDate),
+    resolveTeamData(awayTeam, leagueKey, leagueConfig, asOfDate),
     historicalOddsOverride ? Promise.resolve([]) : FreeDataService.getLiveOdds(leagueKey),
-    fittedOverride ? Promise.resolve(fittedOverride) : Calibration.fitFromAPI(leagueKey)
+    fittedOverride ? Promise.resolve(fittedOverride) : Calibration.fitFromAPI(leagueKey, asOfDate)
   ]);
 
   // Use MLE fitted goals if available, otherwise fallback to local stats model
@@ -147,17 +154,22 @@ export async function runPrediction(
   let probUnder35: number;
   let finalRho = -0.13;
   let scoreMatrix: number[][];
+  let modelSource: 'MLE_FITTED' | 'HEURISTIC_FALLBACK';
+  let isLowConfidence = false;
 
   if (mleGoals) {
     lambdaHome = mleGoals.lambdaHome;
     muAway = mleGoals.muAway;
     finalRho = fittedParams.rho;
     scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, finalRho);
+    modelSource = 'MLE_FITTED';
+    isLowConfidence = mleGoals.lowConfidence;
   } else {
     const metrics = calculateModelMetrics(homeRes.data, awayRes.data, leagueConfig);
     lambdaHome = metrics.lambdaHome;
     muAway = metrics.muAway;
     scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, -0.13);
+    modelSource = 'HEURISTIC_FALLBACK';
   }
 
   probOver15 = DixonColes.calculateOverUnder(scoreMatrix, 1.5);
@@ -199,10 +211,14 @@ export async function runPrediction(
     marketOddsOver15 = historicalOddsOverride.over15 || marketOddsOver15;
     marketOddsUnder35 = historicalOddsOverride.under35 || marketOddsUnder35;
   } else {
-    const normHome = homeTeam.toUpperCase().trim();
     matchOdds = liveOdds.find((o: any) => {
-      const oHome = o.home_team.toUpperCase().trim();
-      return oHome.includes(normHome) || normHome.includes(oHome);
+      try {
+        const oHomeId = TeamRegistry.resolveByName(o.home_team).id;
+        const currentHomeId = TeamRegistry.resolveByName(homeTeam).id;
+        return oHomeId === currentHomeId;
+      } catch {
+        return false;
+      }
     });
 
     if (matchOdds) {
@@ -228,22 +244,42 @@ export async function runPrediction(
   const over15Edge = probOver15 - (1 / marketOddsOver15);
   const under35Edge = probUnder35 - (1 / marketOddsUnder35);
 
+  // Calibration Logic: Tighten thresholds if historical CLV is weak for the given edge segment
+  const getThreshold = (edgeVal: number) => {
+    const baseThreshold = MODEL_CONFIG.EDGE_THRESHOLD;
+    if (!calibrationContext) return baseThreshold;
+
+    const absEdge = Math.abs(edgeVal * 100);
+    const segment = calibrationContext.find(s => absEdge >= s.min && absEdge < s.max);
+    
+    // If segment has negative CLV, add a safety margin to the threshold
+    if (segment && segment.avgClv < 0) {
+        return baseThreshold + 0.01; // Require 1% more edge
+    }
+    return baseThreshold;
+  };
+
+  const currentOverThreshold = getThreshold(over15Edge);
+  const currentUnderThreshold = getThreshold(under35Edge);
+
   // Result arbitration
   let predictionType: 'OVER_15' | 'UNDER_35' | 'NO_BET' = 'NO_BET';
   let probability = probOver15 > probUnder35 ? Math.round(probOver15 * 100) : Math.round(probUnder35 * 100);
   let edge = 0;
   let marketOdds = probOver15 > probUnder35 ? marketOddsOver15 : marketOddsUnder35;
 
-  if (over15Edge > under35Edge && over15Edge > MODEL_CONFIG.EDGE_THRESHOLD) {
-    predictionType = 'OVER_15';
-    probability = Math.round(probOver15 * 100);
-    edge = Math.round(over15Edge * 1000) / 10;
-    marketOdds = marketOddsOver15;
-  } else if (under35Edge > MODEL_CONFIG.EDGE_THRESHOLD) {
-    predictionType = 'UNDER_35';
-    probability = Math.round(probUnder35 * 100);
-    edge = Math.round(under35Edge * 1000) / 10;
-    marketOdds = marketOddsUnder35;
+  if (!isLowConfidence) {
+    if (over15Edge > under35Edge && over15Edge > currentOverThreshold) {
+      predictionType = 'OVER_15';
+      probability = Math.round(probOver15 * 100);
+      edge = Math.round(over15Edge * 1000) / 10;
+      marketOdds = marketOddsOver15;
+    } else if (under35Edge > currentUnderThreshold) {
+      predictionType = 'UNDER_35';
+      probability = Math.round(probUnder35 * 100);
+      edge = Math.round(under35Edge * 1000) / 10;
+      marketOdds = marketOddsUnder35;
+    }
   }
 
   // Force zero edge if the chosen market is synthetic
@@ -260,7 +296,7 @@ export async function runPrediction(
   const p = predictionType === 'OVER_15' ? probOver15 : predictionType === 'UNDER_35' ? probUnder35 : probability / 100;
   const q = 1 - p;
   const b = marketOdds - 1;
-  const kellyFraction = edge > 0 ? Math.min(0.05, ((p * b - q) / b)) * 100 : 0;
+  const kellyFraction = edge > 0 ? Math.min(0.05, ((p * b - q) / b) * MODEL_CONFIG.KELLY_FRACTION) * 100 : 0;
   
   const mapStats = (name: string, data: InternalTeamData) => ({
     name: name.toUpperCase(),
@@ -272,15 +308,16 @@ export async function runPrediction(
     defensiveStability: data.cleanSheetRate * 1.5,
     form: data.form,
     cleanSheets: Math.round(data.cleanSheetRate * 20),
-    clinicalEdge: data.clinicalEdge,
     homeAwayBias: data.homeBias,
   });
 
-  const summary = generateSummary(homeTeam, awayTeam, predictionType, lambdaHome, muAway, edge);
+  const summary = generateSummary(homeTeam, awayTeam, predictionType, lambdaHome, muAway, edge, modelSource, isLowConfidence);
   const dataSource = homeRes.dataSource === 'LIVE' && awayRes.dataSource === 'LIVE' ? 'LIVE' : 'FALLBACK_STATIC';
 
   let finalSummary = summary;
-  if (!chosenMarketReal) {
+  if (isLowConfidence) {
+    finalSummary = `⚠️ Confidence Warning: Prediction withheld due to thin sample size for one or both teams. ${summary}`;
+  } else if (!chosenMarketReal) {
     finalSummary = `⚠️ No real odds available — edge cannot be verified. ${summary}`;
   } else if (homeRes.isGeneric || awayRes.isGeneric) {
     finalSummary = `⚠️ Data Gap: ${[homeRes.isGeneric ? homeTeam : null, awayRes.isGeneric ? awayTeam : null].filter(Boolean).join(', ')} missing. ${summary}`;
@@ -301,7 +338,7 @@ export async function runPrediction(
     marketImpliedProb: Math.round((1 / marketOdds) * 1000) / 10,
     edge,
     recommendedStake: Math.max(0, Math.round(kellyFraction * 10) / 10),
-    verdict: (chosenMarketReal && edge > 3) ? 'EXECUTE_BET' : 'NO_BET',
+    verdict: (chosenMarketReal && edge > 3 && !isLowConfidence) ? 'EXECUTE_BET' : 'NO_BET',
     context: {
       league: leagueKey,
       homeSeasonXG: homeRes.data.avgXG * 20,
@@ -314,6 +351,9 @@ export async function runPrediction(
       marketOdds: { pinnacleOver15: marketOddsOver15, pinnacleUnder35: marketOddsUnder35 },
     },
     dataSource,
+    modelSource,
+    isLowConfidence,
+    isCalibrated: !!calibrationContext,
     usedRealOdds: chosenMarketReal,
     goalDistribution: distribution,
   };
@@ -323,16 +363,20 @@ function generateSummary(
   home: string, away: string,
   type: 'OVER_15' | 'UNDER_35' | 'NO_BET',
   lambdaHome: number, muAway: number,
-  edge: number
+  edge: number,
+  modelSource: 'MLE_FITTED' | 'HEURISTIC_FALLBACK',
+  isLowConfidence: boolean = false
 ): string {
   const totalXG = (lambdaHome + muAway).toFixed(2);
+  const modelTypeLabel = modelSource === 'MLE_FITTED' ? 'Fitted MLE Model' : 'Heuristic Fallback Model';
+  const confidencePrefix = isLowConfidence ? '[Low Confidence] ' : (modelSource === 'HEURISTIC_FALLBACK' ? '[Heuristic] ' : '');
 
   if (type === 'OVER_15') {
-    return `Combined xG of ${totalXG} strongly supports Over 1.5 Goals market. ${home.toUpperCase()}'s offensive output (${lambdaHome.toFixed(2)} xG) combined with ${away.toUpperCase()}'s defensive vulnerability creates a high-probability scoring environment. Model edge of +${edge.toFixed(1)}% represents positive expected value.`;
+    return `${confidencePrefix}Combined xG of ${totalXG} strongly supports Over 1.5 Goals market. ${home.toUpperCase()}'s offensive output (${lambdaHome.toFixed(2)} xG) combined with ${away.toUpperCase()}'s defensive vulnerability creates a high-probability scoring environment. Model edge of +${edge.toFixed(1)}% represents positive expected value via ${modelTypeLabel}.`;
   } else if (type === 'UNDER_35') {
-    return `Defensive stability metrics indicate a controlled match environment. Combined xG of ${totalXG} suggests tactical discipline from both sides. ${home.toUpperCase()}'s defensive structure and ${away.toUpperCase()}'s conservative approach support the Under 3.5 market with +${edge.toFixed(1)}% edge.`;
+    return `${confidencePrefix}Defensive stability metrics indicate a controlled match environment. Combined xG of ${totalXG} suggests tactical discipline from both sides. ${home.toUpperCase()}'s defensive structure and ${away.toUpperCase()}'s conservative approach support the Under 3.5 market with +${edge.toFixed(1)}% edge using ${modelTypeLabel}.`;
   } else {
-    return `Market is pricing this fixture efficiently. Combined xG of ${totalXG} does not present a measurable edge in either direction. Model recommends capital preservation.`;
+    return `Market is pricing this fixture efficiently. Combined xG of ${totalXG} does not present a measurable edge. Analysis performed via ${modelTypeLabel}.`;
   }
 }
 
@@ -350,9 +394,9 @@ export async function runBacktest() {
       totalYield: 0,
       avgClv: 0,
       edgeSegments: [
-        { segment: 'Low Edge (0-3%)', min: 0, max: 3, count: 0, hits: 0, hitRate: 0, avgEdge: 0 },
-        { segment: 'Mid Edge (3-7%)', min: 3, max: 7, count: 0, hits: 0, hitRate: 0, avgEdge: 0 },
-        { segment: 'High Edge (7%+)', min: 7, max: 100, count: 0, hits: 0, hitRate: 0, avgEdge: 0 },
+        { segment: 'Low Edge (0-3%)', min: 0, max: 3, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
+        { segment: 'Mid Edge (3-7%)', min: 3, max: 7, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
+        { segment: 'High Edge (7%+)', min: 7, max: 100, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
       ],
       matches: [],
       error: 'API key required. Set VITE_API_FOOTBALL_KEY in .env to enable historical backtesting.',
@@ -368,11 +412,13 @@ export async function runBacktest() {
   let totalMatches = 0;
 
   const edgeSegments = [
-    { segment: 'Low Edge (0-3%)', min: 0, max: 3, count: 0, hits: 0, hitRate: 0, avgEdge: 0 },
-    { segment: 'Mid Edge (3-7%)', min: 3, max: 7, count: 0, hits: 0, hitRate: 0, avgEdge: 0 },
-    { segment: 'High Edge (7%+)', min: 7, max: 100, count: 0, hits: 0, hitRate: 0, avgEdge: 0 },
+    { segment: 'Low Edge (0-3%)', min: 0, max: 3, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
+    { segment: 'Mid Edge (3-7%)', min: 3, max: 7, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
+    { segment: 'High Edge (7%+)', min: 7, max: 100, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
   ];
   const edgeSums = [0, 0, 0];
+  const clvSums = [0, 0, 0];
+  const clvCounts = [0, 0, 0];
 
   const fittedByLeague: Record<string, Calibration.FittedLeagueParams> = {};
   const evalPool: any[] = [];
@@ -416,7 +462,9 @@ export async function runBacktest() {
         match.away, 
         match.league, 
         fittedByLeague[match.league],
-        match.takenPrices
+        match.takenPrices,
+        null,
+        match.date
     );
     const hGoals = match.homeGoals;
     const aGoals = match.awayGoals;
@@ -463,6 +511,11 @@ export async function runBacktest() {
       edgeSegments[segIdx].count++;
       edgeSums[segIdx] += absEdge / 100;
       if (isHit) edgeSegments[segIdx].hits++;
+      
+      if (clv !== 0 || (closingOdds && closingOdds > 1)) {
+        clvSums[segIdx] += clv;
+        clvCounts[segIdx]++;
+      }
     }
 
     matches.push({
@@ -491,6 +544,7 @@ export async function runBacktest() {
   edgeSegments.forEach((seg, i) => {
     seg.hitRate = seg.count > 0 ? seg.hits / seg.count : 0;
     seg.avgEdge = seg.count > 0 ? edgeSums[i] / seg.count : 0;
+    seg.avgClv = clvCounts[i] > 0 ? clvSums[i] / clvCounts[i] : 0;
   });
 
   return {

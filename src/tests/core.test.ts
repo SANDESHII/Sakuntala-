@@ -44,8 +44,8 @@ describe('Calibration Engine', () => {
       homeAdvantage: 1.2,
       rho: -0.1,
       teams: {
-        'ARSENAL': { attack: 1.5, defense: 0.8 },
-        'CHELSEA': { attack: 1.2, defense: 1.1 }
+        'ARSENAL': { attack: 1.5, defense: 0.8, matchCount: 10, lowConfidence: false },
+        'CHELSEA': { attack: 1.2, defense: 1.1, matchCount: 10, lowConfidence: false }
       }
     };
     

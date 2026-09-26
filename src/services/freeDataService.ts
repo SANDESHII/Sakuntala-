@@ -75,7 +75,6 @@ export async function getTeamStats(teamName: string, league: string) {
             homeBias: 0.3,
             form: [1, 1, 1, 1, 1], // Default neutral form vector
             cleanSheetRate: Number(stats.cleanSheets) / played,
-            clinicalEdge: 1.0,
             quality: 'goals-proxy' as const
         };
     } catch (err) {

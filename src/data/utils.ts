@@ -16,3 +16,14 @@ export function normalizeLeagueToId(league: string): number {
   };
   return map[league.toUpperCase()] || 39;
 }
+
+export function getOddsSportKey(league: string): string {
+  const map: Record<string, string> = {
+    'EPL': 'soccer_epl',
+    'LA_LIGA': 'soccer_spain_la_liga',
+    'BUNDESLIGA': 'soccer_germany_bundesliga',
+    'SERIE_A': 'soccer_italy_serie_a',
+    'LIGUE_1': 'soccer_france_ligue_one'
+  };
+  return map[league.toUpperCase()] || 'soccer_epl';
+}

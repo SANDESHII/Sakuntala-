@@ -3,6 +3,7 @@ import { TEAM_STATS, TEAM_ALIASES, LEAGUE_CONFIGS } from './constants';
 import { DixonColes } from './math';
 import * as FreeDataService from '../services/freeDataService';
 import * as Calibration from './calibration';
+import { normalizeLeagueToId } from '../data/utils';
 
 /**
  * Prediction Pipeline Configuration
@@ -19,18 +20,10 @@ const MODEL_CONFIG = {
 };
 
 /**
- * Normalizes team names for consistent lookup
- */
-const normalizeTeamName = (name: string): string => {
-  return name.toUpperCase().trim().replace(/_/g, ' ').replace(/\s+/g, ' ');
-};
-
-/**
  * Smart team lookup using aliases and canonical stats.
- * Returns both the data and the canonical name for league validation.
  */
 const findTeamDetailed = (teamName: string): InternalTeamData | null => {
-  const normalized = normalizeTeamName(teamName);
+  const normalized = teamName.toUpperCase().trim().replace(/_/g, ' ').replace(/\s+/g, ' ');
   
   if (TEAM_STATS[normalized]) return TEAM_STATS[normalized];
   
@@ -39,10 +32,7 @@ const findTeamDetailed = (teamName: string): InternalTeamData | null => {
     return TEAM_STATS[alias];
   }
   
-  // Fuzzy match fallback
-  const keys = Object.keys(TEAM_STATS);
-  const match = keys.find(key => key.includes(normalized) || normalized.includes(key));
-  return match ? TEAM_STATS[match] : null;
+  return null;
 };
 
 /**
@@ -64,8 +54,6 @@ async function resolveTeamData(
   // 2. Try Local Database
   const staticData = findTeamDetailed(teamName);
   if (staticData) {
-    // Neutralize frozen form data if we are in an API-capable environment
-    // This prevents "frozen in time" form from polluting the analysis
     const data = { ...staticData };
     if (FreeDataService.isLiveCapable) {
       data.form = [1, 1, 1, 1, 1];
@@ -139,7 +127,7 @@ export async function runPrediction(
   fittedOverride: Calibration.FittedLeagueParams | null = null,
   historicalOddsOverride: any = null
 ): Promise<AnalysisResult> {
-  const leagueKey = normalizeLeagueKey(league.toUpperCase().replace(/ /g, '_'));
+  const leagueKey = normalizeLeagueToId(league).toString();
   const leagueConfig = LEAGUE_CONFIGS[leagueKey] || LEAGUE_CONFIGS['EPL'];
 
   // Parallel data resolution
@@ -158,26 +146,48 @@ export async function runPrediction(
   let probOver15: number;
   let probUnder35: number;
   let finalRho = -0.13;
+  let scoreMatrix: number[][];
 
   if (mleGoals) {
     lambdaHome = mleGoals.lambdaHome;
     muAway = mleGoals.muAway;
     finalRho = fittedParams.rho;
-    
-    const scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, finalRho);
-    probOver15 = DixonColes.calculateOverUnder(scoreMatrix, 1.5);
-    probUnder35 = 1 - DixonColes.calculateOverUnder(scoreMatrix, 3.5);
+    scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, finalRho);
   } else {
     const metrics = calculateModelMetrics(homeRes.data, awayRes.data, leagueConfig);
     lambdaHome = metrics.lambdaHome;
     muAway = metrics.muAway;
-    probOver15 = metrics.probOver15;
-    probUnder35 = metrics.probUnder35;
+    scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, -0.13);
   }
 
-  // Market odds resolution - scanning all bookmakers for best real price per leg
-  let marketOddsOver15 = 1.05 / probOver15; // synthetic fallback
-  let marketOddsUnder35 = 1.05 / probUnder35; // synthetic fallback
+  probOver15 = DixonColes.calculateOverUnder(scoreMatrix, 1.5);
+  probUnder35 = 1 - DixonColes.calculateOverUnder(scoreMatrix, 3.5);
+
+  // Goal Distribution Calculation
+  const distribution: { goals: string; probability: number }[] = [
+    { goals: '0', probability: 0 },
+    { goals: '1', probability: 0 },
+    { goals: '2', probability: 0 },
+    { goals: '3', probability: 0 },
+    { goals: '4+', probability: 0 },
+  ];
+
+  scoreMatrix.forEach((row, h) => {
+    row.forEach((p, a) => {
+      const total = h + a;
+      if (total <= 3) {
+        distribution[total].probability += p;
+      } else {
+        distribution[4].probability += p;
+      }
+    });
+  });
+
+  distribution.forEach(d => d.probability = Math.round(d.probability * 100));
+
+  // Market odds resolution
+  let marketOddsOver15 = 1.05 / probOver15; 
+  let marketOddsUnder35 = 1.05 / probUnder35; 
   let over15Real = false;
   let under35Real = false;
   let matchOdds: any = null;
@@ -189,10 +199,11 @@ export async function runPrediction(
     marketOddsOver15 = historicalOddsOverride.over15 || marketOddsOver15;
     marketOddsUnder35 = historicalOddsOverride.under35 || marketOddsUnder35;
   } else {
-    matchOdds = liveOdds.find((o: any) => 
-      normalizeTeamName(o.home_team).includes(normalizeTeamName(homeTeam)) ||
-      normalizeTeamName(homeTeam).includes(normalizeTeamName(o.home_team))
-    );
+    const normHome = homeTeam.toUpperCase().trim();
+    matchOdds = liveOdds.find((o: any) => {
+      const oHome = o.home_team.toUpperCase().trim();
+      return oHome.includes(normHome) || normHome.includes(oHome);
+    });
 
     if (matchOdds) {
       matchOdds.bookmakers.forEach((bm: any) => {
@@ -257,8 +268,8 @@ export async function runPrediction(
     goalsConceded: data.avgGoalsConceded,
     avgXG: data.avgXG,
     avgXGA: data.avgXGA,
-    npxG: data.avgXG * 0.8,
-    defensiveStability: 1 - data.defenseStrength + 0.3,
+    npxG: data.avgXG - 0.15, // Standard penalty adjustment
+    defensiveStability: data.cleanSheetRate * 1.5,
     form: data.form,
     cleanSheets: Math.round(data.cleanSheetRate * 20),
     clinicalEdge: data.clinicalEdge,
@@ -304,17 +315,8 @@ export async function runPrediction(
     },
     dataSource,
     usedRealOdds: chosenMarketReal,
+    goalDistribution: distribution,
   };
-}
-
-function normalizeLeagueKey(league: string): string {
-  const l = league.toUpperCase().replace(/_/g, '').replace(/ /g, '').replace(/-/g, '');
-  if (l.includes('LALIGA') || l.includes('SPAIN')) return 'LA_LIGA';
-  if (l.includes('SERIEA') || l.includes('ITALY')) return 'SERIE_A';
-  if (l.includes('LIGUE1') || l.includes('FRANCE')) return 'LIGUE_1';
-  if (l.includes('EPL') || l.includes('PREMIER') || l.includes('ENGLAND')) return 'EPL';
-  if (l.includes('BUNDESLIGA') || l.includes('GERMANY')) return 'BUNDESLIGA';
-  return league;
 }
 
 function generateSummary(
@@ -344,6 +346,9 @@ export async function runBacktest() {
       brierScore: -1,
       over15Accuracy: 0,
       under35Accuracy: 0,
+      totalPnl: 0,
+      totalYield: 0,
+      avgClv: 0,
       edgeSegments: [
         { segment: 'Low Edge (0-3%)', min: 0, max: 3, count: 0, hits: 0, hitRate: 0, avgEdge: 0 },
         { segment: 'Mid Edge (3-7%)', min: 3, max: 7, count: 0, hits: 0, hitRate: 0, avgEdge: 0 },
@@ -380,9 +385,18 @@ export async function runBacktest() {
       const sorted = raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       
       const leagueEval = sorted.slice(-20);
-      const leagueTrain = sorted.slice(0, -20).map(m => ({
-        home: m.home, away: m.away, hg: m.homeGoals, ag: m.awayGoals
-      }));
+    const now = Date.now();
+    const leagueTrain = sorted.slice(0, -20).map(m => {
+      const kickoffTs = new Date(m.date).getTime();
+      const diffDays = Math.max(0, (now - kickoffTs) / (1000 * 60 * 60 * 24));
+      return {
+        home: m.home,
+        away: m.away,
+        hg: m.homeGoals || 0,
+        ag: m.awayGoals || 0,
+        daysAgo: diffDays
+      };
+    });
 
       fittedByLeague[l] = Calibration.fitDixonColes(leagueTrain);
       evalPool.push(...leagueEval);

@@ -1,0 +1,8 @@
+{
+  "name": "Alpha Terminal",
+  "description": "Football prediction system using Dixon-Coles statistical modeling.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

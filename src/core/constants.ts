@@ -117,10 +117,7 @@ export const TEAM_ALIASES: Record<string, string> = {
   'SPURS': 'TOTTENHAM',
   'MANCHESTER UNITED': 'MAN_UTD',
   'MAN UTD': 'MAN_UTD',
-  'REAL MADRID': 'REAL_MADRID',
   'MADRID': 'REAL_MADRID',
-  'REAL_MADRID': 'REAL_MADRID',
-  'BARCELONA': 'BARCELONA',
   'BARCA': 'BARCELONA',
   'FC_BARCELONA': 'BARCELONA',
   'BARCELONA_FC': 'BARCELONA',
@@ -157,7 +154,6 @@ export const TEAM_ALIASES: Record<string, string> = {
   'AC MILAN': 'MILAN',
   'JUVE': 'JUVENTUS',
   'AS ROMA': 'ROMA',
-  'PSG': 'PSG',
   'PARIS SAINT GERMAIN': 'PSG',
   'PARIS SG': 'PSG',
   'OLYMPIQUE MARSEILLE': 'MARSEILLE',
@@ -165,7 +161,6 @@ export const TEAM_ALIASES: Record<string, string> = {
   'OLYMPIQUE LYON': 'LYON',
   'LOSC LILLE': 'LILLE',
   'RC LENS': 'LENS',
-  'LE HAVRE': 'LE_HAVRE',
 };
 
 /**

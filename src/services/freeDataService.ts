@@ -1,13 +1,11 @@
-import axios from 'axios';
 import { ApiFootballProvider } from '../data/providers/ApiFootballProvider';
 import { OddsProvider } from '../data/providers/OddsProvider';
-import { XGProvider } from '../data/providers/XGProvider';
-import { TeamRegistry } from '../data/identity/TeamRegistry';
-import { DataGapError } from '../data/types';
+import { TeamRegistry } from '../data/identity/registry';
+import { DataGapError } from '../types';
+import { inferSeason, normalizeLeagueToId as getLeagueId, getOddsSportKey } from '../data/utils';
 
 const apiFootball = new ApiFootballProvider();
 const oddsApi = new OddsProvider();
-const xgSource = new XGProvider();
 
 const API_FOOTBALL_KEY = (typeof process !== 'undefined' ? process.env.VITE_API_FOOTBALL_KEY : import.meta.env.VITE_API_FOOTBALL_KEY) || '';
 const ODDS_API_KEY = (typeof process !== 'undefined' ? process.env.VITE_ODDS_API_KEY : import.meta.env.VITE_ODDS_API_KEY) || '';
@@ -75,10 +73,10 @@ export async function getTeamStats(teamName: string, league: string) {
             avgXG: avgGoalsScored, // Now using goals as baseline
             avgXGA: avgGoalsConceded,
             homeBias: 0.3,
-            form: [1, 1, 1, 1, 1], // Simplified for now
+            form: [1, 1, 1, 1, 1], // Default neutral form vector
             cleanSheetRate: Number(stats.cleanSheets) / played,
             clinicalEdge: 1.0,
-            quality: 'goals-proxy'
+            quality: 'goals-proxy' as const
         };
     } catch (err) {
         console.warn(`[FreeData] Failed to fetch stats for ${teamName}:`, err);
@@ -101,11 +99,11 @@ export async function getUpcomingFixtures(league: string, limit: number = 10): P
     if (!isLiveCapable) return [];
     try {
         const fixtures = await apiFootball.fetchFixtures(league, limit, 'NS');
-        return fixtures.map(f => ({
+        return fixtures.map((f: any) => ({
             homeTeam: f.home,
             awayTeam: f.away,
-            homeLogo: '', // Providers should ideally return these if needed
-            awayLogo: '',
+            homeLogo: f.homeLogo || '', 
+            awayLogo: f.awayLogo || '',
             kickoff: f.date,
             league: league.toUpperCase(),
             fixtureId: f.id,
@@ -124,7 +122,7 @@ export async function getHistoricalFixtures(league: string, limit: number = 50):
         const fixtures = await apiFootball.fetchFixtures(league, limit, 'FT');
         const results = [];
 
-        for (const f of fixtures) {
+        for (const f of fixtures as any[]) {
             try {
                 // Join with historical odds using (sport, kickoff, teamNames)
                 // Use the-odds-api specific names for better join precision
@@ -172,22 +170,4 @@ export async function getHistoricalFixtures(league: string, limit: number = 50):
         console.warn(`[FreeData] Failed to fetch historical fixtures for ${league}:`, err);
         return [];
     }
-}
-
-function getLeagueId(league: string): number {
-    const map: Record<string, number> = { 'EPL': 39, 'LA_LIGA': 140, 'BUNDESLIGA': 78, 'SERIE_A': 135, 'LIGUE_1': 61 };
-    return map[league.toUpperCase()] || 39;
-}
-
-function getOddsSportKey(league: string): string {
-    const map: Record<string, string> = { 'EPL': 'soccer_epl', 'LA_LIGA': 'soccer_spain_la_liga', 'BUNDESLIGA': 'soccer_germany_bundesliga', 'SERIE_A': 'soccer_italy_serie_a', 'LIGUE_1': 'soccer_france_ligue_one' };
-    return map[league.toUpperCase()] || 'soccer_epl';
-}
-
-function inferSeason(): number {
-    const now = new Date();
-    const month = now.getMonth(); // 0-indexed (0=Jan, 6=July)
-    const year = now.getFullYear();
-    // If we're before July, the season started in the previous year
-    return month < 6 ? year - 1 : year;
 }

@@ -1,17 +1,13 @@
-import { BaseProvider } from './Provider';
-import { HttpClient } from '../http/HttpClient';
-import { OddsLeg, HistoricalPrices, DataGapError } from '../types';
-import { TeamRegistry } from '../identity/TeamRegistry';
+import { fetchWithRetry } from '../http/client';
+import { OddsLeg, HistoricalPrices, DataGapError, DataSource, Provenance } from '../../types';
 
 const API_KEY = process.env.VITE_ODDS_API_KEY || '';
 
-export class OddsProvider extends BaseProvider {
-  constructor() {
-    super('the-odds-api');
-  }
+export class OddsProvider {
+  public readonly source: DataSource = 'the-odds-api';
 
-  async fetchLiveOdds(league: string, sport: string = 'soccer_epl') {
-    const data = await HttpClient.fetchWithRetry<any[]>(
+  async fetchLiveOdds(_league: string, sport: string = 'soccer_epl') {
+    const data = await fetchWithRetry<any[]>(
       this.source,
       `https://api.the-odds-api.com/v4/sports/${sport}/odds`,
       {
@@ -76,7 +72,7 @@ export class OddsProvider extends BaseProvider {
   }
 
   private async fetchSnapshot(sport: string, date: string): Promise<any[]> {
-    return await HttpClient.fetchWithRetry<any[]>(
+    return await fetchWithRetry<any[]>(
       this.source,
       `https://api.the-odds-api.com/v4/historical/sports/${sport}/odds`,
       {
@@ -120,5 +116,14 @@ export class OddsProvider extends BaseProvider {
     // NoVig = Price / (1 + Margin)
     const margin = (1 / bestPrice) + (1 / consensusPrice) - 1;
     return bestPrice / (1 + margin);
+  }
+
+  getProvenance(quality: Provenance['quality'], season?: string | number): Provenance {
+    return {
+      source: this.source,
+      sourceSeason: season,
+      fetchedAt: new Date().toISOString(),
+      quality
+    };
   }
 }

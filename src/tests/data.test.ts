@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { TeamRegistry } from '../data/identity/TeamRegistry';
+import { TeamRegistry } from '../data/identity/registry';
 import { runPrediction } from '../core/engine';
 import * as FreeDataService from '../services/freeDataService';
 import { OddsProvider } from '../data/providers/OddsProvider';
-import { DataGapError } from '../data/types';
+import { DataGapError } from '../types';
 
 describe('Data Layer Regressions', () => {
   it('should never resolve generic names like "Manchester" to an arbitrary team', () => {
@@ -26,7 +26,7 @@ describe('Data Layer Regressions', () => {
 
   it('should produce zero stake if historical prices are missing (NO_BET fallback)', async () => {
     // Prediction without odds should result in NO_BET / 0 stake
-    const result = await runPrediction('ARSENAL', 'CHELSEA', 'EPL', null, null);
+    await runPrediction('ARSENAL', 'CHELSEA', 'EPL', null, null);
     
     // In our mock/test env if no odds are returned from getLiveOdds, it should be NO_BET
     vi.spyOn(FreeDataService, 'getLiveOdds').mockResolvedValue([]);

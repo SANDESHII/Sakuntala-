@@ -25,8 +25,8 @@ describe('DixonColes Math', () => {
 describe('Calibration Engine', () => {
   it('should preserve base scoring rate after normalization', () => {
     const matches = [
-      { home: 'A', away: 'B', hg: 2, ag: 1 },
-      { home: 'B', away: 'A', hg: 1, ag: 0 }
+      { home: 'A', away: 'B', hg: 2, ag: 1, daysAgo: 0 },
+      { home: 'B', away: 'A', hg: 1, ag: 0, daysAgo: 0 }
     ];
     const fitted = fitDixonColes(matches, 100, 0.1);
     

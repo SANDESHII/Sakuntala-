@@ -1,6 +1,7 @@
 import { FC } from 'react';
-import { Zap, Shield, Target, Activity, LucideIcon, Binary } from 'lucide-react';
+import { Zap, Shield, Target, Activity, LucideIcon, Binary, BarChart3 } from 'lucide-react';
 import { AnalysisResult } from '../types';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 interface ResultGridProps {
     analysis: AnalysisResult;
@@ -94,6 +95,74 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                             ))}
                         </div>
                     </div>
+
+                    {/* Goal Distribution Chart */}
+                    {analysis.goalDistribution && (
+                        <div className="bg-neutral-900/30 border border-neutral-800 rounded-[48px] p-12 lg:p-16 space-y-12">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <BarChart3 className="w-5 h-5 text-emerald-500" />
+                                    <h3 className="text-[11px] font-black text-neutral-400 uppercase tracking-[0.3em]">Goal Distribution Probability</h3>
+                                </div>
+                                <span className="text-[10px] font-bold text-neutral-700 uppercase tracking-widest">Total Match Goals</span>
+                            </div>
+                            
+                            <div className="h-[300px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={analysis.goalDistribution} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1f1f1f" />
+                                        <XAxis 
+                                            dataKey="goals" 
+                                            axisLine={false} 
+                                            tickLine={false} 
+                                            tick={{ fill: '#525252', fontSize: 10, fontWeight: 800 }} 
+                                            dy={10}
+                                        />
+                                        <YAxis 
+                                            axisLine={false} 
+                                            tickLine={false} 
+                                            tick={{ fill: '#525252', fontSize: 10, fontWeight: 800 }}
+                                            tickFormatter={(val) => `${val}%`}
+                                        />
+                                        <Tooltip 
+                                            cursor={{ fill: '#171717' }}
+                                            contentStyle={{ 
+                                                backgroundColor: '#0a0a0a', 
+                                                border: '1px solid #262626', 
+                                                borderRadius: '12px',
+                                                fontSize: '12px',
+                                                fontWeight: 'bold'
+                                            }}
+                                            itemStyle={{ color: '#10b981' }}
+                                        />
+                                        <Bar dataKey="probability" radius={[8, 8, 0, 0]}>
+                                            {analysis.goalDistribution.map((_, index) => (
+                                                <Cell 
+                                                    key={`cell-${index}`} 
+                                                    fill={
+                                                        (analysis.predictionType === 'OVER_15' && (index >= 2)) ||
+                                                        (analysis.predictionType === 'UNDER_35' && (index <= 3))
+                                                        ? '#10b981' : '#262626'
+                                                    } 
+                                                />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                            
+                            <div className="flex gap-8 items-center pt-8 border-t border-neutral-800/50">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-sm bg-emerald-500" />
+                                    <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">Prediction Zone</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-sm bg-neutral-800" />
+                                    <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">Baseline</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Tactical Summary */}
                     <div className="p-12 bg-[#0a0a0a] rounded-[40px] border border-neutral-900 space-y-8 relative overflow-hidden group">

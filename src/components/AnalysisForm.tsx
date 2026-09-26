@@ -1,6 +1,7 @@
 import { useState, useEffect, FC, type FormEvent } from 'react';
 import { ELITE_LEAGUES } from '../core/constants';
 import { getUpcomingFixtures, FixtureMatch } from '../services/freeDataService';
+import { normalizeLeagueToId } from '../data/utils';
 import { Calendar } from 'lucide-react';
 
 interface AnalysisFormProps {
@@ -37,25 +38,13 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
         };
         fetchFixtures();
     }, [league]);
-    // 1. Defined Field Schema
+
     const fields = [
         { label: 'Home Side', val: home, set: setHome, placeholder: 'ARSENAL' },
         { label: 'Away Side', val: away, set: setAway, placeholder: 'CHELSEA' },
         { label: 'League Code', val: league, set: setLeague, placeholder: 'EPL' },
         { label: 'Market Time', val: time, set: setTime, placeholder: '19:45' }
     ];
-
-    // 2. Action Handlers
-    const normalizeLeague = (v: string) => {
-        const upper = v.toUpperCase().trim();
-        const clean = upper.replace(/ /g, '').replace(/_/g, '');
-        if (clean === 'LALIGA' || clean === 'SPAIN') return 'LA_LIGA';
-        if (clean === 'SERIEA' || clean === 'ITALY') return 'SERIE_A';
-        if (clean === 'LIGUE1' || clean === 'FRANCE') return 'LIGUE_1';
-        if (clean === 'EPL' || clean === 'PREMIERLEAGUE' || clean === 'ENGLAND') return 'EPL';
-        if (clean === 'BUNDESLIGA' || clean === 'GERMANY') return 'BUNDESLIGA';
-        return upper;
-    };
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
@@ -78,7 +67,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
                             value={f.val} 
                             onChange={(e) => {
                                 const val = e.target.value.toUpperCase();
-                                f.set(f.label === 'League Code' ? normalizeLeague(val) : val);
+                                f.set(f.label === 'League Code' ? normalizeLeagueToId(val).toString() : val);
                             }} 
                             className="w-full bg-transparent border-b border-neutral-800 px-0 py-4 text-4xl text-white focus:outline-none focus:border-emerald-500 transition-all font-bold placeholder:text-neutral-800 uppercase tracking-tighter" 
                             placeholder={f.placeholder} 
@@ -90,7 +79,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
                                     <button
                                         key={l}
                                         type="button"
-                                        onClick={() => setLeague(normalizeLeague(l))}
+                                        onClick={() => setLeague(l)}
                                         className={`px-3 py-1 text-[8px] font-black border transition-all ${
                                             league === l 
                                                 ? 'bg-emerald-500 border-emerald-500 text-white' 
@@ -121,7 +110,10 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
             {/* Upcoming Fixtures Section */}
             <div className="mt-16 pt-16 border-t border-neutral-900">
                 <div className="flex items-center gap-3 mb-8">
-                    <Calendar className="w-4 h-4 text-emerald-500" />
+                    <div className="relative">
+                        <Calendar className="w-4 h-4 text-emerald-500" />
+                        <div className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping opacity-75" />
+                    </div>
                     <h3 className="text-xs font-black text-white uppercase tracking-[0.3em]">Upcoming Fixtures</h3>
                 </div>
                 

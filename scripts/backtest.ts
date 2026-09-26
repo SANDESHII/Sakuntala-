@@ -13,16 +13,13 @@ async function main() {
 
     console.log(`- Fixtures (API-Football): ${apiFootballOk ? 'READY' : 'MISSING KEY'}`);
     console.log(`- Odds (The Odds API): ${oddsApiOk ? 'READY' : 'MISSING KEY'}`);
-    console.log(`- xG (Understat): READY (via proxy/stub)`);
 
     console.log('\nProjection (per 100 fixtures):');
     const fixtureCoverage = apiFootballOk ? 100 : 0;
     const oddsCoverage = (apiFootballOk && oddsApiOk) ? 85 : 0; // Estimation
-    const xgCoverage = 92;
 
     console.log(`- Fixture Match: ${fixtureCoverage}%`);
     console.log(`- Historical Odds Join: ${oddsCoverage}%`);
-    console.log(`- xG Coverage: ${xgCoverage}%`);
 
     console.log('\nQuota Budget (Estimated):');
     console.log(`- api-football: ${apiFootballOk ? '100 reqs' : '0'}`);

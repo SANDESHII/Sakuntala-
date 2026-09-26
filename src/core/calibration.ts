@@ -30,11 +30,14 @@ interface MatchData {
   away: string;
   hg: number;
   ag: number;
+  daysAgo: number; // For temporal weighting
 }
+
+const TIME_DECAY_PHI = 0.0065; // Standard Dixon-Coles decay parameter
 
 /**
  * Fit attack/defense parameters via gradient ascent on
- * the Dixon-Coles log-likelihood.
+ * the Dixon-Coles log-likelihood with temporal weighting.
  */
 export function fitDixonColes(
   matches: MatchData[],
@@ -60,7 +63,8 @@ export function fitDixonColes(
     for (const t of teams) { gA[t] = 0; gD[t] = 0; }
     let gG = 0, gR = 0;
 
-    for (const { home, away, hg: h, ag: a } of matches) {
+    for (const { home, away, hg: h, ag: a, daysAgo } of matches) {
+      const weight = Math.exp(-TIME_DECAY_PHI * daysAgo);
       const lam = Math.max(atk[home] * def[away] * gamma, 1e-10);
       const mu  = Math.max(atk[away] * def[home], 1e-10);
 
@@ -80,8 +84,8 @@ export function fitDixonColes(
         dt_mu = rho / Math.max(1 + mu * rho, 1e-10);
       }
 
-      const grad_lam = dL_lam + dt_lam;
-      const grad_mu  = dL_mu  + dt_mu;
+      const grad_lam = weight * (dL_lam + dt_lam);
+      const grad_mu  = weight * (dL_mu  + dt_mu);
 
       // Chain rule: d lam / d atk_home = def_away * gamma
       gA[home] += grad_lam * def[away] * gamma;
@@ -94,10 +98,10 @@ export function fitDixonColes(
 
       // d logL / d rho
       let dr = 0;
-      if (h === 0 && a === 0)      dr = (-lam * mu) / Math.max(1 - lam * mu * rho, 1e-10);
-      else if (h === 0 && a === 1) dr = lam / Math.max(1 + lam * rho, 1e-10);
-      else if (h === 1 && a === 0) dr = mu  / Math.max(1 + mu * rho, 1e-10);
-      else if (h === 1 && a === 1) dr = -1  / Math.max(1 - rho, 1e-10);
+      if (h === 0 && a === 0)      dr = weight * ((-lam * mu) / Math.max(1 - lam * mu * rho, 1e-10));
+      else if (h === 0 && a === 1) dr = weight * (lam / Math.max(1 + lam * rho, 1e-10));
+      else if (h === 1 && a === 0) dr = weight * (mu  / Math.max(1 + mu * rho, 1e-10));
+      else if (h === 1 && a === 1) dr = weight * (-1  / Math.max(1 - rho, 1e-10));
       gR += dr;
     }
 
@@ -139,9 +143,18 @@ export async function fitFromAPI(league: string): Promise<FittedLeagueParams> {
   const raw = await FreeDataService.getHistoricalFixtures(league, 100);
   if (raw.length < 20) return { homeAdvantage: 1.25, rho: -0.13, teams: {} };
 
-  const matches: MatchData[] = raw.map(m => ({
-    home: m.home, away: m.away, hg: m.homeGoals, ag: m.awayGoals,
-  }));
+  const now = Date.now();
+  const matches: MatchData[] = raw.map(m => {
+    const kickoffTs = new Date(m.date).getTime();
+    const diffDays = Math.max(0, (now - kickoffTs) / (1000 * 60 * 60 * 24));
+    return {
+      home: m.home,
+      away: m.away,
+      hg: m.homeGoals || 0,
+      ag: m.awayGoals || 0,
+      daysAgo: diffDays
+    };
+  });
 
   const fitted = fitDixonColes(matches, 500, 0.01);
   cache[league] = { params: fitted, ts: Date.now() };

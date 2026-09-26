@@ -47,6 +47,10 @@ export const App: FC = () => {
     };
 
     useEffect(() => {
+        loadBacktest();
+    }, []);
+
+    useEffect(() => {
         if (activeTab === 'backtest' && !backtestSummary) loadBacktest();
     }, [activeTab, backtestSummary]);
 
@@ -60,6 +64,9 @@ export const App: FC = () => {
                         <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-2">
                             <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
                             <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-[0.3em]">Football Prediction System</span>
+                            {backtestSummary && (
+                                <span className="ml-4 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded text-[8px] font-black text-emerald-500 uppercase">Calibrated</span>
+                            )}
                         </motion.div>
                         <h2 className="text-4xl md:text-5xl font-black tracking-tight text-white leading-none uppercase">Alpha Terminal</h2>
                     </div>

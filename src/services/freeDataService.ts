@@ -1,8 +1,9 @@
 import { ApiFootballProvider } from '../data/providers/ApiFootballProvider';
 import { OddsProvider } from '../data/providers/OddsProvider';
 import { TeamRegistry } from '../data/identity/registry';
-import { DataGapError } from '../types';
+import { DataGapError, FixtureMatch, HistoricalMatch } from '../types';
 import { inferSeason, normalizeLeagueToId as getLeagueId, getOddsSportKey } from '../data/utils';
+import { LEAGUE_CONFIGS } from '../core/constants';
 
 const apiFootball = new ApiFootballProvider();
 const oddsApi = new OddsProvider();
@@ -11,39 +12,6 @@ const API_FOOTBALL_KEY = (typeof process !== 'undefined' ? process.env.VITE_API_
 const ODDS_API_KEY = (typeof process !== 'undefined' ? process.env.VITE_ODDS_API_KEY : import.meta.env.VITE_ODDS_API_KEY) || '';
 
 export const isLiveCapable = !!API_FOOTBALL_KEY && !!ODDS_API_KEY;
-
-export interface FixtureMatch {
-    homeTeam: string;
-    awayTeam: string;
-    homeLogo: string;
-    awayLogo: string;
-    kickoff: string;
-    league: string;
-    fixtureId: number;
-}
-
-export interface HistoricalMatch {
-    home: string;
-    away: string;
-    homeGoals: number;
-    awayGoals: number;
-    league: string;
-    date: string;
-    homeId?: number;
-    awayId?: number;
-    takenPrices?: { 
-        over15?: number; 
-        under35?: number; 
-        oneXTwo?: { home: number; draw: number; away: number } 
-    };
-    closingPrices?: { 
-        over15?: number; 
-        under35?: number; 
-        oneXTwo?: { home: number; draw: number; away: number } 
-    };
-    takenAt?: string;
-    closedAt?: string;
-}
 
 export async function getTeamStats(teamName: string, league: string) {
     if (!isLiveCapable) return null;
@@ -65,15 +33,22 @@ export async function getTeamStats(teamName: string, league: string) {
         const avgGoalsScored = Number(stats.goals.for);
         const avgGoalsConceded = Number(stats.goals.against);
 
+        const homeRate = Number(stats.goals.homeFor || avgGoalsScored);
+        const awayRate = Number(stats.goals.awayFor || avgGoalsScored);
+        const diff = homeRate - awayRate;
+        const leagueConfig = LEAGUE_CONFIGS[league] || LEAGUE_CONFIGS['STANDARD'];
+        const baseHomeAdv = leagueConfig.homeAdvantage;
+        const homeBias = Math.max(0.15, Math.min(0.45, baseHomeAdv + (diff * 0.1)));
+
         return {
             attackStrength: avgGoalsScored / 1.35,
             defenseStrength: avgGoalsConceded / 1.35,
             avgGoalsScored,
             avgGoalsConceded,
-            avgXG: avgGoalsScored, // Now using goals as baseline
+            avgXG: avgGoalsScored,
             avgXGA: avgGoalsConceded,
-            homeBias: 0.3,
-            form: [1, 1, 1, 1, 1], // Default neutral form vector
+            homeBias,
+            form: [1, 1, 1, 1, 1],
             cleanSheetRate: Number(stats.cleanSheets) / played,
             quality: 'goals-proxy' as const
         };
@@ -123,8 +98,6 @@ export async function getHistoricalFixtures(league: string, limit: number = 50):
 
         for (const f of fixtures as any[]) {
             try {
-                // Join with historical odds using (sport, kickoff, teamNames)
-                // Use the-odds-api specific names for better join precision
                 const homeIdent = TeamRegistry.resolveById('apiFootball', f.homeId || 0);
                 const awayIdent = TeamRegistry.resolveById('apiFootball', f.awayId || 0);
 
@@ -147,14 +120,18 @@ export async function getHistoricalFixtures(league: string, limit: number = 50):
                     homeGoals: Number(f.homeGoals),
                     awayGoals: Number(f.awayGoals),
                     league: league.toUpperCase(),
-                    date: f.date.split('T')[0], // Strip dates
+                    date: f.date.split('T')[0],
                     takenPrices: {
                         over15: histOdds?.over15?.bestPrice,
-                        under35: histOdds?.under35?.bestPrice
+                        over15NoVig: histOdds?.over15?.noVigPrice,
+                        under35: histOdds?.under35?.bestPrice,
+                        under35NoVig: histOdds?.under35?.noVigPrice
                     },
                     closingPrices: {
                         over15: closeOdds?.over15?.bestPrice,
-                        under35: closeOdds?.under35?.bestPrice
+                        over15NoVig: closeOdds?.over15?.noVigPrice,
+                        under35: closeOdds?.under35?.bestPrice,
+                        under35NoVig: closeOdds?.under35?.noVigPrice
                     },
                     takenAt: histOdds?.takenAt,
                     closedAt: closeOdds?.closedAt || closeOdds?.takenAt
@@ -167,6 +144,26 @@ export async function getHistoricalFixtures(league: string, limit: number = 50):
         return results;
     } catch (err) {
         console.warn(`[FreeData] Failed to fetch historical fixtures for ${league}:`, err);
+        return [];
+    }
+}
+
+export async function getHistoricalFixturesLight(league: string, limit: number = 50): Promise<HistoricalMatch[]> {
+    if (!isLiveCapable) return [];
+    try {
+        const fixtures = await apiFootball.fetchFixtures(league, limit, 'FT');
+        return fixtures.map((f: any) => ({
+            home: f.home,
+            away: f.away,
+            homeId: f.homeId,
+            awayId: f.awayId,
+            homeGoals: Number(f.homeGoals),
+            awayGoals: Number(f.awayGoals),
+            league: league.toUpperCase(),
+            date: f.date.split('T')[0]
+        }));
+    } catch (err) {
+        console.warn(`[FreeData] Failed to fetch historical fixtures (light) for ${league}:`, err);
         return [];
     }
 }

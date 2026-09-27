@@ -1,5 +1,5 @@
 import { fetchWithRetry } from '../http/client';
-import { OddsLeg, HistoricalPrices, DataGapError, DataSource, Provenance } from '../../types';
+import { OddsLeg, HistoricalPrices, DataGapError, DataSource } from '../../types';
 
 const API_KEY = process.env.VITE_ODDS_API_KEY || '';
 
@@ -28,7 +28,6 @@ export class OddsProvider {
    * "Taken" odds are sampled ~24h before kickoff.
    */
   async fetchHistoricalOdds(sport: string, kickoff: string, homeTeam: string, awayTeam: string): Promise<HistoricalPrices> {
-    // Sample 'taken' odds 24h before kickoff
     const kickoffDate = new Date(kickoff);
     const takenDate = new Date(kickoffDate.getTime() - 24 * 60 * 60 * 1000);
     const takenIso = takenDate.toISOString().split('.')[0] + 'Z';
@@ -88,42 +87,64 @@ export class OddsProvider {
   }
 
   private mapMatchToHistorical(match: any, timestamp: string): HistoricalPrices {
-    // Extract best price for Over 1.5 and Under 3.5
-    let over15: OddsLeg | undefined;
-    let under35: OddsLeg | undefined;
+    let bestO15 = 0, sumO15 = 0, countO15 = 0;
+    let bestU15 = 0, sumU15 = 0, countU15 = 0;
+    let bestU35 = 0, sumU35 = 0, countU35 = 0;
+    let bestO35 = 0, sumO35 = 0, countO35 = 0;
 
     match.bookmakers?.forEach((bm: any) => {
       const market = bm.markets.find((m: any) => m.key === 'totals');
       if (market) {
         const o15 = market.outcomes.find((o: any) => o.name === 'Over' && o.point === 1.5);
+        const u15 = market.outcomes.find((o: any) => o.name === 'Under' && o.point === 1.5);
         const u35 = market.outcomes.find((o: any) => o.name === 'Under' && o.point === 3.5);
+        const o35 = market.outcomes.find((o: any) => o.name === 'Over' && o.point === 3.5);
 
-        if (o15 && (!over15 || o15.price > over15.bestPrice)) {
-          over15 = { bestPrice: o15.price, noVigPrice: o15.price * 0.97, bookmakerCount: 1, timestamp };
+        if (o15) {
+          bestO15 = Math.max(bestO15, o15.price);
+          sumO15 += o15.price;
+          countO15++;
         }
-        if (u35 && (!under35 || u35.price > under35.bestPrice)) {
-          under35 = { bestPrice: u35.price, noVigPrice: u35.price * 0.97, bookmakerCount: 1, timestamp };
+        if (u15) {
+          bestU15 = Math.max(bestU15, u15.price);
+          sumU15 += u15.price;
+          countU15++;
+        }
+        if (u35) {
+          bestU35 = Math.max(bestU35, u35.price);
+          sumU35 += u35.price;
+          countU35++;
+        }
+        if (o35) {
+          bestO35 = Math.max(bestO35, o35.price);
+          sumO35 += o35.price;
+          countO35++;
         }
       }
     });
+
+    const avgU15 = countU15 > 0 ? sumU15 / countU15 : bestU15;
+    const avgO35 = countO35 > 0 ? sumO35 / countO35 : bestO35;
+
+    const over15: OddsLeg | undefined = bestO15 > 0 ? {
+      bestPrice: bestO15,
+      noVigPrice: (bestO15 > 0 && avgU15 > 0) ? this.calculateNoVig(bestO15, avgU15) : bestO15 * 0.97,
+      bookmakerCount: countO15,
+      timestamp
+    } : undefined;
+
+    const under35: OddsLeg | undefined = bestU35 > 0 ? {
+      bestPrice: bestU35,
+      noVigPrice: (bestU35 > 0 && avgO35 > 0) ? this.calculateNoVig(bestU35, avgO35) : bestU35 * 0.97,
+      bookmakerCount: countU35,
+      timestamp
+    } : undefined;
 
     return { over15, under35, takenAt: timestamp };
   }
 
   calculateNoVig(bestPrice: number, consensusPrice: number): number {
-    // Basic Proportional Margin Removal
-    // Margin = (1/Price1 + 1/Price2 - 1)
-    // NoVig = Price / (1 + Margin)
     const margin = (1 / bestPrice) + (1 / consensusPrice) - 1;
     return bestPrice / (1 + margin);
-  }
-
-  getProvenance(quality: Provenance['quality'], season?: string | number): Provenance {
-    return {
-      source: this.source,
-      sourceSeason: season,
-      fetchedAt: new Date().toISOString(),
-      quality
-    };
   }
 }

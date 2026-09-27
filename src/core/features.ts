@@ -1,5 +1,6 @@
-import { InternalTeamData } from '../types';
+import { InternalTeamData, HistoricalMatch } from '../types';
 import * as FreeDataService from '../services/freeDataService';
+import { LEAGUE_CONFIGS } from './constants';
 
 /**
  * FeatureEngine handles point-in-time statistical computation
@@ -9,14 +10,22 @@ export const FeatureEngine = {
   /**
    * Computes team features as they appeared on a specific date.
    */
-  async computeFeatures(teamName: string, league: string, asOfDate: string): Promise<InternalTeamData> {
-    const historical = await FreeDataService.getHistoricalFixtures(league, 150);
+  async computeFeatures(
+    teamName: string, 
+    league: string, 
+    asOfDate: string,
+    historicalCache?: HistoricalMatch[]
+  ): Promise<InternalTeamData> {
+    const historical = historicalCache || await FreeDataService.getHistoricalFixturesLight(league, 150);
     const cutoff = new Date(asOfDate).getTime();
     
     // Filter matches strictly before cutoff
-    const matches = historical.filter(m => new Date(m.date).getTime() < cutoff);
-    const teamMatches = matches.filter(m => m.home === teamName || m.away === teamName);
+    const matches = historical.filter((m: HistoricalMatch) => new Date(m.date).getTime() < cutoff);
+    const teamMatches = matches.filter((m: HistoricalMatch) => m.home === teamName || m.away === teamName);
     
+    const leagueConfig = LEAGUE_CONFIGS[league] || LEAGUE_CONFIGS['STANDARD'];
+    const baseHomeAdv = leagueConfig.homeAdvantage;
+
     if (teamMatches.length < 3) {
       return {
         attackStrength: 1.0,
@@ -25,7 +34,7 @@ export const FeatureEngine = {
         avgGoalsConceded: 1.35,
         avgXG: 1.35,
         avgXGA: 1.35,
-        homeBias: 0.3,
+        homeBias: baseHomeAdv,
         form: [1, 1, 1, 1, 1],
         cleanSheetRate: 0.25,
         quality: 'low'
@@ -37,21 +46,43 @@ export const FeatureEngine = {
     let conceded = 0;
     let cleanSheets = 0;
     
-    teamMatches.forEach(m => {
+    let homeScored = 0, homeCount = 0;
+    let awayScored = 0, awayCount = 0;
+
+    teamMatches.forEach((m: HistoricalMatch) => {
       const isHome = m.home === teamName;
-      scored += isHome ? m.homeGoals : m.awayGoals;
-      conceded += isHome ? m.awayGoals : m.homeGoals;
-      if ((isHome && m.awayGoals === 0) || (!isHome && m.homeGoals === 0)) {
-        cleanSheets++;
+      const s = isHome ? m.homeGoals : m.awayGoals;
+      const c = isHome ? m.awayGoals : m.homeGoals;
+      
+      scored += s;
+      conceded += c;
+      if (c === 0) cleanSheets++;
+
+      if (isHome) {
+        homeScored += s;
+        homeCount++;
+      } else {
+        awayScored += s;
+        awayCount++;
       }
     });
     
     const avgScored = scored / played;
     const avgConceded = conceded / played;
     
+    // Calculate team-specific home bias if enough data, otherwise use league base
+    let homeBias = baseHomeAdv;
+    if (homeCount >= 3 && awayCount >= 3) {
+      const hRate = homeScored / homeCount;
+      const aRate = awayScored / awayCount;
+      const diff = hRate - aRate;
+      // Heuristic: map a +0.5 goal diff to +0.05 bias adjustment
+      homeBias = Math.max(0.15, Math.min(0.45, baseHomeAdv + (diff * 0.1)));
+    }
+
     // Form is the last 5 games before the cutoff
     const last5 = teamMatches.slice(-5);
-    const form = last5.map(m => {
+    const form = last5.map((m: HistoricalMatch) => {
       const isHome = m.home === teamName;
       const s = isHome ? m.homeGoals : m.awayGoals;
       const c = isHome ? m.awayGoals : m.homeGoals;
@@ -68,7 +99,7 @@ export const FeatureEngine = {
       avgGoalsConceded: avgConceded,
       avgXG: avgScored,
       avgXGA: avgConceded,
-      homeBias: 0.3,
+      homeBias,
       form,
       cleanSheetRate: cleanSheets / played,
       quality: played > 10 ? 'high' : 'medium'

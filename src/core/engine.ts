@@ -1,10 +1,9 @@
-import { AnalysisResult, InternalTeamData } from '../types';
+import { AnalysisResult, InternalTeamData, HistoricalMatch } from '../types';
 import { TEAM_STATS, LEAGUE_CONFIGS } from './constants';
 import { DixonColes } from './math';
 import * as FreeDataService from '../services/freeDataService';
 import * as Calibration from './calibration';
 import { FeatureEngine } from './features';
-import { normalizeLeagueToId } from '../data/utils';
 import { TeamRegistry } from '../data/identity/registry';
 
 /**
@@ -41,7 +40,8 @@ async function resolveTeamData(
   teamName: string, 
   leagueKey: string, 
   leagueConfig: any,
-  asOfDate?: string
+  asOfDate?: string,
+  fixtureCache?: Record<string, HistoricalMatch[]>
 ): Promise<{ 
   data: InternalTeamData; 
   isGeneric: boolean; 
@@ -49,7 +49,7 @@ async function resolveTeamData(
 }> {
   // 1. Point-in-time historical mode
   if (asOfDate) {
-    const historicalData = await FeatureEngine.computeFeatures(teamName, leagueKey, asOfDate);
+    const historicalData = await FeatureEngine.computeFeatures(teamName, leagueKey, asOfDate, fixtureCache?.[leagueKey]);
     return {
       data: historicalData,
       isGeneric: historicalData.quality === 'low',
@@ -104,8 +104,11 @@ function calculateModelMetrics(
 ) {
   const leagueAvg = leagueConfig.goalRate * MODEL_CONFIG.LEAGUE_AVG_GOALS;
   
+  // Blended home advantage: 60% league constant, 40% team-specific variation
+  const blendedHomeAdv = (leagueConfig.homeAdvantage * 0.6) + (homeData.homeBias * 0.4);
+  
   // Base xG calculation
-  let lambdaHome = homeData.attackStrength * awayData.defenseStrength * leagueAvg * (1 + leagueConfig.homeAdvantage * MODEL_CONFIG.HOME_ADVANTAGE_WEIGHT);
+  let lambdaHome = homeData.attackStrength * awayData.defenseStrength * leagueAvg * (1 + blendedHomeAdv * MODEL_CONFIG.HOME_ADVANTAGE_WEIGHT);
   let muAway = awayData.attackStrength * homeData.defenseStrength * leagueAvg * (1 - leagueConfig.homeAdvantage * MODEL_CONFIG.AWAY_DEFENSE_WEIGHT);
 
   // Sanity clamping
@@ -132,15 +135,16 @@ export async function runPrediction(
   fittedOverride: Calibration.FittedLeagueParams | null = null,
   historicalOddsOverride: any = null,
   calibrationContext: any[] | null = null,
-  asOfDate?: string
+  asOfDate?: string,
+  fixtureCache?: Record<string, HistoricalMatch[]>
 ): Promise<AnalysisResult> {
-  const leagueKey = normalizeLeagueToId(league).toString();
-  const leagueConfig = LEAGUE_CONFIGS[leagueKey] || LEAGUE_CONFIGS['EPL'];
+  const leagueKey = league.toUpperCase().replace(/ /g, '_');
+  const leagueConfig = LEAGUE_CONFIGS[leagueKey] || LEAGUE_CONFIGS['STANDARD'];
 
   // Parallel data resolution
   const [homeRes, awayRes, liveOdds, fittedParams] = await Promise.all([
-    resolveTeamData(homeTeam, leagueKey, leagueConfig, asOfDate),
-    resolveTeamData(awayTeam, leagueKey, leagueConfig, asOfDate),
+    resolveTeamData(homeTeam, leagueKey, leagueConfig, asOfDate, fixtureCache),
+    resolveTeamData(awayTeam, leagueKey, leagueConfig, asOfDate, fixtureCache),
     historicalOddsOverride ? Promise.resolve([]) : FreeDataService.getLiveOdds(leagueKey),
     fittedOverride ? Promise.resolve(fittedOverride) : Calibration.fitFromAPI(leagueKey, asOfDate)
   ]);
@@ -241,6 +245,8 @@ export async function runPrediction(
     }
   }
 
+  // Market edge computed against raw bookmaker price (bestPrice). 
+  // Note: statistically, edge against noVigPrice is more robust for fair-value analysis.
   const over15Edge = probOver15 - (1 / marketOddsOver15);
   const under35Edge = probUnder35 - (1 / marketOddsUnder35);
 
@@ -282,17 +288,15 @@ export async function runPrediction(
     }
   }
 
-  // Force zero edge if the chosen market is synthetic
+  // Final metadata resolution
   const chosenMarketReal = predictionType === 'OVER_15' ? over15Real
     : predictionType === 'UNDER_35' ? under35Real : false;
   
-  if (!chosenMarketReal) {
-    edge = 0;
-  }
+  if (!chosenMarketReal) edge = 0;
 
   const predictionLabel = predictionType === 'NO_BET' ? 'NO EDGE DETECTED' : predictionType === 'OVER_15' ? 'OVER 1.5 GOALS' : 'UNDER 3.5 GOALS';
   
-  // Kelly precision - use unrounded probability
+  // Kelly precision
   const p = predictionType === 'OVER_15' ? probOver15 : predictionType === 'UNDER_35' ? probUnder35 : probability / 100;
   const q = 1 - p;
   const b = marketOdds - 1;
@@ -304,24 +308,27 @@ export async function runPrediction(
     goalsConceded: data.avgGoalsConceded,
     avgXG: data.avgXG,
     avgXGA: data.avgXGA,
-    npxG: data.avgXG - 0.15, // Standard penalty adjustment
     defensiveStability: data.cleanSheetRate * 1.5,
     form: data.form,
     cleanSheets: Math.round(data.cleanSheetRate * 20),
     homeAwayBias: data.homeBias,
   });
 
-  const summary = generateSummary(homeTeam, awayTeam, predictionType, lambdaHome, muAway, edge, modelSource, isLowConfidence);
-  const dataSource = homeRes.dataSource === 'LIVE' && awayRes.dataSource === 'LIVE' ? 'LIVE' : 'FALLBACK_STATIC';
+  const baseSummary = generateSummary(homeTeam, awayTeam, predictionType, lambdaHome, muAway, edge, modelSource, isLowConfidence);
+  let finalSummary = baseSummary;
 
-  let finalSummary = summary;
-  if (isLowConfidence) {
-    finalSummary = `⚠️ Confidence Warning: Prediction withheld due to thin sample size for one or both teams. ${summary}`;
-  } else if (!chosenMarketReal) {
-    finalSummary = `⚠️ No real odds available — edge cannot be verified. ${summary}`;
-  } else if (homeRes.isGeneric || awayRes.isGeneric) {
-    finalSummary = `⚠️ Data Gap: ${[homeRes.isGeneric ? homeTeam : null, awayRes.isGeneric ? awayTeam : null].filter(Boolean).join(', ')} missing. ${summary}`;
+  // Append warnings with consistent formatting
+  const warnings: string[] = [];
+  if (isLowConfidence) warnings.push('Prediction withheld due to thin sample size.');
+  if (predictionType !== 'NO_BET' && !chosenMarketReal) warnings.push('No real odds available — edge cannot be verified.');
+  if (homeRes.isGeneric) warnings.push(`${homeTeam} data missing (using league averages).`);
+  if (awayRes.isGeneric) warnings.push(`${awayTeam} data missing (using league averages).`);
+
+  if (warnings.length > 0) {
+    finalSummary = `⚠️ ${warnings.join(' ')} ${baseSummary}`;
   }
+
+  const dataSource = homeRes.dataSource === 'LIVE' && awayRes.dataSource === 'LIVE' ? 'LIVE' : 'FALLBACK_STATIC';
 
   return {
     probability,
@@ -423,12 +430,15 @@ export async function runBacktest() {
   const fittedByLeague: Record<string, Calibration.FittedLeagueParams> = {};
   const evalPool: any[] = [];
 
+  const fixtureCache: Record<string, HistoricalMatch[]> = {};
+
   try {
     await Promise.all(leagues.map(async l => {
-      const raw = await FreeDataService.getHistoricalFixtures(l, 100);
+      const raw = await FreeDataService.getHistoricalFixtures(l, 150);
       if (raw.length < 30) return;
       
       const sorted = raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      fixtureCache[l] = sorted;
       
       const leagueEval = sorted.slice(-20);
     const now = Date.now();
@@ -464,7 +474,8 @@ export async function runBacktest() {
         fittedByLeague[match.league],
         match.takenPrices,
         null,
-        match.date
+        match.date,
+        fixtureCache
     );
     const hGoals = match.homeGoals;
     const aGoals = match.awayGoals;

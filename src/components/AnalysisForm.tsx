@@ -1,7 +1,7 @@
 import { useState, useEffect, FC, type FormEvent } from 'react';
 import { ELITE_LEAGUES } from '../core/constants';
-import { getUpcomingFixtures, FixtureMatch } from '../services/freeDataService';
-import { normalizeLeagueToId } from '../data/utils';
+import { getUpcomingFixtures } from '../services/freeDataService';
+import { FixtureMatch } from '../types';
 import { Calendar } from 'lucide-react';
 
 interface AnalysisFormProps {
@@ -67,7 +67,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
                             value={f.val} 
                             onChange={(e) => {
                                 const val = e.target.value.toUpperCase();
-                                f.set(f.label === 'League Code' ? normalizeLeagueToId(val).toString() : val);
+                                f.set(val);
                             }} 
                             className="w-full bg-transparent border-b border-neutral-800 px-0 py-4 text-4xl text-white focus:outline-none focus:border-emerald-500 transition-all font-bold placeholder:text-neutral-800 uppercase tracking-tighter" 
                             placeholder={f.placeholder} 

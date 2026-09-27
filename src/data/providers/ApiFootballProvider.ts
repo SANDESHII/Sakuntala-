@@ -65,9 +65,11 @@ export class ApiFootballProvider {
       played: stats.fixtures.played.total,
       goals: {
         for: stats.goals.for.average.total,
-        against: stats.goals.against.average.total
+        against: stats.goals.against.average.total,
+        homeFor: stats.goals.for.average.home,
+        awayFor: stats.goals.for.average.away
       },
-      cleanSheets: stats.clean_sheet.total, // Fixed: API-Football uses singular 'clean_sheet' in stats response
+      cleanSheets: stats.clean_sheet.total,
       provenance: this.getProvenance('high', season)
     };
   }

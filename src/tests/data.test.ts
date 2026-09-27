@@ -1,11 +1,31 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('../services/freeDataService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/freeDataService')>();
+  return {
+    ...actual,
+    isLiveCapable: true,
+  };
+});
+
 import { TeamRegistry } from '../data/identity/registry';
 import { runPrediction } from '../core/engine';
 import * as FreeDataService from '../services/freeDataService';
+import * as Calibration from '../core/calibration';
 import { OddsProvider } from '../data/providers/OddsProvider';
 import { DataGapError } from '../types';
 
 describe('Data Layer Regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Global mocks for data tests to prevent network noise
+    vi.spyOn(Calibration, 'fitFromAPI').mockResolvedValue({ homeAdvantage: 1.25, rho: -0.13, teams: {} });
+    vi.spyOn(FreeDataService, 'getLiveOdds').mockResolvedValue([]);
+    vi.spyOn(FreeDataService, 'getTeamStats').mockResolvedValue(null);
+    vi.spyOn(FreeDataService, 'getHistoricalFixtures').mockResolvedValue([]);
+    vi.spyOn(FreeDataService, 'getHistoricalFixturesLight').mockResolvedValue([]);
+  });
+
   it('should never resolve generic names like "Manchester" to an arbitrary team', () => {
     expect(() => TeamRegistry.resolveByName('Manchester')).toThrow();
     expect(() => TeamRegistry.resolveByName('United')).toThrow();
@@ -69,5 +89,16 @@ describe('Data Layer Regressions', () => {
 
     await expect(oddsProvider.fetchHistoricalOdds('soccer_epl', '2024-01-01T15:00:00Z', 'Arsenal', 'Chelsea'))
       .rejects.toThrow(DataGapError);
+  });
+
+  it('should not call FreeDataService.getHistoricalFixturesLight if fixtureCache is provided (regression test for Fix 3)', async () => {
+    const lightSpy = vi.spyOn(FreeDataService, 'getHistoricalFixturesLight');
+    
+    const dummyFixture = { home: 'ARSENAL', away: 'CHELSEA', homeGoals: 2, awayGoals: 1, date: '2024-01-01', league: 'EPL' };
+    const fixtureCache = { 'EPL': [dummyFixture] };
+    
+    await runPrediction('ARSENAL', 'CHELSEA', 'EPL', null, null, null, '2024-01-02', fixtureCache);
+    
+    expect(lightSpy).not.toHaveBeenCalled();
   });
 });

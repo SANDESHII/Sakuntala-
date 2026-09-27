@@ -1,3 +1,68 @@
+export type DataSource = 'api-football' | 'the-odds-api';
+
+export interface Provenance {
+  source: DataSource;
+  quality: 'high' | 'medium' | 'low';
+  timestamp: string;
+  season?: string | number;
+}
+
+export interface TeamStats {
+  played: number;
+  goals: {
+    for: number;
+    against: number;
+    homeFor: number;
+    awayFor: number;
+  };
+  cleanSheets: number;
+  provenance: Provenance;
+}
+
+export interface TeamIdentity {
+  id: string;
+  name: string;
+  league: string;
+  country: string;
+  externalIds: {
+    apiFootball?: number;
+    theOddsApi?: string;
+  };
+}
+
+export interface HistoricalMatch {
+  home: string;
+  away: string;
+  homeGoals: number;
+  awayGoals: number;
+  date: string;
+  league: string;
+  daysAgo: number;
+  homeId?: number;
+  awayId?: number;
+  takenPrices?: {
+    over15?: number;
+    under35?: number;
+  };
+  closingPrices?: {
+    over15?: number;
+    under35?: number;
+  };
+}
+
+export interface MarketOdds {
+  over15?: {
+    bestPrice: number;
+    avgPrice: number;
+    count: number;
+  };
+  under35?: {
+    bestPrice: number;
+    avgPrice: number;
+    count: number;
+  };
+}
+
 export interface InternalTeamData {
   attackStrength: number;
   defenseStrength: number;
@@ -8,106 +73,55 @@ export interface InternalTeamData {
   homeBias: number;
   form: number[];
   cleanSheetRate: number;
-  quality?: 'high' | 'medium' | 'low' | 'goals-proxy';
-}
-
-export type DataSource = 'api-football' | 'the-odds-api' | 'manual-registry' | 'internal-proxy';
-
-export interface Provenance {
-  source: DataSource;
-  sourceId?: string | number;
-  sourceSeason?: string | number;
-  fetchedAt: string;
-  quality: 'high' | 'medium' | 'low' | 'goals-proxy';
-}
-
-export interface TeamIdentity {
-  id: string; // Canonical internal ID
-  name: string;
-  aliases: string[];
-  externalIds: {
-    apiFootball?: number;
-    theOddsApi?: string;
-  };
-}
-
-export interface MarketPrice {
-  price: number;
-  impliedProb: number;
-  provider: string;
-}
-
-export interface OddsLeg {
-  bestPrice: number;
-  noVigPrice: number;
-  bookmakerCount: number;
-  timestamp: string;
-}
-
-export interface HistoricalPrices {
-  over15?: OddsLeg;
-  under35?: OddsLeg;
-  oneXTwo?: {
-    home: OddsLeg;
-    draw: OddsLeg;
-    away: OddsLeg;
-  };
-  takenAt?: string;
-  closedAt?: string;
-}
-
-export class DataGapError extends Error {
-  constructor(public entity: string, public context: string) {
-    super(`Data Gap: ${entity} missing in ${context}`);
-    this.name = 'DataGapError';
-  }
-}
-
-export class QuotaExceededError extends Error {
-  constructor(public provider: DataSource) {
-    super(`Quota Exceeded for provider: ${provider}`);
-    this.name = 'QuotaExceededError';
-  }
-}
-
-export interface TeamStats {
-  name: string;
-  goalsScored: number;
-  goalsConceded: number;
-  avgXG: number;
-  avgXGA: number;
-  npxG: number;
-  defensiveStability: number;
-  form: number[];
-  cleanSheets: number;
-  homeAwayBias: number;
+  matchCount?: number;
+  quality?: 'high' | 'low';
 }
 
 export interface MatchContext {
-  league?: string;
-  homeSeasonXG?: number;
-  awaySeasonXG?: number;
-  homeSeasonXGA?: number;
-  awaySeasonXGA?: number;
-  homeTier?: number;
-  awayTier?: number;
-  date?: string;
-  marketOdds?: {
-    pinnacleOver15?: number;
-    pinnacleUnder35?: number;
+  league: string;
+  homeSeasonXG: number;
+  awaySeasonXG: number;
+  homeSeasonXGA: number;
+  awaySeasonXGA: number;
+  homeTier: number;
+  awayTier: number;
+  date: string;
+  marketOdds: {
+    pinnacleOver15: number;
+    pinnacleUnder35: number;
   };
 }
 
 export interface GoalDistribution {
-  goals: string; // e.g. "0", "1", "2", "3", "4+"
+  goals: string;
   probability: number;
 }
 
 export interface AnalysisResult {
   probability: number;
   summary: string;
-  homeStats: TeamStats;
-  awayStats: TeamStats;
+  homeStats: {
+    name: string;
+    goalsScored: number;
+    goalsConceded: number;
+    avgXG: number;
+    avgXGA: number;
+    defensiveStability: number;
+    form: number[];
+    cleanSheets: number;
+    homeAwayBias: number;
+  };
+  awayStats: {
+    name: string;
+    goalsScored: number;
+    goalsConceded: number;
+    avgXG: number;
+    avgXGA: number;
+    defensiveStability: number;
+    form: number[];
+    cleanSheets: number;
+    homeAwayBias: number;
+  };
   homeXG: number;
   awayXG: number;
   minimumExpectancy: number;
@@ -134,10 +148,10 @@ export interface BacktestMatch {
     awayTeam: string;
     actualScore: [number, number];
     league: string;
-    isReal?: boolean;
+    isReal: boolean;
   };
   prediction: {
-    predictionType: 'OVER_15' | 'UNDER_35' | 'NO_BET';
+    predictionType: string;
     probability: number;
   };
   marketEdge: number;
@@ -150,15 +164,6 @@ export interface BacktestMatch {
   closingOdds?: number;
 }
 
-export interface EdgeSegment {
-  segment: string;
-  count: number;
-  hits: number;
-  hitRate: number;
-  avgEdge: number;
-  avgClv: number;
-}
-
 export interface BacktestSummary {
   totalMatches: number;
   brierScore: number;
@@ -167,7 +172,30 @@ export interface BacktestSummary {
   totalPnl: number;
   totalYield: number;
   avgClv: number;
-  edgeSegments: EdgeSegment[];
+  edgeSegments: {
+    segment: string;
+    min: number;
+    max: number;
+    count: number;
+    hits: number;
+    hitRate: number;
+    avgEdge: number;
+    avgClv: number;
+  }[];
   matches: BacktestMatch[];
   error?: string;
+}
+
+export class QuotaExceededError extends Error {
+  constructor(public source: DataSource) {
+    super(`Quota exceeded for ${source}`);
+    this.name = 'QuotaExceededError';
+  }
+}
+
+export class DataGapError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DataGapError';
+  }
 }

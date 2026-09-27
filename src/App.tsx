@@ -9,6 +9,9 @@ import { ResultGrid } from './components/ResultDisplay';
 import { GroundingLog } from './components/GroundingLog';
 import { BacktestDisplay } from './components/BacktestDisplay';
 
+import { runPrediction, runBacktest } from './core/engine';
+import { isLiveCapable } from './services/freeDataService';
+
 export const App: FC = () => {
     const [inputs, setInputs] = useState({ home: '', away: '', league: 'EPL', time: '' });
     const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -23,7 +26,6 @@ export const App: FC = () => {
         setLoadingAnalysis(true); 
         setAnalysis(null);
         try {
-            const { runPrediction } = await import('./core/engine');
             const result = await runPrediction(
                 inputs.home, 
                 inputs.away, 
@@ -41,13 +43,33 @@ export const App: FC = () => {
     };
 
     const loadBacktest = async () => {
-        const { runBacktest } = await import('./core/engine');
         const summary = await runBacktest();
         setBacktestSummary(summary);
+        if (summary && summary.totalMatches > 0) {
+            const today = new Date().toISOString().split('T')[0];
+            sessionStorage.setItem(`alpha_terminal_backtest_${today}`, JSON.stringify({
+                summary,
+                ts: Date.now()
+            }));
+        }
     };
 
     useEffect(() => {
-        loadBacktest();
+        const checkCalibration = async () => {
+            if (!isLiveCapable) return;
+
+            const today = new Date().toISOString().split('T')[0];
+            const cached = sessionStorage.getItem(`alpha_terminal_backtest_${today}`);
+            if (cached) {
+                const { summary, ts } = JSON.parse(cached);
+                if (Date.now() - ts < 6 * 60 * 60 * 1000) {
+                    setBacktestSummary(summary);
+                    return;
+                }
+            }
+            loadBacktest();
+        };
+        checkCalibration();
     }, []);
 
     useEffect(() => {
@@ -102,7 +124,7 @@ export const App: FC = () => {
                                                 <p className="text-sm font-bold uppercase tracking-wide">Error</p>
                                                 <p className="text-xs font-medium opacity-80 leading-relaxed">{error}</p>
                                             </div>
-                                            <button onClick={() => setError(null)} className="text-[10px] font-black uppercase hover:text-white transition-colors">Dismiss</button>
+                                            <button onClick={() => setError(null)} className="text-[10px] font-black uppercase hover:text-white transition-colors ml-auto">Dismiss</button>
                                         </motion.div>
                                     )}
                                 </div>
@@ -131,8 +153,8 @@ export const App: FC = () => {
                     )}
                 </AnimatePresence>
             </main>
-            <footer className="max-w-7xl mx-auto px-6 py-24 border-t border-neutral-900 text-[10px] text-neutral-600 font-black tracking-[0.2em] uppercase">
-                <div className="flex flex-col md:flex-row justify-between items-center gap-12"><div className="flex items-center gap-4"><span>&copy; 2025 ALPHA TERMINAL</span></div></div>
+            <footer className="max-w-7xl mx-auto px-6 py-24 border-t border-neutral-900 text-[10px] text-neutral-600 font-black tracking-[0.2em] uppercase text-center md:text-left">
+                &copy; 2025 ALPHA TERMINAL
             </footer>
         </div>
     );

@@ -209,9 +209,18 @@ export function predictGoals(
   const a = fitted.teams[aKey];
   
   if (!h || !a) return null;
+
+  // MLE lambda/mu calculation
+  let lambdaHome = h.attack * a.defense * fitted.homeAdvantage;
+  let muAway = a.attack * h.defense;
+
+  // Sanity Clamps (consistent with MODEL_CONFIG in engine.ts)
+  lambdaHome = Math.max(0.3, Math.min(4.0, lambdaHome));
+  muAway = Math.max(0.2, Math.min(3.5, muAway));
+
   return {
-    lambdaHome: h.attack * a.defense * fitted.homeAdvantage,
-    muAway:     a.attack * h.defense,
+    lambdaHome,
+    muAway,
     lowConfidence: h.lowConfidence || a.lowConfidence
   };
 }

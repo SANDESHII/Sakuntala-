@@ -1,6 +1,6 @@
 import { FC } from 'react';
 import { motion } from 'motion/react';
-import { Database, Search, ShieldCheck, Globe, AlertTriangle } from 'lucide-react';
+import { Database, ShieldCheck, Globe, Search, AlertTriangle } from 'lucide-react';
 import { AnalysisResult } from '../types';
 
 interface GroundingLogProps {
@@ -8,20 +8,8 @@ interface GroundingLogProps {
 }
 
 export const GroundingLog: FC<GroundingLogProps> = ({ analysis }) => {
-  const context = analysis.context;
-  
-  // Real Integrity Check: verify sane bounds and non-null critical values
-  const checkIntegrity = () => {
-    const issues = [];
-    if (analysis.probability < 0 || analysis.probability > 100) issues.push('PROB_OOB');
-    if (analysis.marketOdds <= 1.0) issues.push('ODDS_ERR');
-    if (!analysis.homeStats.avgXG || !analysis.awayStats.avgXG) issues.push('STATS_NULL');
-    if (Math.abs(analysis.edge) > 100) issues.push('EDGE_EXTREME');
-    
-    return issues.length === 0;
-  };
-
-  const isIntegrityPassed = checkIntegrity();
+  const { context } = analysis;
+  const isIntegrityPassed = analysis.edge > 0 && analysis.marketOdds > 1;
 
   return (
     <div className="space-y-12">

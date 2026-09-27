@@ -75,7 +75,7 @@ export const LoadingOverlay: FC<LoadingOverlayProps> = ({ loading }) => {
                                     {LOGS[logIdx]}
                                 </motion.p>
                             </div>
-
+                            
                             <div className="h-0.5 bg-neutral-900 rounded-full overflow-hidden">
                                 <motion.div 
                                     initial={{ width: "0%" }}

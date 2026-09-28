@@ -9,9 +9,6 @@ import { ResultGrid } from './components/ResultDisplay';
 import { GroundingLog } from './components/GroundingLog';
 import { BacktestDisplay } from './components/BacktestDisplay';
 
-import { runPrediction, runBacktest } from './core/engine';
-import { isLiveCapable } from './services/freeDataService';
-
 export const App: FC = () => {
     const [inputs, setInputs] = useState({ home: '', away: '', league: 'EPL', time: '' });
     const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -26,14 +23,23 @@ export const App: FC = () => {
         setLoadingAnalysis(true); 
         setAnalysis(null);
         try {
-            const result = await runPrediction(
-                inputs.home, 
-                inputs.away, 
-                inputs.league, 
-                null, 
-                null, 
-                backtestSummary?.edgeSegments
-            );
+            const response = await fetch('/api/predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    homeTeam: inputs.home,
+                    awayTeam: inputs.away,
+                    league: inputs.league,
+                    adaptiveThresholdContext: backtestSummary?.edgeSegments
+                })
+            });
+            
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error || 'ANALYSIS FAILED');
+            }
+            
+            const result = await response.json();
             setAnalysis(result);
         } catch (err: any) { 
             setError(err.message || 'ANALYSIS FAILED'); 
@@ -43,21 +49,27 @@ export const App: FC = () => {
     };
 
     const loadBacktest = async () => {
-        const summary = await runBacktest();
-        setBacktestSummary(summary);
-        if (summary && summary.totalMatches > 0) {
-            const today = new Date().toISOString().split('T')[0];
-            sessionStorage.setItem(`alpha_terminal_backtest_${today}`, JSON.stringify({
-                summary,
-                ts: Date.now()
-            }));
+        try {
+            const response = await fetch('/api/backtest');
+            if (!response.ok) throw new Error('BACKTEST FAILED');
+            
+            const summary = await response.json();
+            setBacktestSummary(summary);
+            
+            if (summary && summary.totalMatches > 0) {
+                const today = new Date().toISOString().split('T')[0];
+                sessionStorage.setItem(`alpha_terminal_backtest_${today}`, JSON.stringify({
+                    summary,
+                    ts: Date.now()
+                }));
+            }
+        } catch (err) {
+            console.error('Backtest error:', err);
         }
     };
 
     useEffect(() => {
         const initializeAdaptiveThresholding = async () => {
-            if (!isLiveCapable) return;
-
             const today = new Date().toISOString().split('T')[0];
             const cached = sessionStorage.getItem(`alpha_terminal_backtest_${today}`);
             if (cached) {

@@ -58,18 +58,24 @@ export interface HistoricalMatch {
   takenPrices?: {
     over25?: number;
     under25?: number;
+    over25NoVig?: number;
+    under25NoVig?: number;
   };
   closingPrices?: {
     over25?: number;
     under25?: number;
+    over25NoVig?: number;
+    under25NoVig?: number;
   };
+  takenAt?: string;
+  closedAt?: string;
 }
 
 export interface FixtureMatch {
   homeTeam: string;
   awayTeam: string;
-  homeLogo: string;
-  awayLogo: string;
+  homeLogo?: string | null;
+  awayLogo?: string | null;
   kickoff: string;
   league: string;
   fixtureId: number;

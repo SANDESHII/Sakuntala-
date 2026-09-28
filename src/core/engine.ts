@@ -65,7 +65,7 @@ async function resolveTeamData(
   const staticData = findTeamDetailed(teamName);
   if (staticData) {
     const data = { ...staticData };
-    if (FreeDataService.isLiveCapable) {
+    if (FreeDataService.isLiveCapable()) {
       data.form = [1, 1, 1, 1, 1];
     }
 
@@ -408,7 +408,7 @@ function generateSummary(
  * Run backtest simulation using real historical data for grounding
  */
 export async function runBacktest() {
-  if (!FreeDataService.isLiveCapable) {
+  if (!FreeDataService.isLiveCapable()) {
     return {
       totalMatches: 0,
       brierScore: -1,
@@ -436,34 +436,39 @@ export async function runBacktest() {
   let totalMatches = 0;
 
   const edgeSegments = [
-    { segment: 'Low Edge (0-3%)', min: 0, max: 3, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
-    { segment: 'Mid Edge (3-7%)', min: 3, max: 7, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
-    { segment: 'High Edge (7%+)', min: 7, max: 100, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
+    { segment: 'Low Edge (0-2%)', min: 0, max: 2, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
+    { segment: 'Mid Edge (2-5%)', min: 2, max: 5, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
+    { segment: 'High Edge (5-8%)', min: 5, max: 8, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
+    { segment: 'Elite Edge (8%+)', min: 8, max: 100, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
   ];
-  const edgeSums = [0, 0, 0];
-  const clvSums = [0, 0, 0];
-  const clvCounts = [0, 0, 0];
+  const edgeSums = [0, 0, 0, 0];
+  const clvSums = [0, 0, 0, 0];
+  const clvCounts = [0, 0, 0, 0];
 
   const evalPool: any[] = [];
   const fixtureCache: Record<string, HistoricalMatch[]> = {};
 
-  try {
-    await Promise.all(leagues.map(async l => {
-      const raw = await FreeDataService.getHistoricalFixtures(l, 150);
-      if (raw.length < 30) return;
+  for (const l of leagues) {
+    try {
+      // Fetch fixtures without odds initially to save quota
+      const raw = await FreeDataService.getHistoricalFixtures(l, 80, false);
+      if (raw.length < 30) continue;
       
       const sorted = raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       fixtureCache[l] = sorted;
       
-      // Select evaluation pool (last 20 matches)
-      const leagueEval = sorted.slice(-20);
+      // Select evaluation pool (last 10 matches per league instead of 15 to save even more quota)
+      const leagueEval = sorted.slice(-10);
       evalPool.push(...leagueEval);
-    }));
-  } catch (err) {
-    console.error('Historical Fetch Error:', err);
+      
+      // Small delay between leagues to respect burst limits
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (err) {
+      console.warn(`[Engine] Skipping league ${l} due to fetch error:`, (err as Error).message);
+    }
   }
 
-  // Sort global eval pool by date to optimize fitFromAPI caching
+  // Sort global eval pool by date
   evalPool.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   let totalPnl = 0;
@@ -472,7 +477,16 @@ export async function runBacktest() {
   let clvCount = 0;
 
   for (const match of evalPool) {
-    // True Walk-Forward: refit model for every match as-of its specific date
+    // 1. Fetch odds for this specific match only now
+    const odds = await FreeDataService.getHistoricalOddsForMatch(match.league, match.date, match.home, match.away);
+    if (odds) {
+        match.takenPrices = odds.takenPrices;
+        match.closingPrices = odds.closingPrices;
+        match.takenAt = odds.takenAt;
+        match.closedAt = odds.closedAt;
+    }
+
+    // 2. True Walk-Forward prediction
     const prediction = await runPrediction(
         match.home, 
         match.away, 

@@ -3,20 +3,55 @@ import { TeamRegistry } from '../identity/registry';
 import { normalizeLeagueToId, inferSeason } from '../utils';
 import { DataSource, Provenance } from '../../types';
 
-const API_KEY = process.env.VITE_API_FOOTBALL_KEY || '';
+function getApiKey() {
+  const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env || {};
+  const rawKey = env.VITE_API_FOOTBALL_KEY || env.API_FOOTBALL_KEY || '';
+  let key = rawKey.trim();
+  
+  // Strip surrounding quotes
+  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+    key = key.slice(1, -1).trim();
+  }
+
+  if (!key || key === 'undefined' || key === 'null' || key === 'PLACEHOLDER') return '';
+  return key;
+}
 
 export class ApiFootballProvider {
   public readonly source: DataSource = 'api-football';
 
+  private getRequestConfig() {
+    const key = getApiKey();
+    if (!key) {
+      throw new Error('API-Football Key (VITE_API_FOOTBALL_KEY) is missing or empty.');
+    }
+
+    const isHex32 = /^[a-f0-9]{32}$/i.test(key);
+    const isRapid = !isHex32;
+    
+    const baseUrl = isRapid ? 'https://api-football-v1.p.rapidapi.com/v3' : 'https://v3.football.api-sports.io';
+    const headers: Record<string, string> = isRapid 
+      ? { 'x-rapidapi-key': key, 'x-rapidapi-host': 'api-football-v1.p.rapidapi.com' }
+      : { 'x-apisports-key': key };
+
+    return { baseUrl, headers, isRapid };
+  }
+
   async fetchFixtures(league: string, limit: number, status: 'NS' | 'FT' = 'NS') {
+    const { baseUrl, headers, isRapid } = this.getRequestConfig();
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[ApiFootball] Fetching fixtures from ${isRapid ? 'RapidAPI' : 'Direct'} host.`);
+    }
+
     const leagueId = normalizeLeagueToId(league);
     const season = inferSeason();
 
     const data = await fetchWithRetry<any>(
       this.source,
-      'https://v3.football.api-sports.io/fixtures',
+      `${baseUrl}/fixtures`,
       {
-        headers: { 'x-apisports-key': API_KEY },
+        headers,
         params: {
           league: leagueId,
           season,
@@ -51,11 +86,17 @@ export class ApiFootballProvider {
   }
 
   async fetchTeamStats(teamId: number, leagueId: number, season: number) {
+    const { baseUrl, headers, isRapid } = this.getRequestConfig();
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[ApiFootball] Fetching team stats from ${isRapid ? 'RapidAPI' : 'Direct'} host.`);
+    }
+
     const data = await fetchWithRetry<any>(
       this.source,
-      'https://v3.football.api-sports.io/teams/statistics',
+      `${baseUrl}/teams/statistics`,
       {
-        headers: { 'x-apisports-key': API_KEY },
+        headers,
         params: { team: teamId, league: leagueId, season }
       }
     );

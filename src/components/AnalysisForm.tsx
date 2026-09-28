@@ -1,6 +1,5 @@
 import { useState, useEffect, FC, type FormEvent } from 'react';
 import { ELITE_LEAGUES } from '../core/constants';
-import { getUpcomingFixtures } from '../services/freeDataService';
 import { FixtureMatch } from '../types';
 import { Calendar } from 'lucide-react';
 
@@ -28,7 +27,9 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
         const fetchFixtures = async () => {
             setLoadingFixtures(true);
             try {
-                const data = await getUpcomingFixtures(league, 8);
+                const response = await fetch(`/api/fixtures?league=${league}&limit=8`);
+                if (!response.ok) throw new Error('Failed to fetch fixtures');
+                const data = await response.json();
                 setFixtures(data);
             } catch (error) {
                 console.error('Fixture Error:', error);
@@ -141,11 +142,11 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
                                     </div>
                                     <div className="space-y-1">
                                         <div className="flex items-center gap-2">
-                                            <img src={f.homeLogo} alt="" className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+                                            {f.homeLogo && <img src={f.homeLogo} alt="" className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />}
                                             <span className="text-[10px] font-black text-white truncate">{f.homeTeam}</span>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <img src={f.awayLogo} alt="" className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+                                            {f.awayLogo && <img src={f.awayLogo} alt="" className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />}
                                             <span className="text-[10px] font-black text-white truncate">{f.awayTeam}</span>
                                         </div>
                                     </div>

@@ -1,18 +1,33 @@
 import { fetchWithRetry } from '../http/client';
 import { HistoricalPrices, DataGapError, DataSource } from '../../types';
 
-const API_KEY = process.env.VITE_ODDS_API_KEY || '';
+function getApiKey() {
+  const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env || {};
+  const rawKey = env.VITE_ODDS_API_KEY || env.API_ODDS_KEY || env.ODDS_API_KEY || '';
+  let key = rawKey.trim();
+  
+  // Strip surrounding quotes
+  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+    key = key.slice(1, -1).trim();
+  }
+
+  if (!key || key === 'undefined' || key === 'null' || key === 'PLACEHOLDER') return '';
+  return key;
+}
 
 export class OddsProvider {
   public readonly source: DataSource = 'the-odds-api';
 
   async fetchLiveOdds(_league: string, sport: string = 'soccer_epl') {
+    const key = getApiKey();
+    if (!key) throw new Error('The Odds API Key (VITE_ODDS_API_KEY) is missing or empty.');
+
     const data = await fetchWithRetry<any[]>(
       this.source,
       `https://api.the-odds-api.com/v4/sports/${sport}/odds`,
       {
         params: {
-          apiKey: API_KEY,
+          apiKey: key,
           regions: 'eu,uk',
           markets: 'h2h,totals',
           oddsFormat: 'decimal'
@@ -69,14 +84,15 @@ export class OddsProvider {
   }
 
   private async fetchSnapshot(sport: string, date: string): Promise<any[]> {
-    if (!API_KEY) throw new DataGapError('ODDS_API_KEY', 'Environment');
+    const key = getApiKey();
+    if (!key) throw new DataGapError('ODDS_API_KEY', 'Environment');
 
     return await fetchWithRetry<any[]>(
       this.source,
       `https://api.the-odds-api.com/v4/historical/sports/${sport}/odds`,
       {
         params: {
-          apiKey: API_KEY,
+          apiKey: key,
           regions: 'eu,uk',
           markets: 'totals',
           oddsFormat: 'decimal',

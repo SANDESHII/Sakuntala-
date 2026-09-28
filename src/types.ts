@@ -93,9 +93,7 @@ export interface InternalTeamData {
   defenseStrength: number;
   avgGoalsScored: number;
   avgGoalsConceded: number;
-  avgXG: number;
-  avgXGA: number;
-  homeBias: number;
+  homeAdvantageHeuristic: number;
   form: number[];
   cleanSheetRate: number;
   matchCount?: number;
@@ -104,12 +102,12 @@ export interface InternalTeamData {
 
 export interface MatchContext {
   league: string;
-  homeSeasonXG: number;
-  awaySeasonXG: number;
-  homeSeasonXGA: number;
-  awaySeasonXGA: number;
-  homeTier: number;
-  awayTier: number;
+  homeSeasonGoals: number;
+  awaySeasonGoals: number;
+  homeSeasonGoalsAgainst: number;
+  awaySeasonGoalsAgainst: number;
+  homeAttackRating: number;
+  awayAttackRating: number;
   date: string;
   marketOdds: {
     pinnacleOver25: number;
@@ -129,9 +127,9 @@ export interface AnalysisResult {
     name: string;
     goalsScored: number;
     goalsConceded: number;
-    avgXG: number;
-    avgXGA: number;
-    defensiveStability: number;
+    avgGoalsScored: number;
+    avgGoalsConceded: number;
+    defensiveRatingHeuristic: number;
     form: number[];
     cleanSheets: number;
     homeAwayBias: number;
@@ -140,19 +138,20 @@ export interface AnalysisResult {
     name: string;
     goalsScored: number;
     goalsConceded: number;
-    avgXG: number;
-    avgXGA: number;
-    defensiveStability: number;
+    avgGoalsScored: number;
+    avgGoalsConceded: number;
+    defensiveRatingHeuristic: number;
     form: number[];
     cleanSheets: number;
     homeAwayBias: number;
   };
-  homeXG: number;
-  awayXG: number;
+  homeExpectedGoals: number;
+  awayExpectedGoals: number;
   minimumExpectancy: number;
-  potentialCeiling: number;
+  heuristicCeiling: number;
   predictionType: 'OVER_25' | 'UNDER_25' | 'NO_BET';
   predictionLabel: string;
+  rawProbability: number;
   marketOdds: number;
   marketImpliedProb: number;
   edge: number;
@@ -161,8 +160,9 @@ export interface AnalysisResult {
   context: MatchContext;
   dataSource: 'LIVE' | 'FALLBACK_STATIC';
   modelSource: 'MLE_FITTED' | 'HEURISTIC_FALLBACK';
+  modelSpecification?: string;
   isLowConfidence?: boolean;
-  isCalibrated?: boolean;
+  isThresholdAdaptive?: boolean;
   usedRealOdds?: boolean;
   goalDistribution?: GoalDistribution[];
   scoreMatrix?: number[][];
@@ -186,6 +186,7 @@ export interface BacktestMatch {
   prediction: {
     predictionType: string;
     probability: number;
+    rawProbability: number;
   };
   marketEdge: number;
   isOver25Correct: boolean;

@@ -38,16 +38,14 @@ export async function getTeamStats(teamName: string, league: string) {
         const diff = homeRate - awayRate;
         const leagueConfig = LEAGUE_CONFIGS[league] || LEAGUE_CONFIGS['STANDARD'];
         const baseHomeAdv = leagueConfig.homeAdvantage;
-        const homeBias = Math.max(0.15, Math.min(0.45, baseHomeAdv + (diff * 0.1)));
+        const homeAdvantageHeuristic = Math.max(0.15, Math.min(0.45, baseHomeAdv + (diff * 0.1)));
 
         return {
             attackStrength: avgGoalsScored / 1.35,
             defenseStrength: avgGoalsConceded / 1.35,
             avgGoalsScored,
             avgGoalsConceded,
-            avgXG: avgGoalsScored,
-            avgXGA: avgGoalsConceded,
-            homeBias,
+            homeAdvantageHeuristic,
             form: [1, 1, 1, 1, 1],
             cleanSheetRate: Number(stats.cleanSheets) / played,
             quality: 'goals-proxy' as const

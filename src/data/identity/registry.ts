@@ -19,6 +19,8 @@ Object.keys(TEAM_STATS).forEach(canonicalName => {
   add({
     id: canonicalName,
     name: canonicalName,
+    league: 'ELITE',
+    country: 'EUROPE',
     aliases: Object.entries(TEAM_ALIASES)
       .filter(([_, canonical]) => canonical === canonicalName)
       .map(([alias, _]) => alias),

@@ -36,9 +36,9 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                         }`}>
                             {analysis.dataSource === 'LIVE' ? 'Live API Feed' : 'Historical Fallback'}
                         </span>
-                        {analysis.isCalibrated && (
+                        {analysis.isThresholdAdaptive && (
                             <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border bg-purple-500/10 border-purple-500/20 text-purple-500">
-                                Calibrated
+                                Adaptive Threshold
                             </span>
                         )}
                         <span className="text-[10px] font-black text-neutral-600 uppercase tracking-[0.4em]">Prediction Engine</span>
@@ -60,8 +60,8 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                     {/* Primary Metrics */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                         <StatCard label="Model Edge" value={`${analysis.edge > 0 ? '+' : ''}${analysis.edge}%`} subValue="vs Market" icon={Zap} />
-                        <StatCard label="Stake" value={`${analysis.recommendedStake}%`} subValue="Kelly Criterion" icon={Shield} />
-                        <StatCard label="Odds" value={analysis.marketOdds?.toFixed(2) || '0.00'} subValue="Market Price" icon={Target} />
+                        <StatCard label="Min Expectancy" value={analysis.minimumExpectancy.toFixed(2)} subValue="Base Poisson Sum" icon={Shield} />
+                        <StatCard label="Goal Ceiling" value={analysis.heuristicCeiling.toFixed(2)} subValue="Heuristic Peak" icon={Activity} />
                     </div>
 
                     {/* Team Deep Dive */}
@@ -75,8 +75,8 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-24">
                             {[
-                                { team: analysis.homeStats, xG: analysis.homeXG, role: 'HOME' },
-                                { team: analysis.awayStats, xG: analysis.awayXG, role: 'AWAY' }
+                                { team: analysis.homeStats, expGoals: analysis.homeExpectedGoals, role: 'HOME' },
+                                { team: analysis.awayStats, expGoals: analysis.awayExpectedGoals, role: 'AWAY' }
                             ].map((item, idx) => (
                                 <div key={idx} className="space-y-12">
                                     <div className="space-y-2">
@@ -89,11 +89,12 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                                     <div className="grid grid-cols-2 gap-y-12 gap-x-8">
                                         <div className="space-y-3 p-6 bg-neutral-800/20 rounded-3xl border border-neutral-800/50">
                                             <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest block">Expected Goals</span>
-                                            <p className="text-4xl font-black text-white tabular-nums tracking-tighter">{item.xG?.toFixed(2) || '0.00'}</p>
+                                            <p className="text-4xl font-black text-white tabular-nums tracking-tighter">{item.expGoals?.toFixed(2) || '0.00'}</p>
                                         </div>
                                         <div className="space-y-3 p-6 bg-neutral-800/20 rounded-3xl border border-neutral-800/50">
-                                            <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest block">Defense</span>
-                                            <p className="text-4xl font-black text-emerald-500 tabular-nums tracking-tighter">{item.team.defensiveStability?.toFixed(2) || '0.00'}</p>
+                                            <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest block">Defensive Rating</span>
+                                            <p className="text-4xl font-black text-emerald-500 tabular-nums tracking-tighter">{item.team.defensiveRatingHeuristic?.toFixed(2) || '0.00'}</p>
+                                            <span className="text-[8px] text-neutral-700 font-bold uppercase tracking-tight block mt-1">Heuristic Metric</span>
                                         </div>
                                     </div>
                                 </div>
@@ -359,6 +360,10 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                                     <span className="text-[10px] font-black uppercase opacity-60 tracking-widest block mb-1">Odds</span>
                                     <p className="text-3xl font-black tabular-nums">{analysis.marketOdds?.toFixed(2) || '0.00'}</p>
                                 </div>
+                                <div>
+                                    <span className="text-[10px] font-black uppercase opacity-60 tracking-widest block mb-1">Stake</span>
+                                    <p className="text-3xl font-black tabular-nums">{analysis.recommendedStake}%</p>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -388,6 +393,11 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                                 <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
                                     <div className="h-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" style={{ width: analysis.modelSource === 'MLE_FITTED' ? '100%' : '40%' }} />
                                 </div>
+                                {analysis.modelSpecification && (
+                                    <p className="text-[8px] text-neutral-600 font-bold uppercase tracking-tight leading-relaxed">
+                                        Spec: {analysis.modelSpecification}
+                                    </p>
+                                )}
                             </div>
                             <div className="space-y-3">
                                 <div className="flex justify-between text-[10px] font-black uppercase text-neutral-400 tracking-widest">
@@ -400,11 +410,20 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                             </div>
                             <div className="space-y-3">
                                 <div className="flex justify-between text-[10px] font-black uppercase text-neutral-400 tracking-widest">
-                                    <span>Calibration</span>
-                                    <span>{analysis.isCalibrated ? 'ENABLED' : 'NONE'}</span>
+                                    <span>Attack Rating</span>
+                                    <span>HEURISTIC: {analysis.context.homeAttackRating}v{analysis.context.awayAttackRating}</span>
                                 </div>
                                 <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
-                                    <div className={`h-full ${analysis.isCalibrated ? 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)]' : 'bg-neutral-800'}`} style={{ width: analysis.isCalibrated ? '100%' : '10%' }} />
+                                    <div className="h-full bg-amber-500/50 shadow-[0_0_8px_rgba(245,158,11,0.3)]" style={{ width: `${(analysis.context.homeAttackRating / 10) * 100}%` }} />
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                <div className="flex justify-between text-[10px] font-black uppercase text-neutral-400 tracking-widest">
+                                    <span>Adaptive Threshold</span>
+                                    <span>{analysis.isThresholdAdaptive ? 'ENABLED' : 'NONE'}</span>
+                                </div>
+                                <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
+                                    <div className={`h-full ${analysis.isThresholdAdaptive ? 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)]' : 'bg-neutral-800'}`} style={{ width: analysis.isThresholdAdaptive ? '100%' : '10%' }} />
                                 </div>
                             </div>
                         </div>

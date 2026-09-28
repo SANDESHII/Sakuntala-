@@ -11,6 +11,7 @@
  */
 
 import * as FreeDataService from '../services/freeDataService';
+import { HistoricalMatch } from '../types';
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -80,16 +81,19 @@ export function fitDixonColes(
       const dL_lam = h / lam - 1;
       const dL_mu  = a / mu - 1;
 
-      // Tau partial derivatives
+      // Tau partial derivatives with safety bounds
       let dt_lam = 0, dt_mu = 0;
+      const minRhoMatch = -1 / Math.max(lam, mu, 1);
+      const safeRhoMatch = Math.max(minRhoMatch + 0.001, rho);
+
       if (h === 0 && a === 0) {
-        const d = Math.max(1 - lam * mu * rho, 1e-10);
-        dt_lam = (-mu * rho) / d;
-        dt_mu  = (-lam * rho) / d;
+        const d = 1 - lam * mu * safeRhoMatch;
+        dt_lam = (-mu * safeRhoMatch) / d;
+        dt_mu  = (-lam * safeRhoMatch) / d;
       } else if (h === 0 && a === 1) {
-        dt_lam = rho / Math.max(1 + lam * rho, 1e-10);
+        dt_lam = safeRhoMatch / (1 + lam * safeRhoMatch);
       } else if (h === 1 && a === 0) {
-        dt_mu = rho / Math.max(1 + mu * rho, 1e-10);
+        dt_mu = safeRhoMatch / (1 + mu * safeRhoMatch);
       }
 
       const grad_lam = weight * (dL_lam + dt_lam);
@@ -104,12 +108,12 @@ export function fitDixonColes(
       // d lam / d gamma = atk_home * def_away
       gG += grad_lam * atk[home] * def[away];
 
-      // d logL / d rho
+      // d logL / d rho with safety bounds
       let dr = 0;
-      if (h === 0 && a === 0)      dr = weight * ((-lam * mu) / Math.max(1 - lam * mu * rho, 1e-10));
-      else if (h === 0 && a === 1) dr = weight * (lam / Math.max(1 + lam * rho, 1e-10));
-      else if (h === 1 && a === 0) dr = weight * (mu  / Math.max(1 + mu * rho, 1e-10));
-      else if (h === 1 && a === 1) dr = weight * (-1  / Math.max(1 - rho, 1e-10));
+      if (h === 0 && a === 0)      dr = weight * ((-lam * mu) / (1 - lam * mu * safeRhoMatch));
+      else if (h === 0 && a === 1) dr = weight * (lam / (1 + lam * safeRhoMatch));
+      else if (h === 1 && a === 0) dr = weight * (mu  / (1 + mu * safeRhoMatch));
+      else if (h === 1 && a === 1) dr = weight * (-1  / (1 - safeRhoMatch));
       gR += dr;
     }
 
@@ -124,19 +128,25 @@ export function fitDixonColes(
       atk[t] = Math.max(0.2, Math.min(3.0, atk[t] + lr * (gA[t] + penaltyA) / n));
       def[t] = Math.max(0.2, Math.min(3.0, def[t] + lr * (gD[t] + penaltyD) / n));
     }
+
+    // Resolve identifiability Scale Symmetry: Ensure mean(atk) = 1.0 by shifting scale to defense
+    // This ensures the model remains identifiable and the normalization doesn't happen "after" optimization
+    const currentAvgA = teams.reduce((s, t) => s + atk[t], 0) / teams.length;
+    for (const t of teams) {
+      atk[t] /= currentAvgA;
+      def[t] *= currentAvgA;
+    }
+
     gamma = Math.max(0.8, Math.min(2.0, gamma + lr * gG / n));
     rho   = Math.max(-0.5, Math.min(0.0, rho + lr * gR / n));
     lr *= 0.998;
   }
 
-  // Normalize so average = 1.0 (only one side needed to preserve base rate)
-  const avgA = teams.reduce((s, t) => s + atk[t], 0) / teams.length;
-
   const result: Record<string, FittedTeamParams> = {};
   for (const t of teams) {
     const count = matchCounts[t] || 0;
     result[t] = { 
-      attack: atk[t] / avgA, 
+      attack: atk[t], 
       defense: def[t],
       matchCount: count,
       lowConfidence: count < 6
@@ -155,20 +165,24 @@ const TTL = 6 * 60 * 60 * 1000; // 6 hours
  * Fit parameters from real historical data via API.
  * Cached for 6 hours.
  */
-export async function fitFromAPI(league: string, asOfDate?: string): Promise<FittedLeagueParams> {
+export async function fitFromAPI(
+  league: string, 
+  asOfDate?: string, 
+  historicalMatches?: HistoricalMatch[]
+): Promise<FittedLeagueParams> {
   const cacheKey = asOfDate ? `${league}_${asOfDate}` : league;
   const c = cache[cacheKey];
   if (c && Date.now() - c.ts < TTL) return c.params;
 
-  const raw = await FreeDataService.getHistoricalFixtures(league, 150);
+  const raw = historicalMatches || await FreeDataService.getHistoricalFixtures(league, 150);
   if (raw.length < 20) return { homeAdvantage: 1.25, rho: -0.13, teams: {} };
 
   const cutoff = asOfDate ? new Date(asOfDate).getTime() : Date.now();
   const filtered = raw.filter(m => new Date(m.date).getTime() < cutoff);
   
   if (filtered.length < 20) {
-     // If too few games before cutoff, fallback to global or at least more games
-     if (asOfDate) return fitFromAPI(league); // recursive fallback to current
+     // CRITICAL: Never fall back to current data if historical data is requested.
+     // This prevents future information leakage in backtesting.
      return { homeAdvantage: 1.25, rho: -0.13, teams: {} };
   }
 
@@ -194,8 +208,12 @@ export async function fitFromAPI(league: string, asOfDate?: string): Promise<Fit
 export const BASE_GOALS = 1.35; // league-average goals per game
 
 /**
- * Compute expected goals (λ, μ) using fitted parameters.
+ * Compute expected goals (λ, μ) using fitted MLE parameters.
  * Returns null if either team isn't in the fitted data.
+ * 
+ * Specification:
+ * lambda_home = alpha_home * beta_away * gamma (home advantage)
+ * mu_away     = alpha_away * beta_home
  */
 export function predictGoals(
   fitted: FittedLeagueParams,

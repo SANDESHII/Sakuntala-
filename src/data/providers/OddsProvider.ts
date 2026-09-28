@@ -1,5 +1,5 @@
 import { fetchWithRetry } from '../http/client';
-import { OddsLeg, HistoricalPrices, DataGapError, DataSource } from '../../types';
+import { HistoricalPrices, DataGapError, DataSource } from '../../types';
 
 const API_KEY = process.env.VITE_ODDS_API_KEY || '';
 
@@ -112,25 +112,23 @@ export class OddsProvider {
     const avgU25 = countU25 > 0 ? sumU25 / countU25 : bestU25;
     const avgO25 = countO25 > 0 ? sumO25 / countO25 : bestO25;
 
-    const over25: OddsLeg | undefined = bestO25 > 0 ? {
+    const over25 = bestO25 > 0 ? {
       bestPrice: bestO25,
-      noVigPrice: (bestO25 > 0 && avgU25 > 0) ? this.calculateNoVig(bestO25, avgU25) : bestO25 * 0.97,
-      bookmakerCount: countO25,
-      timestamp
-    } : undefined;
+      noVigPrice: (bestO25 > 0 && avgU25 > 0) ? this.calculateNoVig(bestO25, avgU25) : bestO25 * 0.97
+    } : { bestPrice: 0, noVigPrice: 0 };
 
-    const under25: OddsLeg | undefined = bestU25 > 0 ? {
+    const under25 = bestU25 > 0 ? {
       bestPrice: bestU25,
-      noVigPrice: (bestU25 > 0 && avgO25 > 0) ? this.calculateNoVig(bestU25, avgO25) : bestU25 * 0.97,
-      bookmakerCount: countU25,
-      timestamp
-    } : undefined;
+      noVigPrice: (bestU25 > 0 && avgO25 > 0) ? this.calculateNoVig(bestU25, avgO25) : bestU25 * 0.97
+    } : { bestPrice: 0, noVigPrice: 0 };
 
     return { over25, under25, takenAt: timestamp };
   }
 
   calculateNoVig(bestPrice: number, consensusPrice: number): number {
-    const margin = (1 / bestPrice) + (1 / consensusPrice) - 1;
-    return bestPrice / (1 + margin);
+    const p1 = 1 / bestPrice;
+    const p2 = 1 / consensusPrice;
+    const fairProbability = p1 / (p1 + p2);
+    return 1 / fairProbability;
   }
 }

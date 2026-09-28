@@ -55,7 +55,7 @@ export const App: FC = () => {
     };
 
     useEffect(() => {
-        const checkCalibration = async () => {
+        const initializeAdaptiveThresholding = async () => {
             if (!isLiveCapable) return;
 
             const today = new Date().toISOString().split('T')[0];
@@ -69,7 +69,7 @@ export const App: FC = () => {
             }
             loadBacktest();
         };
-        checkCalibration();
+        initializeAdaptiveThresholding();
     }, []);
 
     useEffect(() => {
@@ -87,7 +87,7 @@ export const App: FC = () => {
                             <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
                             <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-[0.3em]">Football Prediction System</span>
                             {backtestSummary && (
-                                <span className="ml-4 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded text-[8px] font-black text-emerald-500 uppercase">Calibrated</span>
+                                <span className="ml-4 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded text-[8px] font-black text-emerald-500 uppercase">Adaptive Thresholding</span>
                             )}
                         </motion.div>
                         <h2 className="text-4xl md:text-5xl font-black tracking-tight text-white leading-none uppercase">Alpha Terminal</h2>

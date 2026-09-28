@@ -35,7 +35,11 @@ describe('Data Layer Regressions', () => {
 
   it('should use historical prices if provided, and never call live odds in that case', async () => {
     const liveOddsSpy = vi.spyOn(FreeDataService, 'getLiveOdds');
-    const historicalOdds = { over15: 1.85, under35: 2.10 };
+    const historicalOdds = { 
+      over25: { bestPrice: 1.85, noVigPrice: 1.90 }, 
+      under25: { bestPrice: 2.10, noVigPrice: 2.15 },
+      takenAt: '2024-01-01'
+    } as any;
     
     const result = await runPrediction('ARSENAL', 'CHELSEA', 'EPL', null, historicalOdds);
     
@@ -68,8 +72,8 @@ describe('Data Layer Regressions', () => {
           markets: [{
             key: 'totals',
             outcomes: [
-              { name: 'Over', price: 1.95, point: 1.5 },
-              { name: 'Under', price: 2.10, point: 3.5 }
+              { name: 'Over', price: 1.95, point: 2.5 },
+              { name: 'Under', price: 2.10, point: 2.5 }
             ]
           }]
         }]
@@ -79,8 +83,8 @@ describe('Data Layer Regressions', () => {
     const result = await oddsProvider.fetchHistoricalOdds('soccer_epl', '2024-01-01T15:00:00Z', 'Arsenal', 'Chelsea');
     
     expect(snapshotSpy).toHaveBeenCalled();
-    expect(result.over15?.bestPrice).toBe(1.95);
-    expect(result.under35?.bestPrice).toBe(2.10);
+    expect(result.over25?.bestPrice).toBe(1.95);
+    expect(result.under25?.bestPrice).toBe(2.10);
   });
 
   it('should throw DataGapError if no match found in snapshot', async () => {

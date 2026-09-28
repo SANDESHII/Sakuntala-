@@ -32,9 +32,7 @@ export const FeatureEngine = {
         defenseStrength: 1.0,
         avgGoalsScored: 1.35,
         avgGoalsConceded: 1.35,
-        avgXG: 1.35,
-        avgXGA: 1.35,
-        homeBias: baseHomeAdv,
+        homeAdvantageHeuristic: baseHomeAdv,
         form: [1, 1, 1, 1, 1],
         cleanSheetRate: 0.25,
         quality: 'low'
@@ -67,17 +65,34 @@ export const FeatureEngine = {
       }
     });
     
-    const avgScored = scored / played;
-    const avgConceded = conceded / played;
+    // Temporal Weighted Averages for Heuristic Model
+    let weightedScoredSum = 0;
+    let weightedConcededSum = 0;
+    let weightSum = 0;
+    const PHI = 0.0065;
+
+    teamMatches.forEach((m: HistoricalMatch) => {
+      const matchTs = new Date(m.date).getTime();
+      const diffDays = Math.max(0, (cutoff - matchTs) / (1000 * 60 * 60 * 24));
+      const weight = Math.exp(-PHI * diffDays);
+
+      const isHome = m.home === teamName;
+      weightedScoredSum += (isHome ? m.homeGoals : m.awayGoals) * weight;
+      weightedConcededSum += (isHome ? m.awayGoals : m.homeGoals) * weight;
+      weightSum += weight;
+    });
+
+    const avgScored = weightSum > 0 ? weightedScoredSum / weightSum : 1.35;
+    const avgConceded = weightSum > 0 ? weightedConcededSum / weightSum : 1.35;
     
     // Calculate team-specific home bias if enough data, otherwise use league base
-    let homeBias = baseHomeAdv;
+    let homeAdvantageHeuristic = baseHomeAdv;
     if (homeCount >= 3 && awayCount >= 3) {
       const hRate = homeScored / homeCount;
       const aRate = awayScored / awayCount;
       const diff = hRate - aRate;
       // Heuristic: map a +0.5 goal diff to +0.05 bias adjustment
-      homeBias = Math.max(0.15, Math.min(0.45, baseHomeAdv + (diff * 0.1)));
+      homeAdvantageHeuristic = Math.max(0.15, Math.min(0.45, baseHomeAdv + (diff * 0.1)));
     }
 
     // Form is the last 5 games before the cutoff
@@ -97,9 +112,7 @@ export const FeatureEngine = {
       defenseStrength: avgConceded / 1.35,
       avgGoalsScored: avgScored,
       avgGoalsConceded: avgConceded,
-      avgXG: avgScored,
-      avgXGA: avgConceded,
-      homeBias,
+      homeAdvantageHeuristic,
       form,
       cleanSheetRate: cleanSheets / played,
       quality: played > 10 ? 'high' : 'medium'

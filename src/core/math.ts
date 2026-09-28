@@ -22,11 +22,12 @@ export class DixonColes {
   /**
    * Dixon-Coles correction factor for low-scoring outcomes
    * Adjusts for the tendency of 0-0, 0-1, 1-0, 1-1 to occur more/less than Poisson predicts
-   * @param homeGoals - Home team goals scored
-   * @param awayGoals - Away team goals scored
-   * @param lambdaHome - Home team expected goals
-   * @param muAway - Away team expected goals
-   * @param rho - Correlation parameter (typically -0.11)
+   * 
+   * CRITICAL: rho must satisfy the following constraints to ensure correction > 0:
+   * 1. 1 - (lambdaHome * muAway * rho) > 0
+   * 2. 1 + (lambdaHome * rho) > 0
+   * 3. 1 + (muAway * rho) > 0
+   * 4. 1 - rho > 0
    */
   static lowScoreCorrection(
     homeGoals: number,
@@ -35,17 +36,21 @@ export class DixonColes {
     muAway: number,
     rho: number
   ): number {
-    let correction = 1;
+    // Dynamically constrain rho for this specific lambda/mu pair to maintain mathematical validity
+    const minRho = -1 / Math.max(lambdaHome, muAway, 1);
+    const maxRho = Math.min(1, 1 / (lambdaHome * muAway || 1));
+    const safeRho = Math.max(minRho + 0.001, Math.min(maxRho - 0.001, rho));
+
     if (homeGoals === 0 && awayGoals === 0) {
-      correction = 1 - (lambdaHome * muAway * rho);
+      return 1 - (lambdaHome * muAway * safeRho);
     } else if (homeGoals === 0 && awayGoals === 1) {
-      correction = 1 + (lambdaHome * rho);
+      return 1 + (lambdaHome * safeRho);
     } else if (homeGoals === 1 && awayGoals === 0) {
-      correction = 1 + (muAway * rho);
+      return 1 + (muAway * safeRho);
     } else if (homeGoals === 1 && awayGoals === 1) {
-      correction = 1 - rho;
+      return 1 - safeRho;
     }
-    return Math.max(0.0001, correction);
+    return 1;
   }
 
   /**
@@ -53,16 +58,32 @@ export class DixonColes {
    * @param lambdaHome - Home team expected goals
    * @param muAway - Away team expected goals
    * @param rho - Correlation parameter (default: -0.13)
-   * @param maxGoals - Maximum goals to consider (default: 8)
+   * @param epsilon - Target error threshold for tail truncation (default: 1e-8)
    */
   static calculateScoreMatrix(
     lambdaHome: number,
     muAway: number,
     rho: number = -0.13,
-    maxGoals: number = 12
+    epsilon: number = 1e-8
   ): number[][] {
-    const matrix = Array.from({ length: maxGoals + 1 }, (_, h) =>
-      Array.from({ length: maxGoals + 1 }, (_, a) => {
+    // Dynamically calculate required goal limit to satisfy epsilon threshold
+    // P(X > k) < epsilon where X ~ Poisson(max(lambdaHome, muAway))
+    const maxMean = Math.max(lambdaHome, muAway, 0.1);
+    let k = Math.ceil(maxMean);
+    let p = Math.exp(-maxMean);
+    let sum = p;
+    
+    // Iteratively find k such that the tail probability is negligible
+    while (1 - sum > epsilon && k < 40) {
+      k++;
+      p *= maxMean / k;
+      sum += p;
+    }
+    
+    const limit = Math.max(8, k); // Ensure a reasonable minimum matrix size
+
+    const matrix = Array.from({ length: limit + 1 }, (_, h) =>
+      Array.from({ length: limit + 1 }, (_, a) => {
         const probHome = this.poisson(h, lambdaHome);
         const probAway = this.poisson(a, muAway);
         const correction = this.lowScoreCorrection(h, a, lambdaHome, muAway, rho);
@@ -70,7 +91,8 @@ export class DixonColes {
       })
     );
 
-    // Normalize to ensure probabilities sum to 1
+    // Normalize to ensure probabilities sum to 1 precisely
+    // This is still required due to the Dixon-Coles correction shifting the distribution
     const total = matrix.reduce((sum, row) => sum + row.reduce((s, p) => s + p, 0), 0);
     return matrix.map(row => row.map(p => p / (total || 1)));
   }

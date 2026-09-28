@@ -78,7 +78,7 @@ export class ApiFootballProvider {
     return {
       source: this.source,
       sourceSeason: season,
-      fetchedAt: new Date().toISOString(),
+      timestamp: new Date().toISOString(),
       quality
     };
   }

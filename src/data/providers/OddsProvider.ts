@@ -87,60 +87,46 @@ export class OddsProvider {
   }
 
   private mapMatchToHistorical(match: any, timestamp: string): HistoricalPrices {
-    let bestO15 = 0, sumO15 = 0, countO15 = 0;
-    let bestU15 = 0, sumU15 = 0, countU15 = 0;
-    let bestU35 = 0, sumU35 = 0, countU35 = 0;
-    let bestO35 = 0, sumO35 = 0, countO35 = 0;
+    let bestO25 = 0, sumO25 = 0, countO25 = 0;
+    let bestU25 = 0, sumU25 = 0, countU25 = 0;
 
     match.bookmakers?.forEach((bm: any) => {
       const market = bm.markets.find((m: any) => m.key === 'totals');
       if (market) {
-        const o15 = market.outcomes.find((o: any) => o.name === 'Over' && o.point === 1.5);
-        const u15 = market.outcomes.find((o: any) => o.name === 'Under' && o.point === 1.5);
-        const u35 = market.outcomes.find((o: any) => o.name === 'Under' && o.point === 3.5);
-        const o35 = market.outcomes.find((o: any) => o.name === 'Over' && o.point === 3.5);
+        const o25 = market.outcomes.find((o: any) => o.name === 'Over' && o.point === 2.5);
+        const u25 = market.outcomes.find((o: any) => o.name === 'Under' && o.point === 2.5);
 
-        if (o15) {
-          bestO15 = Math.max(bestO15, o15.price);
-          sumO15 += o15.price;
-          countO15++;
+        if (o25) {
+          bestO25 = Math.max(bestO25, o25.price);
+          sumO25 += o25.price;
+          countO25++;
         }
-        if (u15) {
-          bestU15 = Math.max(bestU15, u15.price);
-          sumU15 += u15.price;
-          countU15++;
-        }
-        if (u35) {
-          bestU35 = Math.max(bestU35, u35.price);
-          sumU35 += u35.price;
-          countU35++;
-        }
-        if (o35) {
-          bestO35 = Math.max(bestO35, o35.price);
-          sumO35 += o35.price;
-          countO35++;
+        if (u25) {
+          bestU25 = Math.max(bestU25, u25.price);
+          sumU25 += u25.price;
+          countU25++;
         }
       }
     });
 
-    const avgU15 = countU15 > 0 ? sumU15 / countU15 : bestU15;
-    const avgO35 = countO35 > 0 ? sumO35 / countO35 : bestO35;
+    const avgU25 = countU25 > 0 ? sumU25 / countU25 : bestU25;
+    const avgO25 = countO25 > 0 ? sumO25 / countO25 : bestO25;
 
-    const over15: OddsLeg | undefined = bestO15 > 0 ? {
-      bestPrice: bestO15,
-      noVigPrice: (bestO15 > 0 && avgU15 > 0) ? this.calculateNoVig(bestO15, avgU15) : bestO15 * 0.97,
-      bookmakerCount: countO15,
+    const over25: OddsLeg | undefined = bestO25 > 0 ? {
+      bestPrice: bestO25,
+      noVigPrice: (bestO25 > 0 && avgU25 > 0) ? this.calculateNoVig(bestO25, avgU25) : bestO25 * 0.97,
+      bookmakerCount: countO25,
       timestamp
     } : undefined;
 
-    const under35: OddsLeg | undefined = bestU35 > 0 ? {
-      bestPrice: bestU35,
-      noVigPrice: (bestU35 > 0 && avgO35 > 0) ? this.calculateNoVig(bestU35, avgO35) : bestU35 * 0.97,
-      bookmakerCount: countU35,
+    const under25: OddsLeg | undefined = bestU25 > 0 ? {
+      bestPrice: bestU25,
+      noVigPrice: (bestU25 > 0 && avgO25 > 0) ? this.calculateNoVig(bestU25, avgO25) : bestU25 * 0.97,
+      bookmakerCount: countU25,
       timestamp
     } : undefined;
 
-    return { over15, under35, takenAt: timestamp };
+    return { over25, under25, takenAt: timestamp };
   }
 
   calculateNoVig(bestPrice: number, consensusPrice: number): number {

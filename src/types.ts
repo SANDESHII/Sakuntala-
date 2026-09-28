@@ -41,22 +41,22 @@ export interface HistoricalMatch {
   homeId?: number;
   awayId?: number;
   takenPrices?: {
-    over15?: number;
-    under35?: number;
+    over25?: number;
+    under25?: number;
   };
   closingPrices?: {
-    over15?: number;
-    under35?: number;
+    over25?: number;
+    under25?: number;
   };
 }
 
 export interface MarketOdds {
-  over15?: {
+  over25?: {
     bestPrice: number;
     avgPrice: number;
     count: number;
   };
-  under35?: {
+  under25?: {
     bestPrice: number;
     avgPrice: number;
     count: number;
@@ -87,8 +87,8 @@ export interface MatchContext {
   awayTier: number;
   date: string;
   marketOdds: {
-    pinnacleOver15: number;
-    pinnacleUnder35: number;
+    pinnacleOver25: number;
+    pinnacleUnder25: number;
   };
 }
 
@@ -126,7 +126,7 @@ export interface AnalysisResult {
   awayXG: number;
   minimumExpectancy: number;
   potentialCeiling: number;
-  predictionType: 'OVER_15' | 'UNDER_35' | 'NO_BET';
+  predictionType: 'OVER_25' | 'UNDER_25' | 'NO_BET';
   predictionLabel: string;
   marketOdds: number;
   marketImpliedProb: number;
@@ -140,6 +140,13 @@ export interface AnalysisResult {
   isCalibrated?: boolean;
   usedRealOdds?: boolean;
   goalDistribution?: GoalDistribution[];
+  monteCarlo?: {
+    probOver25: number;
+    probUnder25: number;
+    stdDev: number;
+    iterations: number;
+    uncertainty: number;
+  };
 }
 
 export interface BacktestMatch {
@@ -155,8 +162,8 @@ export interface BacktestMatch {
     probability: number;
   };
   marketEdge: number;
-  isOver15Correct: boolean;
-  isUnder35Correct: boolean;
+  isOver25Correct: boolean;
+  isUnder25Correct: boolean;
   pnl: number;
   clv: number;
   stake: number;
@@ -167,8 +174,8 @@ export interface BacktestMatch {
 export interface BacktestSummary {
   totalMatches: number;
   brierScore: number;
-  over15Accuracy: number;
-  under35Accuracy: number;
+  over25Accuracy: number;
+  under25Accuracy: number;
   totalPnl: number;
   totalYield: number;
   avgClv: number;

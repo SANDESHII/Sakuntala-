@@ -33,7 +33,7 @@ export const BacktestDisplay: FC<BacktestDisplayProps> = ({ summary }) => {
                 )}
                 {[
                     { label: 'Matches Analyzed', value: summary.totalMatches, icon: Activity },
-                    { label: 'Accuracy Rate', value: `${(((summary.over15Accuracy || 0) + (summary.under35Accuracy || 0)) / 2)?.toFixed(1) || '0.0'}%`, icon: CheckCircle2 },
+                    { label: 'Accuracy Rate', value: `${(((summary.over25Accuracy || 0) + (summary.under25Accuracy || 0)) / 2)?.toFixed(1) || '0.0'}%`, icon: CheckCircle2 },
                     { 
                         label: 'Profit/Loss', 
                         value: `${summary.totalPnl > 0 ? '+' : ''}${summary.totalPnl.toFixed(1)}u`, 
@@ -116,7 +116,7 @@ export const BacktestDisplay: FC<BacktestDisplayProps> = ({ summary }) => {
                         <tbody className="divide-y divide-zinc-900">
                             {summary.matches.map((item, i) => {
                                 const predType = item.prediction.predictionType;
-                                const isCorrect = predType === 'OVER_15' ? item.isOver15Correct : item.isUnder35Correct;
+                                const isCorrect = predType === 'OVER_25' ? item.isOver25Correct : item.isUnder25Correct;
                                 return (
                                     <tr key={i} className="hover:bg-zinc-950/30 transition-colors">
                                         <td className="px-8 py-6">
@@ -146,7 +146,7 @@ export const BacktestDisplay: FC<BacktestDisplayProps> = ({ summary }) => {
                                         </td>
                                         <td className="px-8 py-6">
                                             <div className="flex items-center gap-2">
-                                                <span className={`text-xs font-bold uppercase tracking-tight ${predType === 'OVER_15' ? 'text-emerald-500' : 'text-zinc-500'}`}>
+                                                <span className={`text-xs font-bold uppercase tracking-tight ${predType === 'OVER_25' ? 'text-emerald-500' : 'text-zinc-500'}`}>
                                                     {predType.replace('_', ' ')}
                                                 </span>
                                                 <span className="text-xs text-zinc-700 font-medium">{item.prediction.probability}%</span>

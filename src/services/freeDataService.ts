@@ -122,16 +122,16 @@ export async function getHistoricalFixtures(league: string, limit: number = 50):
                     league: league.toUpperCase(),
                     date: f.date.split('T')[0],
                     takenPrices: {
-                        over15: histOdds?.over15?.bestPrice,
-                        over15NoVig: histOdds?.over15?.noVigPrice,
-                        under35: histOdds?.under35?.bestPrice,
-                        under35NoVig: histOdds?.under35?.noVigPrice
+                        over25: histOdds?.over25?.bestPrice,
+                        over25NoVig: histOdds?.over25?.noVigPrice,
+                        under25: histOdds?.under25?.bestPrice,
+                        under25NoVig: histOdds?.under25?.noVigPrice
                     },
                     closingPrices: {
-                        over15: closeOdds?.over15?.bestPrice,
-                        over15NoVig: closeOdds?.over15?.noVigPrice,
-                        under35: closeOdds?.under35?.bestPrice,
-                        under35NoVig: closeOdds?.under35?.noVigPrice
+                        over25: closeOdds?.over25?.bestPrice,
+                        over25NoVig: closeOdds?.over25?.noVigPrice,
+                        under25: closeOdds?.under25?.bestPrice,
+                        under25NoVig: closeOdds?.under25?.noVigPrice
                     },
                     takenAt: histOdds?.takenAt,
                     closedAt: closeOdds?.closedAt || closeOdds?.takenAt

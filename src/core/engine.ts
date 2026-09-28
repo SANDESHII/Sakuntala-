@@ -120,8 +120,8 @@ function calculateModelMetrics(
   return {
     lambdaHome,
     muAway,
-    probOver15: DixonColes.calculateOverUnder(scoreMatrix, 1.5),
-    probUnder35: 1 - DixonColes.calculateOverUnder(scoreMatrix, 3.5)
+    probOver25: DixonColes.calculateOverUnder(scoreMatrix, 2.5),
+    probUnder25: 1 - DixonColes.calculateOverUnder(scoreMatrix, 2.5)
   };
 }
 
@@ -154,8 +154,8 @@ export async function runPrediction(
   
   let lambdaHome: number;
   let muAway: number;
-  let probOver15: number;
-  let probUnder35: number;
+  let probOver25: number;
+  let probUnder25: number;
   let finalRho = -0.13;
   let scoreMatrix: number[][];
   let modelSource: 'MLE_FITTED' | 'HEURISTIC_FALLBACK';
@@ -176,8 +176,11 @@ export async function runPrediction(
     modelSource = 'HEURISTIC_FALLBACK';
   }
 
-  probOver15 = DixonColes.calculateOverUnder(scoreMatrix, 1.5);
-  probUnder35 = 1 - DixonColes.calculateOverUnder(scoreMatrix, 3.5);
+  probOver25 = DixonColes.calculateOverUnder(scoreMatrix, 2.5);
+  probUnder25 = 1 - DixonColes.calculateOverUnder(scoreMatrix, 2.5);
+
+  // Monte Carlo Simulation for Uncertainty Propagation
+  const mcResults = DixonColes.runMonteCarlo(lambdaHome, muAway, finalRho, 10000, 0.12);
 
   // Goal Distribution Calculation
   const distribution: { goals: string; probability: number }[] = [
@@ -202,18 +205,18 @@ export async function runPrediction(
   distribution.forEach(d => d.probability = Math.round(d.probability * 100));
 
   // Market odds resolution
-  let marketOddsOver15 = 1.05 / probOver15; 
-  let marketOddsUnder35 = 1.05 / probUnder35; 
-  let over15Real = false;
-  let under35Real = false;
+  let marketOddsOver25 = 1.05 / probOver25; 
+  let marketOddsUnder25 = 1.05 / probUnder25; 
+  let over25Real = false;
+  let under25Real = false;
   let matchOdds: any = null;
 
-  over15Real = !!historicalOddsOverride?.over15;
-  under35Real = !!historicalOddsOverride?.under35;
+  over25Real = !!historicalOddsOverride?.over25;
+  under25Real = !!historicalOddsOverride?.under25;
 
   if (historicalOddsOverride) {
-    marketOddsOver15 = historicalOddsOverride.over15 || marketOddsOver15;
-    marketOddsUnder35 = historicalOddsOverride.under35 || marketOddsUnder35;
+    marketOddsOver25 = historicalOddsOverride.over25 || marketOddsOver25;
+    marketOddsUnder25 = historicalOddsOverride.under25 || marketOddsUnder25;
   } else {
     matchOdds = liveOdds.find((o: any) => {
       try {
@@ -229,16 +232,16 @@ export async function runPrediction(
       matchOdds.bookmakers.forEach((bm: any) => {
         const market = bm.markets.find((m: any) => m.key === 'totals');
         if (market) {
-          const o15 = market.outcomes.find((o: any) => o.name === 'Over' && o.point === 1.5);
-          const u35 = market.outcomes.find((o: any) => o.name === 'Under' && o.point === 3.5);
+          const o25 = market.outcomes.find((o: any) => o.name === 'Over' && o.point === 2.5);
+          const u25 = market.outcomes.find((o: any) => o.name === 'Under' && o.point === 2.5);
           
-          if (o15 && (!over15Real || o15.price > marketOddsOver15)) {
-            marketOddsOver15 = o15.price;
-            over15Real = true;
+          if (o25 && (!over25Real || o25.price > marketOddsOver25)) {
+            marketOddsOver25 = o25.price;
+            over25Real = true;
           }
-          if (u35 && (!under35Real || u35.price > marketOddsUnder35)) {
-            marketOddsUnder35 = u35.price;
-            under35Real = true;
+          if (u25 && (!under25Real || u25.price > marketOddsUnder25)) {
+            marketOddsUnder25 = u25.price;
+            under25Real = true;
           }
         }
       });
@@ -246,11 +249,10 @@ export async function runPrediction(
   }
 
   // Market edge computed against raw bookmaker price (bestPrice). 
-  // Note: statistically, edge against noVigPrice is more robust for fair-value analysis.
-  const over15Edge = probOver15 - (1 / marketOddsOver15);
-  const under35Edge = probUnder35 - (1 / marketOddsUnder35);
+  const over25Edge = probOver25 - (1 / marketOddsOver25);
+  const under25Edge = probUnder25 - (1 / marketOddsUnder25);
 
-  // Calibration Logic: Tighten thresholds if historical CLV is weak for the given edge segment
+  // Calibration Logic
   const getThreshold = (edgeVal: number) => {
     const baseThreshold = MODEL_CONFIG.EDGE_THRESHOLD;
     if (!calibrationContext) return baseThreshold;
@@ -258,46 +260,45 @@ export async function runPrediction(
     const absEdge = Math.abs(edgeVal * 100);
     const segment = calibrationContext.find(s => absEdge >= s.min && absEdge < s.max);
     
-    // If segment has negative CLV, add a safety margin to the threshold
     if (segment && segment.avgClv < 0) {
-        return baseThreshold + 0.01; // Require 1% more edge
+        return baseThreshold + 0.01;
     }
     return baseThreshold;
   };
 
-  const currentOverThreshold = getThreshold(over15Edge);
-  const currentUnderThreshold = getThreshold(under35Edge);
+  const currentOverThreshold = getThreshold(over25Edge);
+  const currentUnderThreshold = getThreshold(under25Edge);
 
   // Result arbitration
-  let predictionType: 'OVER_15' | 'UNDER_35' | 'NO_BET' = 'NO_BET';
-  let probability = probOver15 > probUnder35 ? Math.round(probOver15 * 100) : Math.round(probUnder35 * 100);
+  let predictionType: 'OVER_25' | 'UNDER_25' | 'NO_BET' = 'NO_BET';
+  let probability = probOver25 > probUnder25 ? Math.round(probOver25 * 100) : Math.round(probUnder25 * 100);
   let edge = 0;
-  let marketOdds = probOver15 > probUnder35 ? marketOddsOver15 : marketOddsUnder35;
+  let marketOdds = probOver25 > probUnder25 ? marketOddsOver25 : marketOddsUnder25;
 
   if (!isLowConfidence) {
-    if (over15Edge > under35Edge && over15Edge > currentOverThreshold) {
-      predictionType = 'OVER_15';
-      probability = Math.round(probOver15 * 100);
-      edge = Math.round(over15Edge * 1000) / 10;
-      marketOdds = marketOddsOver15;
-    } else if (under35Edge > currentUnderThreshold) {
-      predictionType = 'UNDER_35';
-      probability = Math.round(probUnder35 * 100);
-      edge = Math.round(under35Edge * 1000) / 10;
-      marketOdds = marketOddsUnder35;
+    if (over25Edge > under25Edge && over25Edge > currentOverThreshold) {
+      predictionType = 'OVER_25';
+      probability = Math.round(probOver25 * 100);
+      edge = Math.round(over25Edge * 1000) / 10;
+      marketOdds = marketOddsOver25;
+    } else if (under25Edge > currentUnderThreshold) {
+      predictionType = 'UNDER_25';
+      probability = Math.round(probUnder25 * 100);
+      edge = Math.round(under25Edge * 1000) / 10;
+      marketOdds = marketOddsUnder25;
     }
   }
 
   // Final metadata resolution
-  const chosenMarketReal = predictionType === 'OVER_15' ? over15Real
-    : predictionType === 'UNDER_35' ? under35Real : false;
+  const chosenMarketReal = predictionType === 'OVER_25' ? over25Real
+    : predictionType === 'UNDER_25' ? under25Real : false;
   
   if (!chosenMarketReal) edge = 0;
 
-  const predictionLabel = predictionType === 'NO_BET' ? 'NO EDGE DETECTED' : predictionType === 'OVER_15' ? 'OVER 1.5 GOALS' : 'UNDER 3.5 GOALS';
+  const predictionLabel = predictionType === 'NO_BET' ? 'NO EDGE DETECTED' : predictionType === 'OVER_25' ? 'OVER 2.5 GOALS' : 'UNDER 2.5 GOALS';
   
   // Kelly precision
-  const p = predictionType === 'OVER_15' ? probOver15 : predictionType === 'UNDER_35' ? probUnder35 : probability / 100;
+  const p = predictionType === 'OVER_25' ? probOver25 : predictionType === 'UNDER_25' ? probUnder25 : probability / 100;
   const q = 1 - p;
   const b = marketOdds - 1;
   const kellyFraction = edge > 0 ? Math.min(0.05, ((p * b - q) / b) * MODEL_CONFIG.KELLY_FRACTION) * 100 : 0;
@@ -355,7 +356,7 @@ export async function runPrediction(
       homeTier: Math.round(homeRes.data.attackStrength * 5),
       awayTier: Math.round(awayRes.data.attackStrength * 5),
       date: new Date().toISOString().split('T')[0],
-      marketOdds: { pinnacleOver15: marketOddsOver15, pinnacleUnder35: marketOddsUnder35 },
+      marketOdds: { pinnacleOver25: marketOddsOver25, pinnacleUnder25: marketOddsUnder25 },
     },
     dataSource,
     modelSource,
@@ -363,12 +364,17 @@ export async function runPrediction(
     isCalibrated: !!calibrationContext,
     usedRealOdds: chosenMarketReal,
     goalDistribution: distribution,
+    monteCarlo: {
+      ...mcResults,
+      iterations: 10000,
+      uncertainty: 0.12
+    }
   };
 }
 
 function generateSummary(
   home: string, away: string,
-  type: 'OVER_15' | 'UNDER_35' | 'NO_BET',
+  type: 'OVER_25' | 'UNDER_25' | 'NO_BET',
   lambdaHome: number, muAway: number,
   edge: number,
   modelSource: 'MLE_FITTED' | 'HEURISTIC_FALLBACK',
@@ -378,10 +384,10 @@ function generateSummary(
   const modelTypeLabel = modelSource === 'MLE_FITTED' ? 'Fitted MLE Model' : 'Heuristic Fallback Model';
   const confidencePrefix = isLowConfidence ? '[Low Confidence] ' : (modelSource === 'HEURISTIC_FALLBACK' ? '[Heuristic] ' : '');
 
-  if (type === 'OVER_15') {
-    return `${confidencePrefix}Combined xG of ${totalXG} strongly supports Over 1.5 Goals market. ${home.toUpperCase()}'s offensive output (${lambdaHome.toFixed(2)} xG) combined with ${away.toUpperCase()}'s defensive vulnerability creates a high-probability scoring environment. Model edge of +${edge.toFixed(1)}% represents positive expected value via ${modelTypeLabel}.`;
-  } else if (type === 'UNDER_35') {
-    return `${confidencePrefix}Defensive stability metrics indicate a controlled match environment. Combined xG of ${totalXG} suggests tactical discipline from both sides. ${home.toUpperCase()}'s defensive structure and ${away.toUpperCase()}'s conservative approach support the Under 3.5 market with +${edge.toFixed(1)}% edge using ${modelTypeLabel}.`;
+  if (type === 'OVER_25') {
+    return `${confidencePrefix}Combined xG of ${totalXG} strongly supports Over 2.5 Goals market. ${home.toUpperCase()}'s offensive output (${lambdaHome.toFixed(2)} xG) combined with ${away.toUpperCase()}'s defensive vulnerability creates a high-probability scoring environment. Model edge of +${edge.toFixed(1)}% represents positive expected value via ${modelTypeLabel}.`;
+  } else if (type === 'UNDER_25') {
+    return `${confidencePrefix}Defensive stability metrics indicate a controlled match environment. Combined xG of ${totalXG} suggests tactical discipline from both sides. ${home.toUpperCase()}'s defensive structure and ${away.toUpperCase()}'s conservative approach support the Under 2.5 market with +${edge.toFixed(1)}% edge using ${modelTypeLabel}.`;
   } else {
     return `Market is pricing this fixture efficiently. Combined xG of ${totalXG} does not present a measurable edge. Analysis performed via ${modelTypeLabel}.`;
   }
@@ -412,10 +418,10 @@ export async function runBacktest() {
 
   const leagues = ['EPL', 'LA_LIGA', 'BUNDESLIGA', 'SERIE_A', 'LIGUE_1'];
   const matches: any[] = [];
-  let totalOver15Correct = 0;
-  let totalUnder35Correct = 0;
-  let over15Predictions = 0;
-  let under35Predictions = 0;
+  let totalOver25Correct = 0;
+  let totalUnder25Correct = 0;
+  let over25Predictions = 0;
+  let under25Predictions = 0;
   let totalMatches = 0;
 
   const edgeSegments = [
@@ -481,19 +487,19 @@ export async function runBacktest() {
     const aGoals = match.awayGoals;
     
     const totalGoals = hGoals + aGoals;
-    const isOver15Correct = totalGoals >= 2;
-    const isUnder35Correct = totalGoals <= 3;
+    const isOver25Correct = totalGoals > 2.5;
+    const isUnder25Correct = totalGoals < 2.5;
 
     if (prediction.predictionType === 'NO_BET') continue;
 
     // PnL & CLV Calculation
     const stake = prediction.recommendedStake;
     const takenOdds = prediction.marketOdds;
-    const closingOdds = prediction.predictionType === 'OVER_15' 
-      ? match.closingPrices?.over15 
-      : match.closingPrices?.under35;
+    const closingOdds = prediction.predictionType === 'OVER_25' 
+      ? match.closingPrices?.over25 
+      : match.closingPrices?.under25;
 
-    const isHit = prediction.predictionType === 'OVER_15' ? isOver15Correct : isUnder35Correct;
+    const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
     const pnl = isHit ? (stake * takenOdds - stake) : -stake;
     
     totalPnl += pnl;
@@ -506,12 +512,12 @@ export async function runBacktest() {
       clvCount++;
     }
 
-    if (prediction.predictionType === 'OVER_15') {
-      over15Predictions++;
-      if (isOver15Correct) totalOver15Correct++;
-    } else if (prediction.predictionType === 'UNDER_35') {
-      under35Predictions++;
-      if (isUnder35Correct) totalUnder35Correct++;
+    if (prediction.predictionType === 'OVER_25') {
+      over25Predictions++;
+      if (isOver25Correct) totalOver25Correct++;
+    } else if (prediction.predictionType === 'UNDER_25') {
+      under25Predictions++;
+      if (isUnder25Correct) totalUnder25Correct++;
     }
     
     totalMatches++;
@@ -542,8 +548,8 @@ export async function runBacktest() {
         probability: prediction.probability 
       },
       marketEdge: prediction.edge / 100,
-      isOver15Correct,
-      isUnder35Correct,
+      isOver25Correct,
+      isUnder25Correct,
       pnl,
       clv,
       stake,
@@ -563,12 +569,12 @@ export async function runBacktest() {
     brierScore: matches.length > 0
       ? matches.reduce((sum, m) => {
           const predicted = m.prediction.probability / 100;
-          const actual = m.prediction.predictionType === 'UNDER_35' ? (m.isUnder35Correct ? 1 : 0) : (m.isOver15Correct ? 1 : 0);
+          const actual = m.prediction.predictionType === 'UNDER_25' ? (m.isUnder25Correct ? 1 : 0) : (m.isOver25Correct ? 1 : 0);
           return sum + Math.pow(predicted - actual, 2);
         }, 0) / matches.length
       : -1,
-    over15Accuracy: over15Predictions > 0 ? (totalOver15Correct / over15Predictions) * 100 : 0,
-    under35Accuracy: under35Predictions > 0 ? (totalUnder35Correct / under35Predictions) * 100 : 0,
+    over25Accuracy: over25Predictions > 0 ? (totalOver25Correct / over25Predictions) * 100 : 0,
+    under25Accuracy: under25Predictions > 0 ? (totalUnder25Correct / under25Predictions) * 100 : 0,
     totalPnl: Math.round(totalPnl * 100) / 100,
     totalYield: totalStake > 0 ? (totalPnl / totalStake) * 100 : 0,
     avgClv: clvCount > 0 ? totalClvSum / clvCount : 0,

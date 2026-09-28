@@ -169,6 +169,76 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                         </div>
                     )}
 
+                    {/* Score Probability Matrix Heatmap */}
+                    {analysis.scoreMatrix && (
+                        <div className="bg-neutral-900/30 border border-neutral-800 rounded-[48px] p-12 lg:p-16 space-y-12">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <Binary className="w-5 h-5 text-emerald-500" />
+                                    <h3 className="text-[11px] font-black text-neutral-400 uppercase tracking-[0.3em]">Score Probability Matrix</h3>
+                                </div>
+                                <span className="text-[10px] font-bold text-neutral-700 uppercase tracking-widest">Dixon-Coles Heatmap</span>
+                            </div>
+
+                            <div className="overflow-x-auto pb-4">
+                                <div className="min-w-[600px]">
+                                    <div className="grid grid-cols-7 gap-2">
+                                        <div className="flex flex-col items-center justify-center">
+                                            <span className="text-[8px] font-black text-neutral-700 uppercase tracking-tighter">H \ A</span>
+                                        </div>
+                                        {[0, 1, 2, 3, 4, '5+'].map((goals, i) => (
+                                            <div key={i} className="flex flex-col items-center justify-center py-2 bg-neutral-950/50 rounded-xl border border-neutral-900">
+                                                <span className="text-[10px] font-black text-neutral-500">{goals}</span>
+                                            </div>
+                                        ))}
+                                        {analysis.scoreMatrix.map((row, h) => (
+                                            <div key={h} className="contents">
+                                                <div className="flex items-center justify-center bg-neutral-950/50 rounded-xl border border-neutral-900">
+                                                    <span className="text-[10px] font-black text-neutral-500">{h === 5 ? '5+' : h}</span>
+                                                </div>
+                                                {row.map((prob, a) => {
+                                                    const isOver25 = (h + a) > 2.5;
+                                                    const isMatch = (analysis.predictionType === 'OVER_25' && isOver25) || (analysis.predictionType === 'UNDER_25' && !isOver25);
+                                                    return (
+                                                        <div 
+                                                            key={`${h}-${a}`}
+                                                            className={`relative aspect-square rounded-xl border flex flex-col items-center justify-center group transition-all ${
+                                                                isMatch ? 'border-emerald-500/10' : 'border-neutral-900'
+                                                            }`}
+                                                            style={{ 
+                                                                backgroundColor: `rgba(16, 185, 129, ${prob * 4})`,
+                                                            }}
+                                                        >
+                                                            <span className={`text-[10px] font-black tabular-nums transition-colors ${
+                                                                prob > 0.08 ? 'text-white' : 'text-neutral-500 group-hover:text-neutral-300'
+                                                            }`}>
+                                                                {(prob * 100).toFixed(1)}%
+                                                            </span>
+                                                            {prob > 0.05 && (
+                                                                <div className="absolute inset-0 rounded-xl ring-1 ring-inset ring-white/5 pointer-events-none" />
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-8 items-center pt-8 border-t border-neutral-800/50">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-16 h-2 rounded-full bg-gradient-to-r from-neutral-900 to-emerald-500" />
+                                    <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">Density Map</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-sm border border-emerald-500/20" />
+                                    <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">Target Zone Bound</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Monte Carlo Uncertainty Analysis */}
                     {analysis.monteCarlo && (
                         <div className="bg-neutral-900/30 border border-neutral-800 rounded-[48px] p-12 lg:p-16 space-y-12">

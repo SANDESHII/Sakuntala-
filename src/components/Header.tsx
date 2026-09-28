@@ -1,5 +1,4 @@
 import { FC } from 'react';
-import { motion } from 'motion/react';
 import { Zap, ShieldCheck } from 'lucide-react';
 
 export const Header: FC = () => {
@@ -11,7 +10,7 @@ export const Header: FC = () => {
                         <Zap className="w-5 h-5 text-emerald-500" />
                     </div>
                     <div>
-                        <h1 className="text-sm font-black text-white uppercase tracking-[0.15em]">Alpha</h1>
+                        <h1 className="text-sm font-black text-white uppercase tracking-[0.15em]">Goal</h1>
                         <p className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest">Terminal</p>
                     </div>
                 </div>

@@ -364,6 +364,7 @@ export async function runPrediction(
     isCalibrated: !!calibrationContext,
     usedRealOdds: chosenMarketReal,
     goalDistribution: distribution,
+    scoreMatrix: scoreMatrix.slice(0, 6).map(row => row.slice(0, 6)),
     monteCarlo: {
       ...mcResults,
       iterations: 10000,
@@ -401,8 +402,8 @@ export async function runBacktest() {
     return {
       totalMatches: 0,
       brierScore: -1,
-      over15Accuracy: 0,
-      under35Accuracy: 0,
+      over25Accuracy: 0,
+      under25Accuracy: 0,
       totalPnl: 0,
       totalYield: 0,
       avgClv: 0,

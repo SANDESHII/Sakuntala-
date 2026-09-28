@@ -5,6 +5,20 @@ export interface Provenance {
   quality: 'high' | 'medium' | 'low';
   timestamp: string;
   season?: string | number;
+  sourceSeason?: string | number;
+}
+
+export interface OddsLeg {
+  name: string;
+  price: number;
+  point?: number;
+}
+
+export interface HistoricalPrices {
+  over25: { bestPrice: number; noVigPrice: number };
+  under25: { bestPrice: number; noVigPrice: number };
+  takenAt: string;
+  closedAt?: string;
 }
 
 export interface TeamStats {
@@ -24,6 +38,7 @@ export interface TeamIdentity {
   name: string;
   league: string;
   country: string;
+  aliases?: string[];
   externalIds: {
     apiFootball?: number;
     theOddsApi?: string;
@@ -37,7 +52,7 @@ export interface HistoricalMatch {
   awayGoals: number;
   date: string;
   league: string;
-  daysAgo: number;
+  daysAgo?: number;
   homeId?: number;
   awayId?: number;
   takenPrices?: {
@@ -48,6 +63,16 @@ export interface HistoricalMatch {
     over25?: number;
     under25?: number;
   };
+}
+
+export interface FixtureMatch {
+  homeTeam: string;
+  awayTeam: string;
+  homeLogo: string;
+  awayLogo: string;
+  kickoff: string;
+  league: string;
+  fixtureId: number;
 }
 
 export interface MarketOdds {
@@ -74,7 +99,7 @@ export interface InternalTeamData {
   form: number[];
   cleanSheetRate: number;
   matchCount?: number;
-  quality?: 'high' | 'low';
+  quality?: 'high' | 'medium' | 'low' | 'goals-proxy';
 }
 
 export interface MatchContext {
@@ -140,6 +165,7 @@ export interface AnalysisResult {
   isCalibrated?: boolean;
   usedRealOdds?: boolean;
   goalDistribution?: GoalDistribution[];
+  scoreMatrix?: number[][];
   monteCarlo?: {
     probOver25: number;
     probUnder25: number;
@@ -201,8 +227,8 @@ export class QuotaExceededError extends Error {
 }
 
 export class DataGapError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(public field: string, public context?: string) {
+    super(`Missing ${field}${context ? ` for ${context}` : ''}`);
     this.name = 'DataGapError';
   }
 }

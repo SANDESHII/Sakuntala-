@@ -3,7 +3,7 @@ import { HistoricalPrices, DataGapError, DataSource } from '../../types';
 
 function getApiKey() {
   const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env || {};
-  const rawKey = env.VITE_ODDS_API_KEY || env.API_ODDS_KEY || env.ODDS_API_KEY || '';
+  const rawKey = env.API_ODDS_KEY || env.ODDS_API_KEY || env.VITE_ODDS_API_KEY || '';
   let key = rawKey.trim();
   
   // Strip surrounding quotes
@@ -20,7 +20,7 @@ export class OddsProvider {
 
   async fetchLiveOdds(_league: string, sport: string = 'soccer_epl') {
     const key = getApiKey();
-    if (!key) throw new Error('The Odds API Key (VITE_ODDS_API_KEY) is missing or empty.');
+    if (!key) throw new Error('The Odds API Key (ODDS_API_KEY or VITE_ODDS_API_KEY) is missing or empty.');
 
     const data = await fetchWithRetry<any[]>(
       this.source,

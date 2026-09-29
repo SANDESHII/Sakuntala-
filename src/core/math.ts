@@ -4,6 +4,8 @@ for (let i = 1; i <= 40; i++) {
   LOG_FACTORIAL[i] = LOG_FACTORIAL[i - 1] + Math.log(i);
 }
 
+import { DEFAULT_RHO } from './constants';
+
 /**
  * Dixon-Coles statistical model for football score prediction
  * Reference: Dixon, M. J., & Coles, S. G. (1997). "Modelling Association Football Scores and Inefficiencies in the Football Betting Market"
@@ -15,7 +17,7 @@ export class DixonColes {
    */
   static poisson(k: number, lambda: number): number {
     if (lambda <= 0) return k === 0 ? 1 : 0;
-    if (k < 0 || k >= LOG_FACTORIAL.length) return 0;
+    if (k < 0 || k >= 41) return 0; // matching precomputed log factorial length
     return Math.exp(k * Math.log(lambda) - lambda - LOG_FACTORIAL[k]);
   }
 
@@ -63,7 +65,7 @@ export class DixonColes {
   static calculateScoreMatrix(
     lambdaHome: number,
     muAway: number,
-    rho: number = -0.13,
+    rho: number = DEFAULT_RHO,
     epsilon: number = 1e-8
   ): number[][] {
     // Dynamically calculate required goal limit to satisfy epsilon threshold
@@ -119,7 +121,7 @@ export class DixonColes {
   static runMonteCarlo(
     lambdaHome: number,
     muAway: number,
-    rho: number = -0.13,
+    rho: number = DEFAULT_RHO,
     iterations: number = 5000,
     uncertainty: number = 0.15
   ): { probOver25: number; probUnder25: number; stdDev: number } {

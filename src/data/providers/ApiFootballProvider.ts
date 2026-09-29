@@ -5,7 +5,7 @@ import { DataSource, Provenance } from '../../types';
 
 function getApiKey() {
   const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env || {};
-  const rawKey = env.VITE_API_FOOTBALL_KEY || env.API_FOOTBALL_KEY || '';
+  const rawKey = env.API_FOOTBALL_KEY || env.VITE_API_FOOTBALL_KEY || '';
   let key = rawKey.trim();
   
   // Strip surrounding quotes
@@ -23,7 +23,7 @@ export class ApiFootballProvider {
   private getRequestConfig() {
     const key = getApiKey();
     if (!key) {
-      throw new Error('API-Football Key (VITE_API_FOOTBALL_KEY) is missing or empty.');
+      throw new Error('API-Football Key (API_FOOTBALL_KEY or VITE_API_FOOTBALL_KEY) is missing or empty.');
     }
 
     const isHex32 = /^[a-f0-9]{32}$/i.test(key);

@@ -64,7 +64,7 @@ export const App: FC = () => {
                 }));
             }
         } catch (err) {
-            console.error('Backtest error:', err);
+            console.warn('Backtest initialization skipped:', err);
         }
     };
 

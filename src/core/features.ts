@@ -1,6 +1,6 @@
 import { InternalTeamData, HistoricalMatch } from '../types';
 import * as FreeDataService from '../services/freeDataService';
-import { LEAGUE_CONFIGS } from './constants';
+import { LEAGUE_CONFIGS, TIME_DECAY_PHI as PHI, BASE_GOALS } from './constants';
 
 /**
  * FeatureEngine handles point-in-time statistical computation
@@ -30,8 +30,8 @@ export const FeatureEngine = {
       return {
         attackStrength: 1.0,
         defenseStrength: 1.0,
-        avgGoalsScored: 1.35,
-        avgGoalsConceded: 1.35,
+        avgGoalsScored: BASE_GOALS,
+        avgGoalsConceded: BASE_GOALS,
         homeAdvantageHeuristic: baseHomeAdv,
         form: [1, 1, 1, 1, 1],
         cleanSheetRate: 0.25,
@@ -69,7 +69,6 @@ export const FeatureEngine = {
     let weightedScoredSum = 0;
     let weightedConcededSum = 0;
     let weightSum = 0;
-    const PHI = 0.0065;
 
     teamMatches.forEach((m: HistoricalMatch) => {
       const matchTs = new Date(m.date).getTime();
@@ -82,8 +81,8 @@ export const FeatureEngine = {
       weightSum += weight;
     });
 
-    const avgScored = weightSum > 0 ? weightedScoredSum / weightSum : 1.35;
-    const avgConceded = weightSum > 0 ? weightedConcededSum / weightSum : 1.35;
+    const avgScored = weightSum > 0 ? weightedScoredSum / weightSum : BASE_GOALS;
+    const avgConceded = weightSum > 0 ? weightedConcededSum / weightSum : BASE_GOALS;
     
     // Calculate team-specific home bias if enough data, otherwise use league base
     let homeAdvantageHeuristic = baseHomeAdv;
@@ -108,8 +107,8 @@ export const FeatureEngine = {
     while (form.length < 5) form.unshift(1.0);
     
     return {
-      attackStrength: avgScored / 1.35,
-      defenseStrength: avgConceded / 1.35,
+      attackStrength: avgScored / BASE_GOALS,
+      defenseStrength: avgConceded / BASE_GOALS,
       avgGoalsScored: avgScored,
       avgGoalsConceded: avgConceded,
       homeAdvantageHeuristic,

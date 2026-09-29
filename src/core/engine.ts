@@ -1,5 +1,5 @@
 import { AnalysisResult, InternalTeamData, HistoricalMatch } from '../types';
-import { TEAM_STATS, LEAGUE_CONFIGS } from './constants';
+import { TEAM_STATS, LEAGUE_CONFIGS, BASE_GOALS, DEFAULT_RHO } from './constants';
 import { DixonColes } from './math';
 import * as FreeDataService from '../services/freeDataService';
 import * as Calibration from './calibration';
@@ -10,7 +10,7 @@ import { TeamRegistry } from '../data/identity/registry';
  * Prediction Pipeline Configuration
  */
 const MODEL_CONFIG = {
-  LEAGUE_AVG_GOALS: Calibration.BASE_GOALS,
+  LEAGUE_AVG_GOALS: BASE_GOALS,
   HOME_ADVANTAGE_WEIGHT: 0.5,
   AWAY_DEFENSE_WEIGHT: 0.3,
   EDGE_THRESHOLD: 0.03,
@@ -161,7 +161,7 @@ export async function runPrediction(
   let muAway: number;
   let probOver25: number;
   let probUnder25: number;
-  let finalRho = -0.13;
+  let finalRho = DEFAULT_RHO;
   let scoreMatrix: number[][];
   let modelSource: 'MLE_FITTED' | 'HEURISTIC_FALLBACK';
   let modelSpecification = '';
@@ -179,7 +179,7 @@ export async function runPrediction(
     const metrics = runHeuristicModel(homeRes.data, awayRes.data, leagueConfig);
     lambdaHome = metrics.lambdaHome;
     muAway = metrics.muAway;
-    scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, -0.13);
+    scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, DEFAULT_RHO);
     modelSource = 'HEURISTIC_FALLBACK';
     modelSpecification = 'Heuristic Blended (Hand-tuned Weights & Biases)';
   }
@@ -418,9 +418,10 @@ export async function runBacktest() {
       totalYield: 0,
       avgClv: 0,
       edgeSegments: [
-        { segment: 'Low Edge (0-3%)', min: 0, max: 3, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
-        { segment: 'Mid Edge (3-7%)', min: 3, max: 7, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
-        { segment: 'High Edge (7%+)', min: 7, max: 100, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
+        { segment: 'Low Edge (0-2%)', min: 0, max: 2, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
+        { segment: 'Mid Edge (2-5%)', min: 2, max: 5, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
+        { segment: 'High Edge (5-8%)', min: 5, max: 8, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
+        { segment: 'Elite Edge (8%+)', min: 8, max: 100, count: 0, hits: 0, hitRate: 0, avgEdge: 0, avgClv: 0 },
       ],
       matches: [],
       error: 'API key required. Set VITE_API_FOOTBALL_KEY in .env to enable historical backtesting.',

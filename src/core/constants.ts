@@ -48,3 +48,11 @@ export const LEAGUE_CONFIGS: Record<string, any> = {
 };
 
 export const ELITE_LEAGUES = ['EPL', 'LA_LIGA', 'BUNDESLIGA', 'SERIE_A', 'LIGUE_1'];
+
+/**
+ * Model Math Constants
+ */
+export const TIME_DECAY_PHI = 0.0065; 
+export const BASE_GOALS = 1.35;
+export const DEFAULT_RHO = -0.13;
+export const HOME_ADVANTAGE_GAMMA = 1.25;

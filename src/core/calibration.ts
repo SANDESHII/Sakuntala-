@@ -12,8 +12,7 @@
 
 import * as FreeDataService from '../services/freeDataService';
 import { HistoricalMatch } from '../types';
-
-// ── Types ──────────────────────────────────────────────────────
+import { TIME_DECAY_PHI, DEFAULT_RHO, HOME_ADVANTAGE_GAMMA } from './constants';
 
 export interface FittedTeamParams {
   attack: number;   // α — attacking strength (1.0 = league average)
@@ -36,8 +35,6 @@ interface MatchData {
   daysAgo: number; // For temporal weighting
 }
 
-const TIME_DECAY_PHI = 0.0065; // Standard Dixon-Coles decay parameter
-
 /**
  * Fit attack/defense parameters via gradient ascent on
  * the Dixon-Coles log-likelihood with temporal weighting.
@@ -47,7 +44,7 @@ export function fitDixonColes(
   iterations = 500,
   lr = 0.01
 ): FittedLeagueParams {
-  if (matches.length === 0) return { homeAdvantage: 1.25, rho: -0.13, teams: {} };
+  if (matches.length === 0) return { homeAdvantage: HOME_ADVANTAGE_GAMMA, rho: DEFAULT_RHO, teams: {} };
 
   const teamSet = new Set<string>();
   const matchCounts: Record<string, number> = {};
@@ -63,8 +60,8 @@ export function fitDixonColes(
   const atk: Record<string, number> = {};
   const def: Record<string, number> = {};
   for (const t of teams) { atk[t] = 1.0; def[t] = 1.0; }
-  let gamma = 1.25;  // home advantage
-  let rho = -0.13;
+  let gamma = HOME_ADVANTAGE_GAMMA;  // home advantage
+  let rho = DEFAULT_RHO;
 
   for (let iter = 0; iter < iterations; iter++) {
     const gA: Record<string, number> = {};
@@ -175,15 +172,13 @@ export async function fitFromAPI(
   if (c && Date.now() - c.ts < TTL) return c.params;
 
   const raw = historicalMatches || await FreeDataService.getHistoricalFixtures(league, 150);
-  if (raw.length < 20) return { homeAdvantage: 1.25, rho: -0.13, teams: {} };
+  if (raw.length < 20) return { homeAdvantage: HOME_ADVANTAGE_GAMMA, rho: DEFAULT_RHO, teams: {} };
 
   const cutoff = asOfDate ? new Date(asOfDate).getTime() : Date.now();
   const filtered = raw.filter(m => new Date(m.date).getTime() < cutoff);
   
   if (filtered.length < 20) {
-     // CRITICAL: Never fall back to current data if historical data is requested.
-     // This prevents future information leakage in backtesting.
-     return { homeAdvantage: 1.25, rho: -0.13, teams: {} };
+     return { homeAdvantage: HOME_ADVANTAGE_GAMMA, rho: DEFAULT_RHO, teams: {} };
   }
 
   const matches: MatchData[] = filtered.map(m => {
@@ -204,8 +199,6 @@ export async function fitFromAPI(
 }
 
 // ── Prediction ─────────────────────────────────────────────────
-
-export const BASE_GOALS = 1.35; // league-average goals per game
 
 /**
  * Compute expected goals (λ, μ) using fitted MLE parameters.

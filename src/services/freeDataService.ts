@@ -146,6 +146,7 @@ export async function getUpcomingFixtures(league: string, limit: number = 10): P
     }
 }
 
+
 export async function getHistoricalFixtures(league: string, limit: number = 50, fetchOdds: boolean = true): Promise<HistoricalMatch[]> {
     if (!isLiveCapable()) return [];
 

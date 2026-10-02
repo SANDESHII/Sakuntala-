@@ -1,7 +1,7 @@
 import { ApiFootballProvider } from '../data/providers/ApiFootballProvider';
 import { OddsProvider } from '../data/providers/OddsProvider';
 import { TeamRegistry } from '../data/identity/registry';
-import { DataGapError, FixtureMatch, HistoricalMatch } from '../types';
+import { FixtureMatch, HistoricalMatch } from '../types';
 import { inferSeason, normalizeLeagueToId as getLeagueId, getOddsSportKey } from '../data/utils';
 import { LEAGUE_CONFIGS } from '../core/constants';
 import { MOCK_FIXTURES } from '../data/mocks';
@@ -13,6 +13,16 @@ const oddsApi = new OddsProvider();
 const cache = new Map<string, { data: any, timestamp: number }>();
 const CACHE_TTL = 3600 * 1000; // 1 hour
 
+// Subscription blacklist to avoid repetitive 403s
+const subscriptionBlacklist = new Set<string>();
+
+// Request throttling helper
+async function throttle() {
+    // 600ms base + random jitter to avoid synchronized bursts
+    const ms = 600 + Math.random() * 400;
+    await new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function getCached<T>(key: string): T | null {
     const entry = cache.get(key);
     if (entry && Date.now() - entry.timestamp < CACHE_TTL) {
@@ -23,11 +33,6 @@ function getCached<T>(key: string): T | null {
 
 function setCache(key: string, data: any) {
     cache.set(key, { data, timestamp: Date.now() });
-}
-
-// Request throttling helper
-async function throttle() {
-    await new Promise(resolve => setTimeout(resolve, 250)); // 250ms gap
 }
 
 export function isLiveCapable() {
@@ -46,6 +51,10 @@ export function isLiveCapable() {
 
 export async function getTeamStats(teamName: string, league: string) {
     if (!isLiveCapable()) return null;
+    
+    const blacklistKey = `stats_${teamName}`;
+    if (subscriptionBlacklist.has(blacklistKey)) return null;
+
     const cacheKey = `stats_${teamName}_${league}`;
     const cached = getCached<any>(cacheKey);
     if (cached) return cached;
@@ -58,7 +67,9 @@ export async function getTeamStats(teamName: string, league: string) {
         const teamId = identity.externalIds.apiFootball;
         
         if (!teamId) {
-            throw new DataGapError('API-Football ID', teamName);
+            // Log as info, not warning, since it might be a synthetic team
+            console.info(`[FreeData] No live ID for ${teamName}, using fallback.`);
+            return null;
         }
 
         const stats = await apiFootball.fetchTeamStats(teamId, leagueId, season);
@@ -87,14 +98,22 @@ export async function getTeamStats(teamName: string, league: string) {
         };
         setCache(cacheKey, result);
         return result;
-    } catch (err) {
-        console.warn(`[FreeData] Failed to fetch stats for ${teamName}:`, err);
+    } catch (err: any) {
+        if (err.message?.includes('403') || err.message?.includes('subscription')) {
+            console.warn(`[FreeData] Subscription restriction for ${teamName}. Disabling live stats for this team.`);
+            subscriptionBlacklist.add(blacklistKey);
+        } else {
+            console.warn(`[FreeData] Failed to fetch stats for ${teamName}:`, err.message);
+        }
         return null;
     }
 }
 
 export async function getLiveOdds(league: string) {
     if (!isLiveCapable()) return [];
+    
+    if (subscriptionBlacklist.has('live_odds')) return [];
+
     const cacheKey = `live_odds_${league}`;
     const cached = getCached<any[]>(cacheKey);
     if (cached) return cached;
@@ -104,16 +123,23 @@ export async function getLiveOdds(league: string) {
         const result = await oddsApi.fetchLiveOdds(league, sportKey);
         setCache(cacheKey, result);
         return result;
-    } catch (err) {
-        console.warn(`[FreeData] Failed to fetch live odds for ${league}:`, err);
+    } catch (err: any) {
+        if (err.message?.includes('401') || err.message?.includes('Invalid API Key')) {
+            console.error('[FreeData] The Odds API key is invalid. Disabling odds for this session.');
+            subscriptionBlacklist.add('live_odds');
+        } else {
+            console.warn(`[FreeData] Failed to fetch live odds for ${league}:`, err.message);
+        }
         return [];
     }
 }
 
-
 export async function getUpcomingFixtures(league: string, limit: number = 10): Promise<FixtureMatch[]> {
     if (!isLiveCapable()) return [];
     
+    const blacklistKey = `fixtures_${league}`;
+    if (subscriptionBlacklist.has(blacklistKey)) return [];
+
     const cacheKey = `fixtures_${league}_${limit}`;
     const cached = getCached<FixtureMatch[]>(cacheKey);
     if (cached) return cached;
@@ -131,8 +157,14 @@ export async function getUpcomingFixtures(league: string, limit: number = 10): P
         }));
         setCache(cacheKey, result);
         return result;
-    } catch (err) {
-        console.warn(`[FreeData] API Unavailable for ${league}, using mock fixtures:`, (err as Error).message);
+    } catch (err: any) {
+        if (err.message?.includes('403') || err.message?.includes('subscription')) {
+            console.warn(`[FreeData] Subscription restriction for fixtures in ${league}.`);
+            subscriptionBlacklist.add(blacklistKey);
+        } else {
+            console.warn(`[FreeData] API Unavailable for ${league}, using mock fixtures:`, err.message);
+        }
+        
         const mocks = (MOCK_FIXTURES as any)[league] || [];
         return mocks.map((f: any) => ({
             homeTeam: f.home,
@@ -145,7 +177,6 @@ export async function getUpcomingFixtures(league: string, limit: number = 10): P
         }));
     }
 }
-
 
 export async function getHistoricalFixtures(league: string, limit: number = 50, fetchOdds: boolean = true): Promise<HistoricalMatch[]> {
     if (!isLiveCapable()) return [];
@@ -269,24 +300,5 @@ export async function getHistoricalOddsForMatch(league: string, date: string, ho
     } catch (err) {
         console.warn(`[FreeData] Failed to fetch odds for ${homeName} vs ${awayName}:`, err);
         return null;
-    }
-}
-export async function getHistoricalFixturesLight(league: string, limit: number = 50): Promise<HistoricalMatch[]> {
-    if (!isLiveCapable()) return [];
-    try {
-        const fixtures = await apiFootball.fetchFixtures(league, limit, 'FT');
-        return fixtures.map((f: any) => ({
-            home: f.home,
-            away: f.away,
-            homeId: f.homeId,
-            awayId: f.awayId,
-            homeGoals: Number(f.homeGoals),
-            awayGoals: Number(f.awayGoals),
-            league: league.toUpperCase(),
-            date: f.date.split('T')[0]
-        }));
-    } catch (err) {
-        console.warn(`[FreeData] Failed to fetch historical fixtures (light) for ${league}:`, err);
-        return [];
     }
 }

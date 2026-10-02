@@ -19,16 +19,18 @@ export const App: FC = () => {
 
     const handleAnalyze = async () => {
         if (loadingAnalysis || !inputs.home || !inputs.away) return;
+        
         setError(null); 
         setLoadingAnalysis(true); 
         setAnalysis(null);
+
         try {
             const response = await fetch('/api/predict', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    homeTeam: inputs.home,
-                    awayTeam: inputs.away,
+                    homeTeam: inputs.home.toUpperCase().trim(),
+                    awayTeam: inputs.away.toUpperCase().trim(),
                     league: inputs.league,
                     adaptiveThresholdContext: backtestSummary?.edgeSegments
                 })
@@ -48,7 +50,9 @@ export const App: FC = () => {
         }
     };
 
-    const loadBacktest = async () => {
+    const loadBacktest = async (isManual = false) => {
+        if (!isManual && backtestSummary) return;
+        
         try {
             const response = await fetch('/api/backtest');
             if (!response.ok) throw new Error('BACKTEST FAILED');
@@ -64,7 +68,7 @@ export const App: FC = () => {
                 }));
             }
         } catch (err) {
-            console.warn('Backtest initialization skipped:', err);
+            console.warn('[AlphaTerminal] Backtest initialization skipped:', err);
         }
     };
 
@@ -74,18 +78,20 @@ export const App: FC = () => {
             const cached = sessionStorage.getItem(`alpha_terminal_backtest_${today}`);
             if (cached) {
                 const { summary, ts } = JSON.parse(cached);
-                if (Date.now() - ts < 6 * 60 * 60 * 1000) {
+                if (Date.now() - ts < 12 * 60 * 60 * 1000) {
                     setBacktestSummary(summary);
                     return;
                 }
             }
-            loadBacktest();
+            // Do NOT auto-load on mount if no cache. Let the user trigger it or wait for the tab.
         };
         initializeAdaptiveThresholding();
     }, []);
 
     useEffect(() => {
-        if (activeTab === 'backtest' && !backtestSummary) loadBacktest();
+        if (activeTab === 'backtest' && !backtestSummary) {
+            loadBacktest();
+        }
     }, [activeTab, backtestSummary]);
 
     return (

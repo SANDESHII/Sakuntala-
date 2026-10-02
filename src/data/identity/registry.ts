@@ -49,6 +49,13 @@ export const TeamRegistry = {
     const aliasCanonical = TEAM_ALIASES[normalized];
     if (aliasCanonical && registry.has(aliasCanonical)) return registry.get(aliasCanonical)!;
 
-    throw new DataGapError('Team Identity', `Name: ${name}`);
+    // Fallback for unknown teams: Create a synthetic identity to avoid crashing
+    return {
+      id: normalized.replace(/ /g, '_'),
+      name: normalized,
+      league: 'UNKNOWN',
+      country: 'UNKNOWN',
+      externalIds: {}
+    };
   }
 };

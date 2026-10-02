@@ -92,6 +92,10 @@ export const API_FOOTBALL_MAPPINGS: Record<string, number> = {
   'CLERMONT': 115,
   'METZ': 112,
   'LE_HAVRE': 111,
+  'FINLAND': 785,
+  'ENGLAND': 10,
+  'FRANCE': 2,
+  'BELARUS': 775,
 };
 
 export const THE_ODDS_API_MAPPINGS: Record<string, string> = {
@@ -183,4 +187,8 @@ export const THE_ODDS_API_MAPPINGS: Record<string, string> = {
   'CLERMONT': 'Clermont Foot',
   'METZ': 'Metz',
   'LE_HAVRE': 'Le Havre',
+  'FINLAND': 'Finland',
+  'ENGLAND': 'England',
+  'FRANCE': 'France',
+  'BELARUS': 'Belarus',
 };

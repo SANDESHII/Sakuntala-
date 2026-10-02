@@ -1,4 +1,4 @@
-import { useState, useEffect, FC, type FormEvent } from 'react';
+import { FC, type FormEvent, useState, useEffect } from 'react';
 import { ELITE_LEAGUES } from '../core/constants';
 import { FixtureMatch } from '../types';
 import { Calendar } from 'lucide-react';
@@ -24,7 +24,9 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
     const [loadingFixtures, setLoadingFixtures] = useState(false);
 
     useEffect(() => {
-        const fetchFixtures = async () => {
+        const timeoutId = setTimeout(async () => {
+            if (!league || league.length < 3) return;
+            
             setLoadingFixtures(true);
             try {
                 const response = await fetch(`/api/fixtures?league=${league}&limit=8`);
@@ -36,8 +38,9 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
             } finally {
                 setLoadingFixtures(false);
             }
-        };
-        fetchFixtures();
+        }, 800);
+
+        return () => clearTimeout(timeoutId);
     }, [league]);
 
     const fields = [
@@ -55,7 +58,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
     return (
         <form 
             onSubmit={handleSubmit} 
-            className="bg-neutral-950 p-12 lg:p-16 border border-neutral-900 max-w-5xl mx-auto"
+            className="bg-neutral-950 p-12 lg:p-16 border border-neutral-900 max-w-5xl mx-auto rounded-[40px]"
         >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-12">
                 {fields.map((f, i) => (
@@ -99,7 +102,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
             <button 
                 type="submit" 
                 disabled={loading || !home || !away} 
-                className={`w-full mt-12 py-10 font-black tracking-[0.2em] text-sm uppercase transition-all ${
+                className={`w-full mt-12 py-10 font-black tracking-[0.2em] text-sm uppercase transition-all rounded-2xl ${
                     loading || !home || !away 
                         ? 'bg-neutral-900 text-neutral-700 cursor-not-allowed' 
                         : 'bg-white text-black hover:bg-emerald-500'
@@ -140,16 +143,36 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
                                         <span>{new Date(f.kickoff).toLocaleDateString()}</span>
                                         <span className="text-emerald-500">{new Date(f.kickoff).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                     </div>
-                                    <div className="space-y-1">
                                         <div className="flex items-center gap-2">
-                                            {f.homeLogo && <img src={f.homeLogo} alt="" className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />}
+                                            <div className="w-4 h-4 flex items-center justify-center bg-neutral-800 rounded-sm overflow-hidden">
+                                                {f.homeLogo ? (
+                                                    <img 
+                                                        src={f.homeLogo} 
+                                                        alt="" 
+                                                        className="w-full h-full object-contain opacity-50 group-hover:opacity-100 transition-opacity"
+                                                        onError={(e) => (e.currentTarget.style.display = 'none')}
+                                                    />
+                                                ) : (
+                                                    <div className="w-1.5 h-1.5 bg-neutral-600 rounded-full" />
+                                                )}
+                                            </div>
                                             <span className="text-[10px] font-black text-white truncate">{f.homeTeam}</span>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            {f.awayLogo && <img src={f.awayLogo} alt="" className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />}
+                                            <div className="w-4 h-4 flex items-center justify-center bg-neutral-800 rounded-sm overflow-hidden">
+                                                {f.awayLogo ? (
+                                                    <img 
+                                                        src={f.awayLogo} 
+                                                        alt="" 
+                                                        className="w-full h-full object-contain opacity-50 group-hover:opacity-100 transition-opacity"
+                                                        onError={(e) => (e.currentTarget.style.display = 'none')}
+                                                    />
+                                                ) : (
+                                                    <div className="w-1.5 h-1.5 bg-neutral-600 rounded-full" />
+                                                )}
+                                            </div>
                                             <span className="text-[10px] font-black text-white truncate">{f.awayTeam}</span>
                                         </div>
-                                    </div>
                                 </div>
                             </button>
                         ))}
@@ -163,3 +186,4 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
         </form>
     );
 };
+

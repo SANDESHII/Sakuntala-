@@ -1,6 +1,6 @@
 {
-  "name": "GoalTerminal",
-  "description": "High-fidelity prediction engine specializing in Over/Under 2.5 goals markets using Dixon-Coles models and Monte Carlo uncertainty propagation.",
+  "name": "Alpha Terminal",
+  "description": "Football prediction system using Dixon-Coles statistical modeling. Focused on Over 2.5 and Under 2.5 Goal Markets.",
   "capabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

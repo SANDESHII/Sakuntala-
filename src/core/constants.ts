@@ -22,6 +22,10 @@ export const TEAM_STATS: Record<string, {
   'BAYERN': { attackStrength: 1.60, defenseStrength: 0.75, avgGoalsScored: 2.6, avgGoalsConceded: 0.9, homeAdvantageHeuristic: 0.35, form: [3,1,3,3,3], cleanSheetRate: 0.45 },
   'MILAN': { attackStrength: 1.25, defenseStrength: 0.85, avgGoalsScored: 1.7, avgGoalsConceded: 1.1, homeAdvantageHeuristic: 0.30, form: [1,3,0,1,3], cleanSheetRate: 0.32 },
   'INTER': { attackStrength: 1.40, defenseStrength: 0.70, avgGoalsScored: 2.0, avgGoalsConceded: 0.8, homeAdvantageHeuristic: 0.35, form: [3,3,3,1,3], cleanSheetRate: 0.52 },
+  'FINLAND': { attackStrength: 0.85, defenseStrength: 1.15, avgGoalsScored: 0.9, avgGoalsConceded: 1.4, homeAdvantageHeuristic: 0.25, form: [0,1,0,3,0], cleanSheetRate: 0.20 },
+  'ENGLAND': { attackStrength: 1.45, defenseStrength: 0.75, avgGoalsScored: 2.1, avgGoalsConceded: 0.9, homeAdvantageHeuristic: 0.35, form: [3,3,1,3,1], cleanSheetRate: 0.45 },
+  'FRANCE': { attackStrength: 1.50, defenseStrength: 0.70, avgGoalsScored: 2.3, avgGoalsConceded: 0.8, homeAdvantageHeuristic: 0.38, form: [3,1,3,3,3], cleanSheetRate: 0.48 },
+  'BELARUS': { attackStrength: 0.70, defenseStrength: 1.25, avgGoalsScored: 0.7, avgGoalsConceded: 1.6, homeAdvantageHeuristic: 0.20, form: [0,1,1,0,0], cleanSheetRate: 0.15 },
 };
 
 /**
@@ -36,6 +40,10 @@ export const TEAM_ALIASES: Record<string, string> = {
   'SPURS': 'TOTTENHAM',
   'PSG': 'PSG',
   'PARIS SG': 'PSG',
+  'FIN': 'FINLAND',
+  'ENG': 'ENGLAND',
+  'FRA': 'FRANCE',
+  'BLR': 'BELARUS',
 };
 
 export const LEAGUE_CONFIGS: Record<string, any> = {
@@ -44,6 +52,7 @@ export const LEAGUE_CONFIGS: Record<string, any> = {
   'BUNDESLIGA': { goalRate: 1.15, homeAdvantage: 0.28 },
   'SERIE_A': { goalRate: 0.92, homeAdvantage: 0.35 },
   'LIGUE_1': { goalRate: 0.98, homeAdvantage: 0.30 },
+  'NATIONS_LEAGUE': { goalRate: 0.88, homeAdvantage: 0.25 },
   'STANDARD': { goalRate: 1.00, homeAdvantage: 0.28 }
 };
 

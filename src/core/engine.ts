@@ -143,16 +143,17 @@ export async function runPrediction(
   asOfDate?: string,
   fixtureCache?: Record<string, HistoricalMatch[]>
 ): Promise<AnalysisResult> {
-  const leagueKey = league.toUpperCase().replace(/ /g, '_');
-  const leagueConfig = LEAGUE_CONFIGS[leagueKey] || LEAGUE_CONFIGS['STANDARD'];
+  try {
+    const leagueKey = league.toUpperCase().replace(/ /g, '_');
+    const leagueConfig = LEAGUE_CONFIGS[leagueKey] || LEAGUE_CONFIGS['STANDARD'];
 
-  // Parallel data resolution
-  const [homeRes, awayRes, liveOdds, fittedParams] = await Promise.all([
-    resolveTeamData(homeTeam, leagueKey, leagueConfig, asOfDate, fixtureCache),
-    resolveTeamData(awayTeam, leagueKey, leagueConfig, asOfDate, fixtureCache),
-    historicalOddsOverride ? Promise.resolve([]) : FreeDataService.getLiveOdds(leagueKey),
-    fittedOverride ? Promise.resolve(fittedOverride) : Calibration.fitFromAPI(leagueKey, asOfDate, fixtureCache?.[leagueKey])
-  ]);
+    // Parallel data resolution
+    const [homeRes, awayRes, liveOdds, fittedParams] = await Promise.all([
+      resolveTeamData(homeTeam, leagueKey, leagueConfig, asOfDate, fixtureCache),
+      resolveTeamData(awayTeam, leagueKey, leagueConfig, asOfDate, fixtureCache),
+      historicalOddsOverride ? Promise.resolve([]) : FreeDataService.getLiveOdds(leagueKey),
+      fittedOverride ? Promise.resolve(fittedOverride) : Calibration.fitFromAPI(leagueKey, asOfDate, fixtureCache?.[leagueKey])
+    ]);
 
   // Use MLE fitted goals if available, otherwise fallback to local stats model
   const mleGoals = Calibration.predictGoals(fittedParams, homeTeam, awayTeam);
@@ -187,8 +188,8 @@ export async function runPrediction(
   probOver25 = DixonColes.calculateOverUnder(scoreMatrix, 2.5);
   probUnder25 = 1 - DixonColes.calculateOverUnder(scoreMatrix, 2.5);
 
-  // Monte Carlo Simulation for Uncertainty Propagation
-  const mcResults = DixonColes.runMonteCarlo(lambdaHome, muAway, finalRho, 10000, 0.12);
+  // Monte Carlo Simulation for Uncertainty Propagation (Optimized iterations for speed)
+  const mcResults = DixonColes.runMonteCarlo(lambdaHome, muAway, finalRho, 4000, 0.12);
 
   // Goal Distribution Calculation
   const distribution: { goals: string; probability: number }[] = [
@@ -377,10 +378,14 @@ export async function runPrediction(
     scoreMatrix: scoreMatrix.slice(0, 6).map(row => row.slice(0, 6)),
     monteCarlo: {
       ...mcResults,
-      iterations: 10000,
+      iterations: 4000,
       uncertainty: 0.12
     }
   };
+} catch (err: any) {
+  console.error('[Engine] Prediction execution failure:', err);
+  throw new Error(`Prediction processing failed: ${err.message}`);
+}
 }
 
 function generateSummary(
@@ -458,12 +463,12 @@ export async function runBacktest() {
       const sorted = raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       fixtureCache[l] = sorted;
       
-      // Select evaluation pool (last 10 matches per league instead of 15 to save even more quota)
-      const leagueEval = sorted.slice(-10);
+      // Select evaluation pool (last 6 matches per league for stability/speed balance)
+      const leagueEval = sorted.slice(-6);
       evalPool.push(...leagueEval);
       
-      // Small delay between leagues to respect burst limits
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Small delay between leagues
+      await new Promise(resolve => setTimeout(resolve, 800));
     } catch (err) {
       console.warn(`[Engine] Skipping league ${l} due to fetch error:`, (err as Error).message);
     }
@@ -478,107 +483,113 @@ export async function runBacktest() {
   let clvCount = 0;
 
   for (const match of evalPool) {
-    // 1. Fetch odds for this specific match only now
-    const odds = await FreeDataService.getHistoricalOddsForMatch(match.league, match.date, match.home, match.away);
-    if (odds) {
-        match.takenPrices = odds.takenPrices;
-        match.closingPrices = odds.closingPrices;
-        match.takenAt = odds.takenAt;
-        match.closedAt = odds.closedAt;
+    try {
+        // 1. Fetch odds for this specific match only now
+        const odds = await FreeDataService.getHistoricalOddsForMatch(match.league, match.date, match.home, match.away);
+        if (odds) {
+            match.takenPrices = odds.takenPrices;
+            match.closingPrices = odds.closingPrices;
+            match.takenAt = odds.takenAt;
+            match.closedAt = odds.closedAt;
+        }
+
+        // 2. True Walk-Forward prediction
+        const prediction = await runPrediction(
+            match.home, 
+            match.away, 
+            match.league, 
+            null, 
+            match.takenPrices,
+            null,
+            match.date,
+            fixtureCache
+        );
+        const hGoals = match.homeGoals;
+        const aGoals = match.awayGoals;
+        
+        const totalGoals = hGoals + aGoals;
+        const isOver25Correct = totalGoals > 2.5;
+        const isUnder25Correct = totalGoals < 2.5;
+
+        // Track for global metrics
+        matches.push({
+          match: { 
+            homeTeam: match.home, 
+            awayTeam: match.away, 
+            actualScore: [hGoals, aGoals], 
+            league: match.league, 
+            isReal: true 
+          },
+          prediction: { 
+            predictionType: prediction.predictionType, 
+            probability: prediction.probability,
+            rawProbability: prediction.rawProbability
+          },
+          marketEdge: prediction.edge / 100,
+          isOver25Correct,
+          isUnder25Correct,
+          pnl: 0,
+          clv: 0,
+          stake: 0,
+          takenOdds: prediction.marketOdds
+        });
+
+        if (prediction.predictionType === 'NO_BET') continue;
+
+        // PnL & CLV Calculation
+        const currentMatch = matches[matches.length - 1];
+        const stake = prediction.recommendedStake;
+        const takenOdds = prediction.marketOdds;
+        const closingOdds = prediction.predictionType === 'OVER_25' 
+          ? match.closingPrices?.over25 
+          : match.closingPrices?.under25;
+
+        const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
+        const pnl = isHit ? (stake * takenOdds - stake) : -stake;
+        
+        totalPnl += pnl;
+        totalStake += stake;
+
+        let clv = 0;
+        if (closingOdds && closingOdds > 1) {
+          clv = (takenOdds / closingOdds - 1) * 100;
+          totalClvSum += clv;
+          clvCount++;
+        }
+
+        if (prediction.predictionType === 'OVER_25') {
+          over25Predictions++;
+          if (isOver25Correct) totalOver25Correct++;
+        } else if (prediction.predictionType === 'UNDER_25') {
+          under25Predictions++;
+          if (isUnder25Correct) totalUnder25Correct++;
+        }
+        
+        totalMatches++;
+
+        const absEdge = Math.abs(prediction.edge);
+        const segIdx = edgeSegments.findIndex(s => absEdge >= s.min && absEdge < s.max);
+        if (segIdx !== -1) {
+          edgeSegments[segIdx].count++;
+          edgeSums[segIdx] += absEdge / 100;
+          if (isHit) edgeSegments[segIdx].hits++;
+          
+          if (clv !== 0 || (closingOdds && closingOdds > 1)) {
+            clvSums[segIdx] += clv;
+            clvCounts[segIdx]++;
+          }
+        }
+
+        currentMatch.pnl = pnl;
+        currentMatch.clv = clv;
+        currentMatch.stake = stake;
+        currentMatch.closingOdds = closingOdds;
+    } catch (err: any) {
+        console.warn(`[Engine] Stopping backtest early due to processing error:`, err.message);
+        // Break the loop but return partial results if we have matches
+        if (matches.length > 5) break;
+        throw err; // Not enough data, propagate error
     }
-
-    // 2. True Walk-Forward prediction
-    const prediction = await runPrediction(
-        match.home, 
-        match.away, 
-        match.league, 
-        null, // No override, forces re-fitting using available data up to match.date
-        match.takenPrices,
-        null,
-        match.date,
-        fixtureCache
-    );
-    const hGoals = match.homeGoals;
-    const aGoals = match.awayGoals;
-    
-    const totalGoals = hGoals + aGoals;
-    const isOver25Correct = totalGoals > 2.5;
-    const isUnder25Correct = totalGoals < 2.5;
-
-    // Track for global metrics (Brier score evaluates all attempts)
-    matches.push({
-      match: { 
-        homeTeam: match.home, 
-        awayTeam: match.away, 
-        actualScore: [hGoals, aGoals], 
-        league: match.league, 
-        isReal: true 
-      },
-      prediction: { 
-        predictionType: prediction.predictionType, 
-        probability: prediction.probability,
-        rawProbability: prediction.rawProbability
-      },
-      marketEdge: prediction.edge / 100,
-      isOver25Correct,
-      isUnder25Correct,
-      pnl: 0,
-      clv: 0,
-      stake: 0,
-      takenOdds: prediction.marketOdds
-    });
-
-    if (prediction.predictionType === 'NO_BET') continue;
-
-    // PnL & CLV Calculation (only for bets)
-    const currentMatch = matches[matches.length - 1];
-    const stake = prediction.recommendedStake;
-    const takenOdds = prediction.marketOdds;
-    const closingOdds = prediction.predictionType === 'OVER_25' 
-      ? match.closingPrices?.over25 
-      : match.closingPrices?.under25;
-
-    const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
-    const pnl = isHit ? (stake * takenOdds - stake) : -stake;
-    
-    totalPnl += pnl;
-    totalStake += stake;
-
-    let clv = 0;
-    if (closingOdds && closingOdds > 1) {
-      clv = (takenOdds / closingOdds - 1) * 100;
-      totalClvSum += clv;
-      clvCount++;
-    }
-
-    if (prediction.predictionType === 'OVER_25') {
-      over25Predictions++;
-      if (isOver25Correct) totalOver25Correct++;
-    } else if (prediction.predictionType === 'UNDER_25') {
-      under25Predictions++;
-      if (isUnder25Correct) totalUnder25Correct++;
-    }
-    
-    totalMatches++;
-
-    const absEdge = Math.abs(prediction.edge);
-    const segIdx = edgeSegments.findIndex(s => absEdge >= s.min && absEdge < s.max);
-    if (segIdx !== -1) {
-      edgeSegments[segIdx].count++;
-      edgeSums[segIdx] += absEdge / 100;
-      if (isHit) edgeSegments[segIdx].hits++;
-      
-      if (clv !== 0 || (closingOdds && closingOdds > 1)) {
-        clvSums[segIdx] += clv;
-        clvCounts[segIdx]++;
-      }
-    }
-
-    // Update the last match entry with bet-specific results
-    currentMatch.pnl = pnl;
-    currentMatch.clv = clv;
-    currentMatch.stake = stake;
-    currentMatch.closingOdds = closingOdds;
   }
 
   edgeSegments.forEach((seg, i) => {
@@ -606,3 +617,4 @@ export async function runBacktest() {
     matches: matches.slice(0, 20),
   };
 }
+

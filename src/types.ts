@@ -8,29 +8,11 @@ export interface Provenance {
   sourceSeason?: string | number;
 }
 
-export interface OddsLeg {
-  name: string;
-  price: number;
-  point?: number;
-}
-
 export interface HistoricalPrices {
   over25: { bestPrice: number; noVigPrice: number };
   under25: { bestPrice: number; noVigPrice: number };
   takenAt: string;
   closedAt?: string;
-}
-
-export interface TeamStats {
-  played: number;
-  goals: {
-    for: number;
-    against: number;
-    homeFor: number;
-    awayFor: number;
-  };
-  cleanSheets: number;
-  provenance: Provenance;
 }
 
 export interface TeamIdentity {
@@ -69,29 +51,6 @@ export interface HistoricalMatch {
   };
   takenAt?: string;
   closedAt?: string;
-}
-
-export interface FixtureMatch {
-  homeTeam: string;
-  awayTeam: string;
-  homeLogo?: string | null;
-  awayLogo?: string | null;
-  kickoff: string;
-  league: string;
-  fixtureId: number;
-}
-
-export interface MarketOdds {
-  over25?: {
-    bestPrice: number;
-    avgPrice: number;
-    count: number;
-  };
-  under25?: {
-    bestPrice: number;
-    avgPrice: number;
-    count: number;
-  };
 }
 
 export interface InternalTeamData {
@@ -179,6 +138,16 @@ export interface AnalysisResult {
     iterations: number;
     uncertainty: number;
   };
+}
+
+export interface FixtureMatch {
+  homeTeam: string;
+  awayTeam: string;
+  homeLogo?: string | null;
+  awayLogo?: string | null;
+  kickoff: string;
+  league: string;
+  fixtureId: number;
 }
 
 export interface BacktestMatch {

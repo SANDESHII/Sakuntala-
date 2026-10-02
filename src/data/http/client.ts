@@ -75,6 +75,11 @@ export async function fetchWithRetry<T>(
       const axiosError = error as AxiosError;
       const responseData = axiosError.response?.data as any;
       
+      if (axiosError.response?.status === 401) {
+        console.error(`[${source}] 401 Unauthorized: Invalid API Key.`);
+        throw new Error(`Invalid API Key for ${source}. Please check your environment variables.`);
+      }
+
       if (axiosError.response?.status === 403) {
         const detail = responseData?.message || responseData?.errors || 'Access Forbidden';
         const host = axiosError.config?.url ? new URL(axiosError.config.url).host : 'unknown';

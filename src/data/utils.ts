@@ -7,23 +7,38 @@ export function inferSeason(): number {
 }
 
 export function normalizeLeagueToId(league: string): number {
+  const normalized = league.toUpperCase().trim();
   const map: Record<string, number> = {
     'EPL': 39,
     'LA_LIGA': 140,
     'BUNDESLIGA': 78,
     'SERIE_A': 135,
-    'LIGUE_1': 61
+    'LIGUE_1': 61,
+    'NATIONS_LEAGUE': 5,
+    'UNL': 5,
   };
-  return map[league.toUpperCase()] || 39;
+  
+  if (map[normalized]) return map[normalized];
+  if (normalized.includes('NATION')) return 5;
+  if (normalized.includes('PREMIER')) return 39;
+  
+  return 39;
 }
 
 export function getOddsSportKey(league: string): string {
+  const normalized = league.toUpperCase().trim();
   const map: Record<string, string> = {
     'EPL': 'soccer_epl',
     'LA_LIGA': 'soccer_spain_la_liga',
     'BUNDESLIGA': 'soccer_germany_bundesliga',
     'SERIE_A': 'soccer_italy_serie_a',
-    'LIGUE_1': 'soccer_france_ligue_one'
+    'LIGUE_1': 'soccer_france_ligue_one',
+    'NATIONS_LEAGUE': 'soccer_uefa_nations_league',
+    'UNL': 'soccer_uefa_nations_league',
   };
-  return map[league.toUpperCase()] || 'soccer_epl';
+  
+  if (map[normalized]) return map[normalized];
+  if (normalized.includes('NATION')) return 'soccer_uefa_nations_league';
+  
+  return 'soccer_epl';
 }

@@ -111,7 +111,6 @@ export class DixonColes {
       lambdaAdjust?: number;
       muAdjust?: number;
       rhoAdjust?: number;
-      uncertaintyAdjust?: number;
     }
   ): number[][] {
     // Apply strategy modifiers

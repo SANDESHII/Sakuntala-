@@ -78,6 +78,7 @@ export interface MatchContext {
     pinnacleOver25: number | null;
     pinnacleUnder25: number | null;
     source: 'THE_ODDS_API' | 'HISTORICAL' | 'NONE';
+    sourceName?: string;
   };
 }
 
@@ -132,8 +133,8 @@ export interface AnalysisResult {
   scoreMatrix?: number[][];
   // Arena Integration
   arena?: {
-    predictions: ArenaPrediction[];
     consensus: ConsensusResult;
+    predictions: ArenaPrediction[];
   };
 }
 
@@ -141,24 +142,33 @@ export interface AnalysisResult {
 // ARENA SYSTEM TYPES
 // ═══════════════════════════════════════════════════════════════
 
+export interface ArenaConfig {
+  enableArena: boolean;
+  cardCount: number;
+  seed?: number;
+}
+
 export interface StrategyCard {
   reasoning: {
     id: string;
     name: string;
     how: string;
     footballApplication: string;
+    icon?: string;
   };
   workflow: {
     id: string;
     name: string;
     how: string;
     footballApplication: string;
+    icon?: string;
   };
   strategy: {
     id: string;
     name: string;
     how: string;
     footballApplication: string;
+    icon?: string;
   };
 }
 
@@ -177,24 +187,16 @@ export interface ArenaPrediction {
   };
   weightedTotal: number;
   fatal: boolean;
-  lambdaHome?: number;
-  muAway?: number;
 }
 
 export interface ConsensusResult {
-  prediction: 'OVER_25' | 'UNDER_25' | 'NO_BET';
+  prediction: string;
   confidence: number;
   edge: number;
   agreement: number;
   topReasoning: string;
   surviving: ArenaPrediction[];
   dissenting: ArenaPrediction[];
-}
-
-export interface ArenaConfig {
-  cardCount: number;
-  seed?: number;
-  enableArena: boolean;
 }
 
 export interface FixtureMatch {

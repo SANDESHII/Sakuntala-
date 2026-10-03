@@ -1,10 +1,11 @@
-import { AnalysisResult, InternalTeamData, HistoricalMatch, ArenaConfig, ArenaPrediction, ConsensusResult } from '../types';
+import { AnalysisResult, InternalTeamData, HistoricalMatch, ArenaConfig, ArenaPrediction, ConsensusResult, StrategyCard } from '../types';
 import { TEAM_STATS, LEAGUE_CONFIGS, BASE_GOALS, DEFAULT_RHO, STRATEGY_MODIFIERS, WORKFLOW_MODIFIERS, REASONING_MODIFIERS } from './constants';
 import { DixonColes } from './math';
 import * as FreeDataService from '../services/freeDataService';
 import * as Calibration from './calibration';
 import { FeatureEngine } from './features';
 import { TeamRegistry } from '../data/identity/registry';
+import { ARENA_SKILLS } from '../data/arenaSkills';
 
 /**
  * Prediction Pipeline Configuration
@@ -390,130 +391,220 @@ export async function runPrediction(
 }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// ARENA PREDICTION SYSTEM
+// ═══════════════════════════════════════════════════════════════
+
 /**
- * ARENA SYSTEM: Multi-strategy consensus engine
- * Runs config.cardCount parallel analyses using unique strategy combinations
+ * Generate strategy cards for arena
+ */
+function generateArenaCards(count: number, seed?: number): StrategyCard[] {
+  const { reasoning, workflows, strategies } = ARENA_SKILLS;
+  const cards: StrategyCard[] = [];
+  const used = new Set<string>();
+
+  // Seeded random for reproducibility
+  let s = seed || Date.now();
+  const rand = () => {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0xffffffff;
+  };
+
+  for (let i = 0; i < count; i++) {
+    let card: StrategyCard;
+    let attempts = 0;
+    do {
+      const rIdx = Math.floor(rand() * reasoning.length);
+      const wIdx = Math.floor(rand() * workflows.length);
+      const sIdx = Math.floor(rand() * strategies.length);
+      card = {
+        reasoning: reasoning[rIdx],
+        workflow: workflows[wIdx],
+        strategy: strategies[sIdx],
+      };
+      attempts++;
+    } while (used.has(`${card.reasoning.id}-${card.workflow.id}-${card.strategy.id}`) && attempts < 100);
+
+    used.add(`${card.reasoning.id}-${card.workflow.id}-${card.strategy.id}`);
+    cards.push(card);
+  }
+
+  return cards;
+}
+
+/**
+ * Run prediction with a single strategy card
+ */
+async function runPredictionWithCard(
+  card: StrategyCard,
+  baseResult: AnalysisResult
+): Promise<ArenaPrediction> {
+  // Get strategy modifiers (with fallbacks)
+  const stratMod = STRATEGY_MODIFIERS[card.strategy.id] || { edgeThreshold: 0.03, kellyFraction: 0.30, confidenceMultiplier: 1.0 };
+  const workMod = WORKFLOW_MODIFIERS[card.workflow.id] || { rhoAdjust: 0, uncertaintyAdjust: 0 };
+  const reasonMod = REASONING_MODIFIERS[card.reasoning.id] || { lambdaAdjust: 0, muAdjust: 0, formWeight: 0 };
+
+  // Apply reasoning modifiers to base lambda/mu
+  const lambdaAdj = baseResult.homeExpectedGoals + reasonMod.lambdaAdjust;
+  const muAdj = baseResult.awayExpectedGoals + reasonMod.muAdjust;
+  const rhoAdj = DEFAULT_RHO + workMod.rhoAdjust;
+
+  // Calculate score matrix with strategy adjustments
+  const scoreMatrix = DixonColes.calculateStrategyScoreMatrix(lambdaAdj, muAdj, rhoAdj);
+  const probOver25 = DixonColes.calculateOverUnder(scoreMatrix, 2.5);
+
+  // Run Monte Carlo with strategy-adjusted uncertainty (placeholder for side-effects/future use)
+  DixonColes.runStrategyMonteCarlo(
+    lambdaAdj, muAdj, rhoAdj,
+    4000, 0.12, workMod.uncertaintyAdjust
+  );
+
+  // Determine prediction
+  const prediction: 'OVER_25' | 'UNDER_25' | 'NO_BET' =
+    probOver25 > 0.55 ? 'OVER_25' :
+    probOver25 < 0.45 ? 'UNDER_25' : 'NO_BET';
+
+  // Calculate edge against market
+  const marketProb = baseResult.marketOdds ? 1 / baseResult.marketOdds : 0.5;
+  const edge = prediction === 'OVER_25'
+    ? (probOver25 - marketProb) * 100
+    : prediction === 'UNDER_25'
+    ? ((1 - probOver25) - (1 - marketProb)) * 100
+    : 0;
+
+  // Apply strategy confidence modifier
+  const baseConfidence = Math.abs(probOver25 - 0.5) * 2;
+  const confidence = Math.min(0.95, baseConfidence * stratMod.confidenceMultiplier);
+
+  // Score the prediction on the rubric
+  const scores = {
+    correctness: Math.min(10, Math.round(confidence * 8 + (Math.abs(edge) > 3 ? 2 : 0))),
+    completeness: 7,
+    robustness: Math.min(10, Math.round(confidence * 7 + (card.workflow.id === 'build-then-break' ? 2 : 0))),
+    specificity: Math.min(10, Math.round(5 + (card.strategy.id === 'concrete-specifics' ? 4 : 0))),
+    clarity: Math.min(10, Math.round(6 + (card.strategy.id === 'clarity' ? 3 : 0))),
+  };
+
+  const weightedTotal = (
+    scores.correctness * 30 +
+    scores.completeness * 25 +
+    scores.robustness * 20 +
+    scores.specificity * 15 +
+    scores.clarity * 10
+  ) / 10;
+
+  const fatal = Math.abs(edge) > 15 || confidence < 0.2;
+
+  return {
+    card,
+    prediction,
+    confidence,
+    edge: Math.round(edge * 10) / 10,
+    reasoning: `${card.reasoning.name} + ${card.workflow.name} + ${card.strategy.name}`,
+    scores,
+    weightedTotal: Math.round(weightedTotal * 10) / 10,
+    fatal,
+  };
+}
+
+/**
+ * Find consensus from multiple predictions
+ */
+function findConsensus(predictions: ArenaPrediction[]): ConsensusResult {
+  const overVotes = predictions.filter(p => p.prediction === 'OVER_25' && !p.fatal);
+  const underVotes = predictions.filter(p => p.prediction === 'UNDER_25' && !p.fatal);
+  const noBetVotes = predictions.filter(p => p.prediction === 'NO_BET' || p.fatal);
+  const total = predictions.length;
+
+  let prediction = 'NO_BET';
+  let confidence = 0;
+  let edge = 0;
+  let agreement = 0;
+
+  if (overVotes.length > underVotes.length && overVotes.length > noBetVotes.length) {
+    prediction = 'OVER_25';
+    confidence = overVotes.reduce((s, p) => s + p.confidence, 0) / overVotes.length;
+    edge = overVotes.reduce((s, p) => s + p.edge, 0) / overVotes.length;
+    agreement = (overVotes.length / total) * 100;
+  } else if (underVotes.length > overVotes.length && underVotes.length > noBetVotes.length) {
+    prediction = 'UNDER_25';
+    confidence = underVotes.reduce((s, p) => s + p.confidence, 0) / underVotes.length;
+    edge = underVotes.reduce((s, p) => s + p.edge, 0) / underVotes.length;
+    agreement = (underVotes.length / total) * 100;
+  } else {
+    agreement = (noBetVotes.length / total) * 100;
+  }
+
+  // Sort by weighted total to find survivors
+  const sorted = [...predictions].sort((a, b) => b.weightedTotal - a.weightedTotal);
+  const surviving = sorted.filter(p => !p.fatal).slice(0, Math.ceil(total * 0.3));
+  const dissenting = predictions.filter(p => p.prediction !== prediction && !p.fatal);
+
+  const topReasoning = surviving.length > 0
+    ? surviving[0].card.reasoning.name
+    : "No clear winner";
+
+  return {
+    prediction,
+    confidence: Math.round(confidence * 100) / 100,
+    edge: Math.round(edge * 10) / 10,
+    agreement: Math.round(agreement),
+    topReasoning,
+    surviving,
+    dissenting,
+  };
+}
+
+/**
+ * Arena-augmented prediction pipeline
+ * Runs N parallel analyses with different strategy cards, finds consensus
  */
 export async function runArenaPrediction(
   homeTeam: string,
   awayTeam: string,
   league: string,
-  config: ArenaConfig,
-  fittedOverride: any = null,
-  oddsOverride: any = null,
-  thresholdContext: any = null,
-  asOfDate?: string,
-  fixtureCache?: any
+  arenaConfig: ArenaConfig = { enableArena: false, cardCount: 12 },
+  fittedOverride: Calibration.FittedLeagueParams | null = null,
+  historicalOddsOverride: any = null,
+  adaptiveThresholdContext: any[] | null = null,
 ): Promise<AnalysisResult> {
-  // 1. Get base prediction first (for metadata and odds)
-  const base = await runPrediction(homeTeam, awayTeam, league, fittedOverride, oddsOverride, thresholdContext, asOfDate, fixtureCache);
-  
-  if (!config.enableArena) return base;
+  // 1. Run the base prediction (always)
+  const baseResult = await runPrediction(
+    homeTeam, awayTeam, league,
+    fittedOverride, historicalOddsOverride, adaptiveThresholdContext
+  );
 
-  const strategies = Object.keys(STRATEGY_MODIFIERS);
-  const workflows = Object.keys(WORKFLOW_MODIFIERS);
-  const reasoningModes = Object.keys(REASONING_MODIFIERS);
-
-  const arenaPredictions: ArenaPrediction[] = [];
-
-  // Generate parallel strategy cards
-  for (let i = 0; i < config.cardCount; i++) {
-    const sId = strategies[Math.floor(Math.random() * strategies.length)];
-    const wId = workflows[Math.floor(Math.random() * workflows.length)];
-    const rId = reasoningModes[Math.floor(Math.random() * reasoningModes.length)];
-
-    const strategy = (STRATEGY_MODIFIERS as any)[sId];
-    const workflow = (WORKFLOW_MODIFIERS as any)[wId];
-    const reasoning = (REASONING_MODIFIERS as any)[rId];
-
-    // Calculate strategy-adjusted metrics
-    const adjLambda = Math.max(0.3, base.homeExpectedGoals + (reasoning.lambdaAdjust || 0));
-    const adjMu = Math.max(0.2, base.awayExpectedGoals + (reasoning.muAdjust || 0));
-    const adjRho = Math.min(0, Math.max(-0.4, DEFAULT_RHO + (workflow.rhoAdjust || 0)));
-
-    const scoreMatrix = DixonColes.calculateScoreMatrix(adjLambda, adjMu, adjRho);
-    const probOver = DixonColes.calculateOverUnder(scoreMatrix, 2.5);
-    const probUnder = 1 - probOver;
-
-    const marketOdds = base.marketOdds;
-    const overEdge = marketOdds ? probOver - (1 / marketOdds) : 0;
-    const underEdge = marketOdds ? probUnder - (1 / marketOdds) : 0;
-
-    let prediction: 'OVER_25' | 'UNDER_25' | 'NO_BET' = 'NO_BET';
-    let edge = 0;
-    const threshold = strategy.edgeThreshold || 0.03;
-
-    if (overEdge > threshold) {
-      prediction = 'OVER_25';
-      edge = overEdge;
-    } else if (underEdge > threshold) {
-      prediction = 'UNDER_25';
-      edge = underEdge;
-    }
-
-    // Heuristic scoring for the strategy
-    const correctness = prediction === base.predictionType ? 100 : 40;
-    const robustness = 100 - (Math.abs(workflow.uncertaintyAdjust || 0) * 500);
-    const specificity = 85 + (Math.random() * 15);
-    const completeness = 90;
-    const clarity = 95;
-
-    const weightedTotal = (correctness * 0.4) + (robustness * 0.2) + (specificity * 0.15) + (completeness * 0.15) + (clarity * 0.1);
-
-    arenaPredictions.push({
-      card: {
-        strategy: { id: sId, name: sId, how: 'Adjustment of threshold and Kelly sizing', footballApplication: 'Risk management' },
-        workflow: { id: wId, name: wId, how: 'Adjustment of correlation and uncertainty', footballApplication: 'Match flow modeling' },
-        reasoning: { id: rId, name: rId, how: 'Direct adjustment of expected goals', footballApplication: 'Offensive/Defensive bias' }
-      },
-      prediction,
-      edge: Math.round(edge * 1000) / 10,
-      confidence: Math.round(weightedTotal),
-      reasoning: `Analysis via ${rId} reasoning and ${wId} workflow suggests ${prediction === 'NO_BET' ? 'no clear edge' : `a ${prediction} orientation`} with ${strategy.confidenceMultiplier}x confidence weighting.`,
-      scores: { correctness, completeness, robustness, specificity, clarity },
-      weightedTotal,
-      fatal: weightedTotal < 60,
-      lambdaHome: adjLambda,
-      muAway: adjMu
-    });
+  // 2. If arena is disabled, return base result
+  if (!arenaConfig?.enableArena || arenaConfig.cardCount < 2) {
+    return baseResult;
   }
 
-  // 3. Calculate Consensus
-  const surviving = arenaPredictions.filter(p => !p.fatal);
-  const overVotes = surviving.filter(p => p.prediction === 'OVER_25');
-  const underVotes = surviving.filter(p => p.prediction === 'UNDER_25');
-  const noBetVotes = surviving.filter(p => p.prediction === 'NO_BET');
+  // 3. Generate strategy cards
+  const cards = generateArenaCards(arenaConfig.cardCount, arenaConfig.seed);
 
-  let consensusType: 'OVER_25' | 'UNDER_25' | 'NO_BET' = 'NO_BET';
-  if (overVotes.length > underVotes.length && overVotes.length > noBetVotes.length) consensusType = 'OVER_25';
-  if (underVotes.length > overVotes.length && underVotes.length > noBetVotes.length) consensusType = 'UNDER_25';
+  // 4. Run prediction with each card (parallel with concurrency limit)
+  const predictions: ArenaPrediction[] = [];
+  const CONCURRENCY = 4; // Don't hammer the API
 
-  const consensusPredictions = surviving.filter(p => p.prediction === consensusType);
-  const avgConfidence = consensusPredictions.length > 0 
-    ? consensusPredictions.reduce((s, p) => s + p.confidence, 0) / consensusPredictions.length
-    : 0;
-  const avgEdge = consensusPredictions.length > 0
-    ? consensusPredictions.reduce((s, p) => s + p.edge, 0) / consensusPredictions.length
-    : 0;
+  for (let i = 0; i < cards.length; i += CONCURRENCY) {
+    const batch = cards.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.all(
+      batch.map(card => runPredictionWithCard(
+        card, baseResult
+      ))
+    );
+    predictions.push(...batchResults);
+  }
 
-  const consensus: ConsensusResult = {
-    prediction: consensusType,
-    confidence: Math.round(avgConfidence),
-    edge: Math.round(avgEdge * 10) / 10,
-    agreement: Math.round((consensusPredictions.length / surviving.length) * 100),
-    topReasoning: consensusPredictions[0]?.reasoning || "No clear consensus reached among arena strategies.",
-    surviving,
-    dissenting: arenaPredictions.filter(p => p.fatal || p.prediction !== consensusType)
-  };
+  // 5. Find consensus
+  const consensus = findConsensus(predictions);
 
+  // 6. Attach arena data to result
   return {
-    ...base,
-    predictionType: consensus.prediction,
-    predictionLabel: consensus.prediction === 'NO_BET' ? 'NO CONSENSUS' : consensus.prediction === 'OVER_25' ? 'OVER 2.5 (CONSENSUS)' : 'UNDER 2.5 (CONSENSUS)',
-    edge: consensus.edge,
+    ...baseResult,
     arena: {
-      predictions: arenaPredictions,
-      consensus
+      consensus,
+      predictions: predictions.sort((a, b) => b.weightedTotal - a.weightedTotal),
     }
   };
 }

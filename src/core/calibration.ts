@@ -170,8 +170,7 @@ export function fitDixonColesWithStrategy(
     'built-to-last': baseLr * 1.1,
   } as Record<string, number>)[strategy] || baseLr;
 
-  // Note: Regularization is currently internal to fitDixonColes.
-  // In a full refactor we would pass strategyReg as a parameter.
+  // Call the base fitting with modified learning rate
   return fitDixonColes(matches, iterations, strategyLr);
 }
 

@@ -58,63 +58,75 @@ export const DEFAULT_RHO = -0.13;
 export const HOME_ADVANTAGE_GAMMA = 1.25;
 
 // ═══════════════════════════════════════════════════════════════
-// ARENA SYSTEM CONSTANTS
+// ARENA STRATEGY MODIFIERS
 // ═══════════════════════════════════════════════════════════════
 
 /**
  * Strategy-specific parameter modifiers
  * Each strategy adjusts the base model parameters differently
  */
-export const STRATEGY_MODIFIERS = {
-  'simplest': { edgeThreshold: 0.03, kellyFraction: 0.25, confidenceMultiplier: 0.9 },
-  'maximal-rigour': { edgeThreshold: 0.02, kellyFraction: 0.40, confidenceMultiplier: 1.1 },
-  'user-empathy': { edgeThreshold: 0.03, kellyFraction: 0.30, confidenceMultiplier: 1.0 },
-  'edge-cases-first': { edgeThreshold: 0.04, kellyFraction: 0.20, confidenceMultiplier: 0.85 },
-  'speed': { edgeThreshold: 0.03, kellyFraction: 0.35, confidenceMultiplier: 0.9 },
-  'defensive': { edgeThreshold: 0.05, kellyFraction: 0.15, confidenceMultiplier: 0.8 },
-  'clarity': { edgeThreshold: 0.03, kellyFraction: 0.30, confidenceMultiplier: 1.0 },
-  'completeness': { edgeThreshold: 0.025, kellyFraction: 0.35, confidenceMultiplier: 1.05 },
-  'fewest-moving-parts': { edgeThreshold: 0.03, kellyFraction: 0.30, confidenceMultiplier: 0.95 },
-  'explicit-trade-offs': { edgeThreshold: 0.03, kellyFraction: 0.30, confidenceMultiplier: 1.0 },
-  'built-to-last': { edgeThreshold: 0.025, kellyFraction: 0.35, confidenceMultiplier: 1.05 },
-  'concrete-specifics': { edgeThreshold: 0.03, kellyFraction: 0.30, confidenceMultiplier: 1.0 },
-} as const;
+export const STRATEGY_MODIFIERS: Record<string, {
+  edgeThreshold: number;
+  kellyFraction: number;
+  confidenceMultiplier: number;
+}> = {
+  'simplest':            { edgeThreshold: 0.03,  kellyFraction: 0.25, confidenceMultiplier: 0.90 },
+  'maximal-rigour':      { edgeThreshold: 0.02,  kellyFraction: 0.40, confidenceMultiplier: 1.10 },
+  'user-empathy':        { edgeThreshold: 0.03,  kellyFraction: 0.30, confidenceMultiplier: 1.00 },
+  'edge-cases-first':    { edgeThreshold: 0.04,  kellyFraction: 0.20, confidenceMultiplier: 0.85 },
+  'speed':               { edgeThreshold: 0.03,  kellyFraction: 0.35, confidenceMultiplier: 0.90 },
+  'defensive':           { edgeThreshold: 0.05,  kellyFraction: 0.15, confidenceMultiplier: 0.80 },
+  'clarity':             { edgeThreshold: 0.03,  kellyFraction: 0.30, confidenceMultiplier: 1.00 },
+  'completeness':        { edgeThreshold: 0.025, kellyFraction: 0.35, confidenceMultiplier: 1.05 },
+  'fewest-moving-parts': { edgeThreshold: 0.03,  kellyFraction: 0.30, confidenceMultiplier: 0.95 },
+  'explicit-trade-offs': { edgeThreshold: 0.03,  kellyFraction: 0.30, confidenceMultiplier: 1.00 },
+  'built-to-last':       { edgeThreshold: 0.025, kellyFraction: 0.35, confidenceMultiplier: 1.05 },
+  'concrete-specifics':  { edgeThreshold: 0.03,  kellyFraction: 0.30, confidenceMultiplier: 1.00 },
+};
 
 /**
  * Workflow-specific adjustments
  */
-export const WORKFLOW_MODIFIERS = {
-  'draft-critique-rewrite': { rhoAdjust: 0, uncertaintyAdjust: 0 },
-  'outline-first': { rhoAdjust: 0, uncertaintyAdjust: -0.02 },
-  'test-first': { rhoAdjust: -0.02, uncertaintyAdjust: -0.03 },
-  'research-then-synthesise': { rhoAdjust: 0.01, uncertaintyAdjust: 0.02 },
-  'three-drafts': { rhoAdjust: 0.01, uncertaintyAdjust: 0 },
-  'requirements-checklist': { rhoAdjust: 0, uncertaintyAdjust: -0.01 },
-  'iterative-deepening': { rhoAdjust: 0, uncertaintyAdjust: 0.01 },
-  'build-then-break': { rhoAdjust: -0.01, uncertaintyAdjust: -0.02 },
-  'smallest-version-first': { rhoAdjust: 0, uncertaintyAdjust: -0.02 },
-  'options-matrix': { rhoAdjust: 0.01, uncertaintyAdjust: 0 },
-  'open-questions-first': { rhoAdjust: 0, uncertaintyAdjust: 0.01 },
-  'write-then-restructure': { rhoAdjust: 0, uncertaintyAdjust: 0 },
-} as const;
+export const WORKFLOW_MODIFIERS: Record<string, {
+  rhoAdjust: number;
+  uncertaintyAdjust: number;
+}> = {
+  'draft-critique-rewrite':   { rhoAdjust:  0.00, uncertaintyAdjust:  0.00 },
+  'outline-first':            { rhoAdjust:  0.00, uncertaintyAdjust: -0.02 },
+  'test-first':               { rhoAdjust: -0.02, uncertaintyAdjust: -0.03 },
+  'research-then-synthesise': { rhoAdjust:  0.01, uncertaintyAdjust:  0.02 },
+  'three-drafts':             { rhoAdjust:  0.01, uncertaintyAdjust:  0.00 },
+  'requirements-checklist':   { rhoAdjust:  0.00, uncertaintyAdjust: -0.01 },
+  'iterative-deepening':      { rhoAdjust:  0.00, uncertaintyAdjust:  0.01 },
+  'build-then-break':         { rhoAdjust: -0.01, uncertaintyAdjust: -0.02 },
+  'smallest-version-first':   { rhoAdjust:  0.00, uncertaintyAdjust: -0.02 },
+  'options-matrix':           { rhoAdjust:  0.01, uncertaintyAdjust:  0.00 },
+  'open-questions-first':     { rhoAdjust:  0.00, uncertaintyAdjust:  0.01 },
+  'write-then-restructure':   { rhoAdjust:  0.00, uncertaintyAdjust:  0.00 },
+};
 
 /**
  * Reasoning mode parameter adjustments
  */
-export const REASONING_MODIFIERS = {
-  'first-principles': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0 },
-  'inversion': { lambdaAdjust: -0.1, muAdjust: -0.1, formWeight: 0.1 },
-  'analogy': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0.2 },
-  'adversarial': { lambdaAdjust: 0.05, muAdjust: 0.05, formWeight: 0.15 },
-  'constraint-first': { lambdaAdjust: -0.05, muAdjust: -0.05, formWeight: 0.05 },
-  'worked-example': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0.25 },
-  'socratic': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0.3 },
-  'contrarian': { lambdaAdjust: -0.15, muAdjust: -0.15, formWeight: 0.1 },
-  'systems-thinking': { lambdaAdjust: 0.05, muAdjust: 0.05, formWeight: 0.2 },
-  'decomposition': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0.15 },
-  'working-backwards': { lambdaAdjust: 0.1, muAdjust: 0.1, formWeight: 0.1 },
-  'probabilistic': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0.05 },
-  'dialectical': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0.2 },
-  'evidence-first': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0 },
-  'expert-panel': { lambdaAdjust: 0.05, muAdjust: 0.05, formWeight: 0.25 },
-} as const;
+export const REASONING_MODIFIERS: Record<string, {
+  lambdaAdjust: number;
+  muAdjust: number;
+  formWeight: number;
+}> = {
+  'first-principles':  { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.00 },
+  'inversion':         { lambdaAdjust: -0.10, muAdjust: -0.10, formWeight: 0.10 },
+  'analogy':           { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.20 },
+  'adversarial':       { lambdaAdjust:  0.05, muAdjust:  0.05, formWeight: 0.15 },
+  'constraint-first':  { lambdaAdjust: -0.05, muAdjust: -0.05, formWeight: 0.05 },
+  'worked-example':    { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.25 },
+  'socratic':          { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.30 },
+  'contrarian':        { lambdaAdjust: -0.15, muAdjust: -0.15, formWeight: 0.10 },
+  'systems-thinking':  { lambdaAdjust:  0.05, muAdjust:  0.05, formWeight: 0.20 },
+  'decomposition':     { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.15 },
+  'working-backwards': { lambdaAdjust:  0.10, muAdjust:  0.10, formWeight: 0.10 },
+  'probabilistic':     { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.05 },
+  'dialectical':       { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.20 },
+  'evidence-first':    { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.00 },
+  'expert-panel':      { lambdaAdjust:  0.05, muAdjust:  0.05, formWeight: 0.25 },
+};
+

@@ -4,8 +4,8 @@ import { normalizeLeagueToId, inferSeason } from '../utils';
 import { DataSource, Provenance } from '../../types';
 
 function getApiKey() {
-  const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env || {};
-  const rawKey = env.API_FOOTBALL_KEY || env.VITE_API_FOOTBALL_KEY || '';
+  const env = process.env || {};
+  const rawKey = env.API_FOOTBALL_KEY || '';
   let key = rawKey.trim();
   
   // Strip surrounding quotes
@@ -38,11 +38,7 @@ export class ApiFootballProvider {
   }
 
   async fetchFixtures(league: string, limit: number, status: 'NS' | 'FT' = 'NS') {
-    const { baseUrl, headers, isRapid } = this.getRequestConfig();
-
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[ApiFootball] Fetching fixtures from ${isRapid ? 'RapidAPI' : 'Direct'} host.`);
-    }
+    const { baseUrl, headers } = this.getRequestConfig();
 
     const leagueId = normalizeLeagueToId(league);
     const season = inferSeason();
@@ -86,11 +82,7 @@ export class ApiFootballProvider {
   }
 
   async fetchTeamStats(teamId: number, leagueId: number, season: number) {
-    const { baseUrl, headers, isRapid } = this.getRequestConfig();
-
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[ApiFootball] Fetching team stats from ${isRapid ? 'RapidAPI' : 'Direct'} host.`);
-    }
+    const { baseUrl, headers } = this.getRequestConfig();
 
     const data = await fetchWithRetry<any>(
       this.source,

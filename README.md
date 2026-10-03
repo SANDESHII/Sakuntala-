@@ -1,16 +1,16 @@
 # Alpha Terminal
 
-Football prediction system using Dixon-Coles statistical modeling. Focused on Over 2.5 and Under 2.5 Goal Markets.
+Professional-grade football analytical terminal utilizing Dixon-Coles Poisson modeling and MLE parameter fitting for over/under market prediction.
 
 ## Core Features
 - Dixon-Coles statistical engine
-- Monte Carlo simulations
-- Kelly criterion stake calculation
-- Historical backtesting module
-- Live fixtures, odds & team stats via API
+- Maximum Likelihood Estimation (MLE) parameter calibration
+- Kelly criterion stake optimization
+- Integrated historical audit (backtesting)
+- Live fixtures, odds & team stats via unified API layer
 
 ## API Endpoints
-- `GET /api/fixtures?league=EPL`
-- `GET /api/odds?league=EPL`
-- `GET /api/stats?team=Arsenal&league=EPL`
-- `GET /api/predict?home=Arsenal&away=Chelsea&league=EPL`
+- `GET /api/fixtures?league=EPL` - Fetch upcoming matches
+- `GET /api/odds?league=EPL` - Fetch live market liquidity
+- `POST /api/predict` - Execute full Dixon-Coles analysis
+- `GET /api/backtest` - Run historical model grounding

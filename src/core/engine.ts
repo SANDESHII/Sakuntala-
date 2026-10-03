@@ -1,5 +1,5 @@
-import { AnalysisResult, InternalTeamData, HistoricalMatch } from '../types';
-import { TEAM_STATS, LEAGUE_CONFIGS, BASE_GOALS, DEFAULT_RHO } from './constants';
+import { AnalysisResult, InternalTeamData, HistoricalMatch, ArenaConfig, ArenaPrediction, ConsensusResult } from '../types';
+import { TEAM_STATS, LEAGUE_CONFIGS, BASE_GOALS, DEFAULT_RHO, STRATEGY_MODIFIERS, WORKFLOW_MODIFIERS, REASONING_MODIFIERS } from './constants';
 import { DixonColes } from './math';
 import * as FreeDataService from '../services/freeDataService';
 import * as Calibration from './calibration';
@@ -81,9 +81,9 @@ async function resolveTeamData(
     isGeneric: true,
     dataSource: 'FALLBACK_STATIC',
     data: {
-      attackStrength: 1.15,
-      defenseStrength: 0.90,
-      avgGoalsScored: 1.45,
+      attackStrength: 1.0,
+      defenseStrength: 1.0,
+      avgGoalsScored: 1.35,
       avgGoalsConceded: 1.35,
       homeAdvantageHeuristic: leagueConfig.homeAdvantage,
       form: [1, 1, 1, 1, 1],
@@ -113,8 +113,14 @@ function runHeuristicModel(
   const blendedHomeAdv = (leagueConfig.homeAdvantage * 0.6) + (homeData.homeAdvantageHeuristic * 0.4);
   
   // Base xG calculation
-  let lambdaHome = homeData.attackStrength * awayData.defenseStrength * leagueAvg * (1 + blendedHomeAdv * MODEL_CONFIG.HOME_ADVANTAGE_WEIGHT);
-  let muAway = awayData.attackStrength * homeData.defenseStrength * leagueAvg * (1 - leagueConfig.homeAdvantage * MODEL_CONFIG.AWAY_DEFENSE_WEIGHT);
+  // All strengths are league-average multipliers (1.0 = average)
+  const homeAttack = homeData.attackStrength;
+  const awayDefense = awayData.defenseStrength;
+  const awayAttack = awayData.attackStrength;
+  const homeDefense = homeData.defenseStrength;
+
+  let lambdaHome = homeAttack * awayDefense * leagueAvg * (1 + blendedHomeAdv * MODEL_CONFIG.HOME_ADVANTAGE_WEIGHT);
+  let muAway = awayAttack * homeDefense * leagueAvg * (1 - leagueConfig.homeAdvantage * MODEL_CONFIG.AWAY_DEFENSE_WEIGHT);
 
   // Sanity clamping
   lambdaHome = Math.max(MODEL_CONFIG.MIN_LAMBDA, Math.min(MODEL_CONFIG.MAX_LAMBDA, lambdaHome));
@@ -188,9 +194,6 @@ export async function runPrediction(
   probOver25 = DixonColes.calculateOverUnder(scoreMatrix, 2.5);
   probUnder25 = 1 - DixonColes.calculateOverUnder(scoreMatrix, 2.5);
 
-  // Monte Carlo Simulation for Uncertainty Propagation (Optimized iterations for speed)
-  const mcResults = DixonColes.runMonteCarlo(lambdaHome, muAway, finalRho, 4000, 0.12);
-
   // Goal Distribution Calculation
   const distribution: { goals: string; probability: number }[] = [
     { goals: '0', probability: 0 },
@@ -214,18 +217,19 @@ export async function runPrediction(
   distribution.forEach(d => d.probability = Math.round(d.probability * 100));
 
   // Market odds resolution
-  let marketOddsOver25 = 1.05 / probOver25; 
-  let marketOddsUnder25 = 1.05 / probUnder25; 
+  let marketOddsOver25: number | null = null;
+  let marketOddsUnder25: number | null = null;
   let over25Real = false;
   let under25Real = false;
   let matchOdds: any = null;
-
-  over25Real = !!historicalOddsOverride?.over25?.bestPrice;
-  under25Real = !!historicalOddsOverride?.under25?.bestPrice;
+  let marketSource: 'THE_ODDS_API' | 'HISTORICAL' | 'NONE' = 'NONE';
 
   if (historicalOddsOverride) {
-    marketOddsOver25 = historicalOddsOverride.over25?.bestPrice || marketOddsOver25;
-    marketOddsUnder25 = historicalOddsOverride.under25?.bestPrice || marketOddsUnder25;
+    marketOddsOver25 = historicalOddsOverride.over25?.bestPrice || null;
+    marketOddsUnder25 = historicalOddsOverride.under25?.bestPrice || null;
+    over25Real = !!marketOddsOver25;
+    under25Real = !!marketOddsUnder25;
+    marketSource = 'HISTORICAL';
   } else {
     matchOdds = liveOdds.find((o: any) => {
       try {
@@ -238,17 +242,18 @@ export async function runPrediction(
     });
 
     if (matchOdds) {
+      marketSource = 'THE_ODDS_API';
       matchOdds.bookmakers.forEach((bm: any) => {
         const market = bm.markets.find((m: any) => m.key === 'totals');
         if (market) {
           const o25 = market.outcomes.find((o: any) => o.name === 'Over' && o.point === 2.5);
           const u25 = market.outcomes.find((o: any) => o.name === 'Under' && o.point === 2.5);
           
-          if (o25 && (!over25Real || o25.price > marketOddsOver25)) {
+          if (o25 && (!marketOddsOver25 || o25.price > marketOddsOver25)) {
             marketOddsOver25 = o25.price;
             over25Real = true;
           }
-          if (u25 && (!under25Real || u25.price > marketOddsUnder25)) {
+          if (u25 && (!marketOddsUnder25 || u25.price > marketOddsUnder25)) {
             marketOddsUnder25 = u25.price;
             under25Real = true;
           }
@@ -258,8 +263,8 @@ export async function runPrediction(
   }
 
   // Market edge computed against raw bookmaker price (bestPrice). 
-  const over25Edge = probOver25 - (1 / marketOddsOver25);
-  const under25Edge = probUnder25 - (1 / marketOddsUnder25);
+  const over25Edge = marketOddsOver25 ? probOver25 - (1 / marketOddsOver25) : -1;
+  const under25Edge = marketOddsUnder25 ? probUnder25 - (1 / marketOddsUnder25) : -1;
 
   // Adaptive Threshold Logic
   const getThreshold = (edgeVal: number) => {
@@ -281,16 +286,16 @@ export async function runPrediction(
   // Result arbitration
   let predictionType: 'OVER_25' | 'UNDER_25' | 'NO_BET' = 'NO_BET';
   let probability = probOver25 > probUnder25 ? Math.round(probOver25 * 100) : Math.round(probUnder25 * 100);
-  let edge = 0;
-  let marketOdds = probOver25 > probUnder25 ? marketOddsOver25 : marketOddsUnder25;
+  let edge: number | null = null;
+  let marketOdds: number | null = null;
 
   if (!isLowConfidence) {
-    if (over25Edge > under25Edge && over25Edge > currentOverThreshold) {
+    if (over25Edge > under25Edge && over25Edge > currentOverThreshold && marketOddsOver25) {
       predictionType = 'OVER_25';
       probability = Math.round(probOver25 * 100);
       edge = Math.round(over25Edge * 1000) / 10;
       marketOdds = marketOddsOver25;
-    } else if (under25Edge > currentUnderThreshold) {
+    } else if (under25Edge > currentUnderThreshold && marketOddsUnder25) {
       predictionType = 'UNDER_25';
       probability = Math.round(probUnder25 * 100);
       edge = Math.round(under25Edge * 1000) / 10;
@@ -302,15 +307,15 @@ export async function runPrediction(
   const chosenMarketReal = predictionType === 'OVER_25' ? over25Real
     : predictionType === 'UNDER_25' ? under25Real : false;
   
-  if (!chosenMarketReal) edge = 0;
+  if (!chosenMarketReal) edge = null;
 
   const predictionLabel = predictionType === 'NO_BET' ? 'NO EDGE DETECTED' : predictionType === 'OVER_25' ? 'OVER 2.5 GOALS' : 'UNDER 2.5 GOALS';
   
   // Kelly precision
   const p = predictionType === 'OVER_25' ? probOver25 : predictionType === 'UNDER_25' ? probUnder25 : probability / 100;
   const q = 1 - p;
-  const b = marketOdds - 1;
-  const kellyFraction = edge > 0 ? Math.min(0.05, ((p * b - q) / b) * MODEL_CONFIG.KELLY_FRACTION) * 100 : 0;
+  const b = (marketOdds || 0) - 1;
+  const kellyFraction = (edge && edge > 0 && b > 0) ? Math.min(0.05, ((p * b - q) / b) * MODEL_CONFIG.KELLY_FRACTION) * 100 : 0;
   
   const mapStats = (name: string, data: InternalTeamData) => ({
     name: name.toUpperCase(),
@@ -324,7 +329,7 @@ export async function runPrediction(
     homeAwayBias: data.homeAdvantageHeuristic,
   });
 
-  const baseSummary = generateSummary(homeTeam, awayTeam, predictionType, lambdaHome, muAway, edge, modelSource, isLowConfidence);
+  const baseSummary = generateSummary(homeTeam, awayTeam, predictionType, lambdaHome, muAway, edge || 0, modelSource, isLowConfidence);
   let finalSummary = baseSummary;
 
   // Append warnings with consistent formatting
@@ -348,15 +353,13 @@ export async function runPrediction(
     awayStats: mapStats(awayTeam, awayRes.data),
     homeExpectedGoals: lambdaHome,
     awayExpectedGoals: muAway,
-    minimumExpectancy: Math.round((lambdaHome + muAway) * 100) / 100,
-    heuristicCeiling: Math.round((lambdaHome + muAway + 1.5) * 100) / 100,
     predictionType,
     predictionLabel,
     marketOdds,
-    marketImpliedProb: Math.round((1 / marketOdds) * 1000) / 10,
+    marketImpliedProb: marketOdds ? Math.round((1 / marketOdds) * 1000) / 10 : null,
     edge,
     recommendedStake: Math.max(0, Math.round(kellyFraction * 10) / 10),
-    verdict: (chosenMarketReal && edge > 3 && !isLowConfidence) ? 'EXECUTE_BET' : 'NO_BET',
+    verdict: (chosenMarketReal && edge && edge > 3 && !isLowConfidence) ? 'EXECUTE_BET' : 'NO_BET',
     context: {
       league: leagueKey,
       homeSeasonGoals: homeRes.data.avgGoalsScored * 20,
@@ -366,7 +369,11 @@ export async function runPrediction(
       homeAttackRating: Math.round(homeRes.data.attackStrength * 5),
       awayAttackRating: Math.round(awayRes.data.attackStrength * 5),
       date: asOfDate || new Date().toISOString().split('T')[0],
-      marketOdds: { pinnacleOver25: marketOddsOver25, pinnacleUnder25: marketOddsUnder25 },
+      marketOdds: { 
+        pinnacleOver25: marketOddsOver25, 
+        pinnacleUnder25: marketOddsUnder25,
+        source: marketSource
+      },
     },
     dataSource,
     modelSource,
@@ -375,17 +382,140 @@ export async function runPrediction(
     isThresholdAdaptive: !!adaptiveThresholdContext,
     usedRealOdds: chosenMarketReal,
     goalDistribution: distribution,
-    scoreMatrix: scoreMatrix.slice(0, 6).map(row => row.slice(0, 6)),
-    monteCarlo: {
-      ...mcResults,
-      iterations: 4000,
-      uncertainty: 0.12
-    }
+    scoreMatrix: scoreMatrix.slice(0, 6).map(row => row.slice(0, 6))
   };
 } catch (err: any) {
   console.error('[Engine] Prediction execution failure:', err);
   throw new Error(`Prediction processing failed: ${err.message}`);
 }
+}
+
+/**
+ * ARENA SYSTEM: Multi-strategy consensus engine
+ * Runs config.cardCount parallel analyses using unique strategy combinations
+ */
+export async function runArenaPrediction(
+  homeTeam: string,
+  awayTeam: string,
+  league: string,
+  config: ArenaConfig,
+  fittedOverride: any = null,
+  oddsOverride: any = null,
+  thresholdContext: any = null,
+  asOfDate?: string,
+  fixtureCache?: any
+): Promise<AnalysisResult> {
+  // 1. Get base prediction first (for metadata and odds)
+  const base = await runPrediction(homeTeam, awayTeam, league, fittedOverride, oddsOverride, thresholdContext, asOfDate, fixtureCache);
+  
+  if (!config.enableArena) return base;
+
+  const strategies = Object.keys(STRATEGY_MODIFIERS);
+  const workflows = Object.keys(WORKFLOW_MODIFIERS);
+  const reasoningModes = Object.keys(REASONING_MODIFIERS);
+
+  const arenaPredictions: ArenaPrediction[] = [];
+
+  // Generate parallel strategy cards
+  for (let i = 0; i < config.cardCount; i++) {
+    const sId = strategies[Math.floor(Math.random() * strategies.length)];
+    const wId = workflows[Math.floor(Math.random() * workflows.length)];
+    const rId = reasoningModes[Math.floor(Math.random() * reasoningModes.length)];
+
+    const strategy = (STRATEGY_MODIFIERS as any)[sId];
+    const workflow = (WORKFLOW_MODIFIERS as any)[wId];
+    const reasoning = (REASONING_MODIFIERS as any)[rId];
+
+    // Calculate strategy-adjusted metrics
+    const adjLambda = Math.max(0.3, base.homeExpectedGoals + (reasoning.lambdaAdjust || 0));
+    const adjMu = Math.max(0.2, base.awayExpectedGoals + (reasoning.muAdjust || 0));
+    const adjRho = Math.min(0, Math.max(-0.4, DEFAULT_RHO + (workflow.rhoAdjust || 0)));
+
+    const scoreMatrix = DixonColes.calculateScoreMatrix(adjLambda, adjMu, adjRho);
+    const probOver = DixonColes.calculateOverUnder(scoreMatrix, 2.5);
+    const probUnder = 1 - probOver;
+
+    const marketOdds = base.marketOdds;
+    const overEdge = marketOdds ? probOver - (1 / marketOdds) : 0;
+    const underEdge = marketOdds ? probUnder - (1 / marketOdds) : 0;
+
+    let prediction: 'OVER_25' | 'UNDER_25' | 'NO_BET' = 'NO_BET';
+    let edge = 0;
+    const threshold = strategy.edgeThreshold || 0.03;
+
+    if (overEdge > threshold) {
+      prediction = 'OVER_25';
+      edge = overEdge;
+    } else if (underEdge > threshold) {
+      prediction = 'UNDER_25';
+      edge = underEdge;
+    }
+
+    // Heuristic scoring for the strategy
+    const correctness = prediction === base.predictionType ? 100 : 40;
+    const robustness = 100 - (Math.abs(workflow.uncertaintyAdjust || 0) * 500);
+    const specificity = 85 + (Math.random() * 15);
+    const completeness = 90;
+    const clarity = 95;
+
+    const weightedTotal = (correctness * 0.4) + (robustness * 0.2) + (specificity * 0.15) + (completeness * 0.15) + (clarity * 0.1);
+
+    arenaPredictions.push({
+      card: {
+        strategy: { id: sId, name: sId, how: 'Adjustment of threshold and Kelly sizing', footballApplication: 'Risk management' },
+        workflow: { id: wId, name: wId, how: 'Adjustment of correlation and uncertainty', footballApplication: 'Match flow modeling' },
+        reasoning: { id: rId, name: rId, how: 'Direct adjustment of expected goals', footballApplication: 'Offensive/Defensive bias' }
+      },
+      prediction,
+      edge: Math.round(edge * 1000) / 10,
+      confidence: Math.round(weightedTotal),
+      reasoning: `Analysis via ${rId} reasoning and ${wId} workflow suggests ${prediction === 'NO_BET' ? 'no clear edge' : `a ${prediction} orientation`} with ${strategy.confidenceMultiplier}x confidence weighting.`,
+      scores: { correctness, completeness, robustness, specificity, clarity },
+      weightedTotal,
+      fatal: weightedTotal < 60,
+      lambdaHome: adjLambda,
+      muAway: adjMu
+    });
+  }
+
+  // 3. Calculate Consensus
+  const surviving = arenaPredictions.filter(p => !p.fatal);
+  const overVotes = surviving.filter(p => p.prediction === 'OVER_25');
+  const underVotes = surviving.filter(p => p.prediction === 'UNDER_25');
+  const noBetVotes = surviving.filter(p => p.prediction === 'NO_BET');
+
+  let consensusType: 'OVER_25' | 'UNDER_25' | 'NO_BET' = 'NO_BET';
+  if (overVotes.length > underVotes.length && overVotes.length > noBetVotes.length) consensusType = 'OVER_25';
+  if (underVotes.length > overVotes.length && underVotes.length > noBetVotes.length) consensusType = 'UNDER_25';
+
+  const consensusPredictions = surviving.filter(p => p.prediction === consensusType);
+  const avgConfidence = consensusPredictions.length > 0 
+    ? consensusPredictions.reduce((s, p) => s + p.confidence, 0) / consensusPredictions.length
+    : 0;
+  const avgEdge = consensusPredictions.length > 0
+    ? consensusPredictions.reduce((s, p) => s + p.edge, 0) / consensusPredictions.length
+    : 0;
+
+  const consensus: ConsensusResult = {
+    prediction: consensusType,
+    confidence: Math.round(avgConfidence),
+    edge: Math.round(avgEdge * 10) / 10,
+    agreement: Math.round((consensusPredictions.length / surviving.length) * 100),
+    topReasoning: consensusPredictions[0]?.reasoning || "No clear consensus reached among arena strategies.",
+    surviving,
+    dissenting: arenaPredictions.filter(p => p.fatal || p.prediction !== consensusType)
+  };
+
+  return {
+    ...base,
+    predictionType: consensus.prediction,
+    predictionLabel: consensus.prediction === 'NO_BET' ? 'NO CONSENSUS' : consensus.prediction === 'OVER_25' ? 'OVER 2.5 (CONSENSUS)' : 'UNDER 2.5 (CONSENSUS)',
+    edge: consensus.edge,
+    arena: {
+      predictions: arenaPredictions,
+      consensus
+    }
+  };
 }
 
 function generateSummary(
@@ -525,7 +655,7 @@ export async function runBacktest() {
             probability: prediction.probability,
             rawProbability: prediction.rawProbability
           },
-          marketEdge: prediction.edge / 100,
+          marketEdge: prediction.edge !== null ? prediction.edge / 100 : null,
           isOver25Correct,
           isUnder25Correct,
           pnl: 0,
@@ -534,7 +664,7 @@ export async function runBacktest() {
           takenOdds: prediction.marketOdds
         });
 
-        if (prediction.predictionType === 'NO_BET') continue;
+        if (prediction.predictionType === 'NO_BET' || prediction.marketOdds === null || prediction.edge === null) continue;
 
         // PnL & CLV Calculation
         const currentMatch = matches[matches.length - 1];

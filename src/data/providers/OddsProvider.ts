@@ -2,8 +2,8 @@ import { fetchWithRetry } from '../http/client';
 import { HistoricalPrices, DataGapError, DataSource } from '../../types';
 
 function getApiKey() {
-  const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env || {};
-  const rawKey = env.API_ODDS_KEY || env.ODDS_API_KEY || env.VITE_ODDS_API_KEY || '';
+  const env = process.env || {};
+  const rawKey = env.ODDS_API_KEY || '';
   let key = rawKey.trim();
   
   // Strip surrounding quotes

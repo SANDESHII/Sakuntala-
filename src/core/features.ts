@@ -15,8 +15,8 @@ export class FeatureEngine {
       return {
         attackStrength: 1.0,
         defenseStrength: 1.0,
-        avgGoalsScored: 1.3,
-        avgGoalsConceded: 1.3,
+        avgGoalsScored: 1.35,
+        avgGoalsConceded: 1.35,
         homeAdvantageHeuristic: 0.3,
         form: [1, 1, 1, 1, 1],
         cleanSheetRate: 0.25,
@@ -32,10 +32,10 @@ export class FeatureEngine {
 
     if (relevant.length < 5) {
       return {
-        attackStrength: 1.1,
+        attackStrength: 1.0,
         defenseStrength: 1.0,
-        avgGoalsScored: 1.4,
-        avgGoalsConceded: 1.4,
+        avgGoalsScored: 1.35,
+        avgGoalsConceded: 1.35,
         homeAdvantageHeuristic: 0.3,
         form: [1, 1, 1, 1, 1],
         cleanSheetRate: 0.25,
@@ -69,6 +69,37 @@ export class FeatureEngine {
       form,
       cleanSheetRate: cleanSheets / played,
       quality: played >= 5 ? 'high' : 'medium'
+    };
+  }
+
+  /**
+   * Workflow-adjusted feature computation
+   * Different workflows weight recent form differently
+   */
+  static async computeFeaturesWithWorkflow(
+    teamName: string,
+    league: string,
+    asOfDate: string,
+    workflow: string,
+    history?: HistoricalMatch[]
+  ): Promise<InternalTeamData> {
+    const baseFeatures = await this.computeFeatures(teamName, league, asOfDate, history);
+
+    // Workflow-specific form weighting
+    const workflowFormWeight = ({
+      'research-then-synthesise': 0.4, // Weight recent form more
+      'smallest-version-first': 0.2,   // Weight recent form less
+      'iterative-deepening': 0.35,
+      'build-then-break': 0.3,
+    } as Record<string, number>)[workflow] || 0.25;
+
+    // Adjust attack/defense strength based on workflow
+    const formMultiplier = 1 + (workflowFormWeight - 0.25) * 0.2;
+
+    return {
+      ...baseFeatures,
+      attackStrength: baseFeatures.attackStrength * formMultiplier,
+      defenseStrength: baseFeatures.defenseStrength * (2 - formMultiplier),
     };
   }
 }

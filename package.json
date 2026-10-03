@@ -9,10 +9,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
-    "test": "vitest run",
-    "backtest": "tsx scripts/backtest.ts"
+    "test": "vitest run"
   },
   "dependencies": {
+    "@google/genai": "^2.26.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/express": "^5.0.6",
     "axios": "^1.20.0",
@@ -29,7 +29,6 @@
     "@types/node": "^22.14.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@vercel/node": "^5.1.0",
     "@vitejs/plugin-react": "^5.0.0",
     "tailwindcss": "^4.0.0",
     "typescript": "~5.8.2",

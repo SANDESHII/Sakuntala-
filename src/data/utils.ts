@@ -14,12 +14,9 @@ export function normalizeLeagueToId(league: string): number {
     'BUNDESLIGA': 78,
     'SERIE_A': 135,
     'LIGUE_1': 61,
-    'NATIONS_LEAGUE': 5,
-    'UNL': 5,
   };
   
   if (map[normalized]) return map[normalized];
-  if (normalized.includes('NATION')) return 5;
   if (normalized.includes('PREMIER')) return 39;
   
   return 39;
@@ -33,12 +30,9 @@ export function getOddsSportKey(league: string): string {
     'BUNDESLIGA': 'soccer_germany_bundesliga',
     'SERIE_A': 'soccer_italy_serie_a',
     'LIGUE_1': 'soccer_france_ligue_one',
-    'NATIONS_LEAGUE': 'soccer_uefa_nations_league',
-    'UNL': 'soccer_uefa_nations_league',
   };
   
   if (map[normalized]) return map[normalized];
-  if (normalized.includes('NATION')) return 'soccer_uefa_nations_league';
   
   return 'soccer_epl';
 }

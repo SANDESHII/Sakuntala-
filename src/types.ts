@@ -54,8 +54,8 @@ export interface HistoricalMatch {
 }
 
 export interface InternalTeamData {
-  attackStrength: number;
-  defenseStrength: number;
+  attackStrength: number;  // Multiplier on league average (1.0 = average)
+  defenseStrength: number; // Multiplier on league average (1.0 = average)
   avgGoalsScored: number;
   avgGoalsConceded: number;
   homeAdvantageHeuristic: number;
@@ -75,8 +75,9 @@ export interface MatchContext {
   awayAttackRating: number;
   date: string;
   marketOdds: {
-    pinnacleOver25: number;
-    pinnacleUnder25: number;
+    pinnacleOver25: number | null;
+    pinnacleUnder25: number | null;
+    source: 'THE_ODDS_API' | 'HISTORICAL' | 'NONE';
   };
 }
 
@@ -112,14 +113,12 @@ export interface AnalysisResult {
   };
   homeExpectedGoals: number;
   awayExpectedGoals: number;
-  minimumExpectancy: number;
-  heuristicCeiling: number;
   predictionType: 'OVER_25' | 'UNDER_25' | 'NO_BET';
   predictionLabel: string;
   rawProbability: number;
-  marketOdds: number;
-  marketImpliedProb: number;
-  edge: number;
+  marketOdds: number | null;
+  marketImpliedProb: number | null;
+  edge: number | null;
   recommendedStake: number;
   verdict: 'EXECUTE_BET' | 'NO_BET';
   context: MatchContext;
@@ -131,13 +130,71 @@ export interface AnalysisResult {
   usedRealOdds?: boolean;
   goalDistribution?: GoalDistribution[];
   scoreMatrix?: number[][];
-  monteCarlo?: {
-    probOver25: number;
-    probUnder25: number;
-    stdDev: number;
-    iterations: number;
-    uncertainty: number;
+  // Arena Integration
+  arena?: {
+    predictions: ArenaPrediction[];
+    consensus: ConsensusResult;
   };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ARENA SYSTEM TYPES
+// ═══════════════════════════════════════════════════════════════
+
+export interface StrategyCard {
+  reasoning: {
+    id: string;
+    name: string;
+    how: string;
+    footballApplication: string;
+  };
+  workflow: {
+    id: string;
+    name: string;
+    how: string;
+    footballApplication: string;
+  };
+  strategy: {
+    id: string;
+    name: string;
+    how: string;
+    footballApplication: string;
+  };
+}
+
+export interface ArenaPrediction {
+  card: StrategyCard;
+  prediction: 'OVER_25' | 'UNDER_25' | 'NO_BET';
+  confidence: number;
+  edge: number;
+  reasoning: string;
+  scores: {
+    correctness: number;
+    completeness: number;
+    robustness: number;
+    specificity: number;
+    clarity: number;
+  };
+  weightedTotal: number;
+  fatal: boolean;
+  lambdaHome?: number;
+  muAway?: number;
+}
+
+export interface ConsensusResult {
+  prediction: 'OVER_25' | 'UNDER_25' | 'NO_BET';
+  confidence: number;
+  edge: number;
+  agreement: number;
+  topReasoning: string;
+  surviving: ArenaPrediction[];
+  dissenting: ArenaPrediction[];
+}
+
+export interface ArenaConfig {
+  cardCount: number;
+  seed?: number;
+  enableArena: boolean;
 }
 
 export interface FixtureMatch {
@@ -163,13 +220,13 @@ export interface BacktestMatch {
     probability: number;
     rawProbability: number;
   };
-  marketEdge: number;
+  marketEdge: number | null;
   isOver25Correct: boolean;
   isUnder25Correct: boolean;
   pnl: number;
   clv: number;
   stake: number;
-  takenOdds: number;
+  takenOdds: number | null;
   closingOdds?: number;
 }
 

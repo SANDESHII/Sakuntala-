@@ -9,7 +9,7 @@ interface GroundingLogProps {
 
 export const GroundingLog: FC<GroundingLogProps> = ({ analysis }) => {
   const { context } = analysis;
-  const isIntegrityPassed = analysis.edge > 0 && analysis.marketOdds > 1;
+  const isIntegrityPassed = (analysis.edge !== null && analysis.edge > 0) && (analysis.marketOdds !== null && analysis.marketOdds > 1);
 
   return (
     <div className="space-y-12">

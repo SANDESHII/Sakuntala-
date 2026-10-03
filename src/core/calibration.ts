@@ -153,6 +153,28 @@ export function fitDixonColes(
   return { homeAdvantage: gamma, rho, teams: result };
 }
 
+/**
+ * Fit with strategy-specific hyperparameters
+ * Different strategies use different learning rates and regularization
+ */
+export function fitDixonColesWithStrategy(
+  matches: MatchData[],
+  strategy: string,
+  iterations = 500,
+  baseLr = 0.01
+): FittedLeagueParams {
+  // Strategy-specific hyperparameters
+  const strategyLr = ({
+    'maximal-rigour': baseLr * 1.2,
+    'speed': baseLr * 0.8,
+    'built-to-last': baseLr * 1.1,
+  } as Record<string, number>)[strategy] || baseLr;
+
+  // Note: Regularization is currently internal to fitDixonColes.
+  // In a full refactor we would pass strategyReg as a parameter.
+  return fitDixonColes(matches, iterations, strategyLr);
+}
+
 // ── API Integration ────────────────────────────────────────────
 
 const cache: Record<string, { params: FittedLeagueParams; ts: number }> = {};
@@ -223,8 +245,10 @@ export function predictGoals(
   if (!h || !a) return null;
 
   // MLE lambda/mu calculation
-  let lambdaHome = h.attack * a.defense * fitted.homeAdvantage;
-  let muAway = a.attack * h.defense;
+  // Param semantics: attack/defense are multipliers on league average
+  const leagueAvg = 1.35; // Global baseline
+  let lambdaHome = h.attack * a.defense * fitted.homeAdvantage * leagueAvg;
+  let muAway = a.attack * h.defense * leagueAvg;
 
   // Sanity Clamps (consistent with MODEL_CONFIG in engine.ts)
   lambdaHome = Math.max(0.3, Math.min(4.0, lambdaHome));

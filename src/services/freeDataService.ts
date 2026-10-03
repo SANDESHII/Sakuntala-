@@ -4,7 +4,6 @@ import { TeamRegistry } from '../data/identity/registry';
 import { FixtureMatch, HistoricalMatch } from '../types';
 import { inferSeason, normalizeLeagueToId as getLeagueId, getOddsSportKey } from '../data/utils';
 import { LEAGUE_CONFIGS } from '../core/constants';
-import { MOCK_FIXTURES } from '../data/mocks';
 
 const apiFootball = new ApiFootballProvider();
 const oddsApi = new OddsProvider();
@@ -36,15 +35,15 @@ function setCache(key: string, data: any) {
 }
 
 export function isLiveCapable() {
-    const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env || {};
+    const env = process.env || {};
     const getClean = (k?: string) => {
         const trimmed = (k || '').trim();
         if (!trimmed || trimmed === 'undefined' || trimmed === 'null' || trimmed === 'PLACEHOLDER') return '';
         return trimmed;
     };
 
-    const apiFootballKey = getClean(env.VITE_API_FOOTBALL_KEY || env.API_FOOTBALL_KEY);
-    const oddsApiKey = getClean(env.VITE_ODDS_API_KEY || env.API_ODDS_KEY || env.ODDS_API_KEY);
+    const apiFootballKey = getClean(env.API_FOOTBALL_KEY);
+    const oddsApiKey = getClean(env.ODDS_API_KEY);
     
     return !!apiFootballKey && !!oddsApiKey;
 }
@@ -67,8 +66,6 @@ export async function getTeamStats(teamName: string, league: string) {
         const teamId = identity.externalIds.apiFootball;
         
         if (!teamId) {
-            // Log as info, not warning, since it might be a synthetic team
-            console.info(`[FreeData] No live ID for ${teamName}, using fallback.`);
             return null;
         }
 
@@ -100,10 +97,9 @@ export async function getTeamStats(teamName: string, league: string) {
         return result;
     } catch (err: any) {
         if (err.message?.includes('403') || err.message?.includes('subscription')) {
-            console.warn(`[FreeData] Subscription restriction for ${teamName}. Disabling live stats for this team.`);
             subscriptionBlacklist.add(blacklistKey);
         } else {
-            console.warn(`[FreeData] Failed to fetch stats for ${teamName}:`, err.message);
+            // Log only relevant errors or use telemetry
         }
         return null;
     }
@@ -125,10 +121,9 @@ export async function getLiveOdds(league: string) {
         return result;
     } catch (err: any) {
         if (err.message?.includes('401') || err.message?.includes('Invalid API Key')) {
-            console.error('[FreeData] The Odds API key is invalid. Disabling odds for this session.');
             subscriptionBlacklist.add('live_odds');
         } else {
-            console.warn(`[FreeData] Failed to fetch live odds for ${league}:`, err.message);
+            // Log only relevant errors or use telemetry
         }
         return [];
     }
@@ -159,22 +154,10 @@ export async function getUpcomingFixtures(league: string, limit: number = 10): P
         return result;
     } catch (err: any) {
         if (err.message?.includes('403') || err.message?.includes('subscription')) {
-            console.warn(`[FreeData] Subscription restriction for fixtures in ${league}.`);
             subscriptionBlacklist.add(blacklistKey);
-        } else {
-            console.warn(`[FreeData] API Unavailable for ${league}, using mock fixtures:`, err.message);
         }
         
-        const mocks = (MOCK_FIXTURES as any)[league] || [];
-        return mocks.map((f: any) => ({
-            homeTeam: f.home,
-            awayTeam: f.away,
-            homeLogo: null,
-            awayLogo: null,
-            kickoff: f.date,
-            league: league.toUpperCase(),
-            fixtureId: f.id
-        }));
+        return [];
     }
 }
 
@@ -237,27 +220,13 @@ export async function getHistoricalFixtures(league: string, limit: number = 50, 
                 }
                 results.push(matchObj);
             } catch (err) {
-                console.warn(`[FreeData] Skipping fixture ${f.home} vs ${f.away}:`, (err as Error).message);
                 continue;
             }
         }
         setCache(cacheKey, results);
         return results;
     } catch (err) {
-        console.warn(`[FreeData] API Unavailable for historical fixtures of ${league}, using mock historical data:`, (err as Error).message);
-        const mocks = (MOCK_FIXTURES as any)[league] || [];
-        return mocks.map((f: any) => ({
-            home: f.home,
-            away: f.away,
-            homeId: f.homeId,
-            awayId: f.awayId,
-            homeGoals: f.homeGoals,
-            awayGoals: f.awayGoals,
-            league: league.toUpperCase(),
-            date: f.date.split('T')[0],
-            takenPrices: { over25: 1.95, under25: 1.85 },
-            closingPrices: { over25: 1.90, under25: 1.90 }
-        }));
+        return [];
     }
 }
 
@@ -298,7 +267,6 @@ export async function getHistoricalOddsForMatch(league: string, date: string, ho
         setCache(cacheKey, result);
         return result;
     } catch (err) {
-        console.warn(`[FreeData] Failed to fetch odds for ${homeName} vs ${awayName}:`, err);
         return null;
     }
 }

@@ -22,10 +22,6 @@ export const TEAM_STATS: Record<string, {
   'BAYERN': { attackStrength: 1.60, defenseStrength: 0.75, avgGoalsScored: 2.6, avgGoalsConceded: 0.9, homeAdvantageHeuristic: 0.35, form: [3,1,3,3,3], cleanSheetRate: 0.45 },
   'MILAN': { attackStrength: 1.25, defenseStrength: 0.85, avgGoalsScored: 1.7, avgGoalsConceded: 1.1, homeAdvantageHeuristic: 0.30, form: [1,3,0,1,3], cleanSheetRate: 0.32 },
   'INTER': { attackStrength: 1.40, defenseStrength: 0.70, avgGoalsScored: 2.0, avgGoalsConceded: 0.8, homeAdvantageHeuristic: 0.35, form: [3,3,3,1,3], cleanSheetRate: 0.52 },
-  'FINLAND': { attackStrength: 0.85, defenseStrength: 1.15, avgGoalsScored: 0.9, avgGoalsConceded: 1.4, homeAdvantageHeuristic: 0.25, form: [0,1,0,3,0], cleanSheetRate: 0.20 },
-  'ENGLAND': { attackStrength: 1.45, defenseStrength: 0.75, avgGoalsScored: 2.1, avgGoalsConceded: 0.9, homeAdvantageHeuristic: 0.35, form: [3,3,1,3,1], cleanSheetRate: 0.45 },
-  'FRANCE': { attackStrength: 1.50, defenseStrength: 0.70, avgGoalsScored: 2.3, avgGoalsConceded: 0.8, homeAdvantageHeuristic: 0.38, form: [3,1,3,3,3], cleanSheetRate: 0.48 },
-  'BELARUS': { attackStrength: 0.70, defenseStrength: 1.25, avgGoalsScored: 0.7, avgGoalsConceded: 1.6, homeAdvantageHeuristic: 0.20, form: [0,1,1,0,0], cleanSheetRate: 0.15 },
 };
 
 /**
@@ -40,10 +36,6 @@ export const TEAM_ALIASES: Record<string, string> = {
   'SPURS': 'TOTTENHAM',
   'PSG': 'PSG',
   'PARIS SG': 'PSG',
-  'FIN': 'FINLAND',
-  'ENG': 'ENGLAND',
-  'FRA': 'FRANCE',
-  'BLR': 'BELARUS',
 };
 
 export const LEAGUE_CONFIGS: Record<string, any> = {
@@ -52,7 +44,6 @@ export const LEAGUE_CONFIGS: Record<string, any> = {
   'BUNDESLIGA': { goalRate: 1.15, homeAdvantage: 0.28 },
   'SERIE_A': { goalRate: 0.92, homeAdvantage: 0.35 },
   'LIGUE_1': { goalRate: 0.98, homeAdvantage: 0.30 },
-  'NATIONS_LEAGUE': { goalRate: 0.88, homeAdvantage: 0.25 },
   'STANDARD': { goalRate: 1.00, homeAdvantage: 0.28 }
 };
 
@@ -65,3 +56,65 @@ export const TIME_DECAY_PHI = 0.0065;
 export const BASE_GOALS = 1.35;
 export const DEFAULT_RHO = -0.13;
 export const HOME_ADVANTAGE_GAMMA = 1.25;
+
+// ═══════════════════════════════════════════════════════════════
+// ARENA SYSTEM CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Strategy-specific parameter modifiers
+ * Each strategy adjusts the base model parameters differently
+ */
+export const STRATEGY_MODIFIERS = {
+  'simplest': { edgeThreshold: 0.03, kellyFraction: 0.25, confidenceMultiplier: 0.9 },
+  'maximal-rigour': { edgeThreshold: 0.02, kellyFraction: 0.40, confidenceMultiplier: 1.1 },
+  'user-empathy': { edgeThreshold: 0.03, kellyFraction: 0.30, confidenceMultiplier: 1.0 },
+  'edge-cases-first': { edgeThreshold: 0.04, kellyFraction: 0.20, confidenceMultiplier: 0.85 },
+  'speed': { edgeThreshold: 0.03, kellyFraction: 0.35, confidenceMultiplier: 0.9 },
+  'defensive': { edgeThreshold: 0.05, kellyFraction: 0.15, confidenceMultiplier: 0.8 },
+  'clarity': { edgeThreshold: 0.03, kellyFraction: 0.30, confidenceMultiplier: 1.0 },
+  'completeness': { edgeThreshold: 0.025, kellyFraction: 0.35, confidenceMultiplier: 1.05 },
+  'fewest-moving-parts': { edgeThreshold: 0.03, kellyFraction: 0.30, confidenceMultiplier: 0.95 },
+  'explicit-trade-offs': { edgeThreshold: 0.03, kellyFraction: 0.30, confidenceMultiplier: 1.0 },
+  'built-to-last': { edgeThreshold: 0.025, kellyFraction: 0.35, confidenceMultiplier: 1.05 },
+  'concrete-specifics': { edgeThreshold: 0.03, kellyFraction: 0.30, confidenceMultiplier: 1.0 },
+} as const;
+
+/**
+ * Workflow-specific adjustments
+ */
+export const WORKFLOW_MODIFIERS = {
+  'draft-critique-rewrite': { rhoAdjust: 0, uncertaintyAdjust: 0 },
+  'outline-first': { rhoAdjust: 0, uncertaintyAdjust: -0.02 },
+  'test-first': { rhoAdjust: -0.02, uncertaintyAdjust: -0.03 },
+  'research-then-synthesise': { rhoAdjust: 0.01, uncertaintyAdjust: 0.02 },
+  'three-drafts': { rhoAdjust: 0.01, uncertaintyAdjust: 0 },
+  'requirements-checklist': { rhoAdjust: 0, uncertaintyAdjust: -0.01 },
+  'iterative-deepening': { rhoAdjust: 0, uncertaintyAdjust: 0.01 },
+  'build-then-break': { rhoAdjust: -0.01, uncertaintyAdjust: -0.02 },
+  'smallest-version-first': { rhoAdjust: 0, uncertaintyAdjust: -0.02 },
+  'options-matrix': { rhoAdjust: 0.01, uncertaintyAdjust: 0 },
+  'open-questions-first': { rhoAdjust: 0, uncertaintyAdjust: 0.01 },
+  'write-then-restructure': { rhoAdjust: 0, uncertaintyAdjust: 0 },
+} as const;
+
+/**
+ * Reasoning mode parameter adjustments
+ */
+export const REASONING_MODIFIERS = {
+  'first-principles': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0 },
+  'inversion': { lambdaAdjust: -0.1, muAdjust: -0.1, formWeight: 0.1 },
+  'analogy': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0.2 },
+  'adversarial': { lambdaAdjust: 0.05, muAdjust: 0.05, formWeight: 0.15 },
+  'constraint-first': { lambdaAdjust: -0.05, muAdjust: -0.05, formWeight: 0.05 },
+  'worked-example': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0.25 },
+  'socratic': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0.3 },
+  'contrarian': { lambdaAdjust: -0.15, muAdjust: -0.15, formWeight: 0.1 },
+  'systems-thinking': { lambdaAdjust: 0.05, muAdjust: 0.05, formWeight: 0.2 },
+  'decomposition': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0.15 },
+  'working-backwards': { lambdaAdjust: 0.1, muAdjust: 0.1, formWeight: 0.1 },
+  'probabilistic': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0.05 },
+  'dialectical': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0.2 },
+  'evidence-first': { lambdaAdjust: 0, muAdjust: 0, formWeight: 0 },
+  'expert-panel': { lambdaAdjust: 0.05, muAdjust: 0.05, formWeight: 0.25 },
+} as const;

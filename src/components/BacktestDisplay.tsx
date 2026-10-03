@@ -38,32 +38,32 @@ export const BacktestDisplay: FC<BacktestDisplayProps> = ({ summary }) => {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
                 <div className="lg:col-span-8 space-y-8">
                     <h3 className="text-xs font-black text-white uppercase tracking-[0.3em]">Historical Performance Segments</h3>
-                    <div className="bg-neutral-900/30 border border-neutral-900 rounded-[40px] overflow-hidden">
+                    <div className="bg-neutral-900/30 border border-neutral-900 rounded-[48px] overflow-hidden">
                         <table className="w-full text-left">
                             <thead>
                                 <tr className="border-b border-neutral-900">
-                                    <th className="px-8 py-6 text-[10px] font-black text-neutral-600 uppercase tracking-widest">Edge Segment</th>
-                                    <th className="px-8 py-6 text-[10px] font-black text-neutral-600 uppercase tracking-widest">Sample</th>
-                                    <th className="px-8 py-6 text-[10px] font-black text-neutral-600 uppercase tracking-widest">Hit Rate</th>
-                                    <th className="px-8 py-6 text-[10px] font-black text-neutral-600 uppercase tracking-widest">Avg CLV</th>
+                                    <th className="px-10 py-8 text-[10px] font-black text-neutral-600 uppercase tracking-widest">Statistical Segment</th>
+                                    <th className="px-10 py-8 text-[10px] font-black text-neutral-600 uppercase tracking-widest">Sample Size</th>
+                                    <th className="px-10 py-8 text-[10px] font-black text-neutral-600 uppercase tracking-widest">Accuracy</th>
+                                    <th className="px-10 py-8 text-[10px] font-black text-neutral-600 uppercase tracking-widest">Avg CLV</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-neutral-900">
-                                {summary.edgeSegments.map((seg, i) => (
-                                    <tr key={i} className="group hover:bg-white/[0.02] transition-colors">
-                                        <td className="px-8 py-6">
-                                            <span className="text-xs font-black text-white uppercase">{seg.segment}</span>
+                                {summary.edgeSegments.map((seg) => (
+                                    <tr key={seg.segment} className="group hover:bg-white/[0.01] transition-colors">
+                                        <td className="px-10 py-8">
+                                            <span className="text-xs font-black text-white uppercase tracking-tight">{seg.segment}</span>
                                         </td>
-                                        <td className="px-8 py-6 text-xs font-bold text-neutral-500">{seg.count} matches</td>
-                                        <td className="px-8 py-6">
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-xs font-black text-emerald-500">{(seg.hitRate * 100).toFixed(1)}%</span>
-                                                <div className="w-16 h-1 bg-neutral-800 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-emerald-500" style={{ width: `${seg.hitRate * 100}%` }} />
+                                        <td className="px-10 py-8 text-xs font-bold text-neutral-500 tabular-nums">{seg.count} Matches</td>
+                                        <td className="px-10 py-8">
+                                            <div className="flex items-center gap-4">
+                                                <span className="text-xs font-black text-emerald-500 tabular-nums">{(seg.hitRate * 100).toFixed(1)}%</span>
+                                                <div className="w-20 h-1 bg-neutral-900 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]" style={{ width: `${seg.hitRate * 100}%` }} />
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-8 py-6 text-xs font-black text-neutral-400">
+                                        <td className="px-10 py-8 text-xs font-black text-neutral-400 tabular-nums">
                                             {seg.avgClv > 0 ? '+' : ''}{seg.avgClv.toFixed(2)}%
                                         </td>
                                     </tr>

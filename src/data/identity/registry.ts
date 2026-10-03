@@ -15,7 +15,13 @@ function add(identity: TeamIdentity) {
 }
 
 // Initialize
-Object.keys(TEAM_STATS).forEach(canonicalName => {
+const allTeams = new Set([
+  ...Object.keys(TEAM_STATS),
+  ...Object.keys(API_FOOTBALL_MAPPINGS),
+  ...Object.keys(THE_ODDS_API_MAPPINGS)
+]);
+
+allTeams.forEach(canonicalName => {
   add({
     id: canonicalName,
     name: canonicalName,

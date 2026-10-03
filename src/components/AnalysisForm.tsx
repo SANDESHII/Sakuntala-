@@ -10,14 +10,12 @@ interface AnalysisFormProps {
     setAway: (v: string) => void;
     league: string;
     setLeague: (v: string) => void;
-    time: string;
-    setTime: (v: string) => void;
     onAnalyze: () => void;
     loading: boolean;
 }
 
 export const AnalysisForm: FC<AnalysisFormProps> = ({ 
-    home, setHome, away, setAway, league, setLeague, time, setTime, 
+    home, setHome, away, setAway, league, setLeague,
     onAnalyze, loading
 }) => {
     const [fixtures, setFixtures] = useState<FixtureMatch[]>([]);
@@ -33,8 +31,8 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
                 if (!response.ok) throw new Error('Failed to fetch fixtures');
                 const data = await response.json();
                 setFixtures(data);
-            } catch (error) {
-                console.error('Fixture Error:', error);
+            } catch {
+                // Silently fallback to manual entry on data feed interruption
             } finally {
                 setLoadingFixtures(false);
             }
@@ -46,8 +44,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
     const fields = [
         { label: 'Home Side', val: home, set: setHome, placeholder: 'ARSENAL' },
         { label: 'Away Side', val: away, set: setAway, placeholder: 'CHELSEA' },
-        { label: 'League Code', val: league, set: setLeague, placeholder: 'EPL' },
-        { label: 'Market Time', val: time, set: setTime, placeholder: '19:45' }
+        { label: 'League Code', val: league, set: setLeague, placeholder: 'EPL' }
     ];
 
     const handleSubmit = (e: FormEvent) => {
@@ -127,21 +124,19 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
                     </div>
                 ) : fixtures.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {fixtures.map((f, i) => (
+                        {fixtures.map((f) => (
                             <button
-                                key={i}
+                                key={f.fixtureId}
                                 type="button"
                                 onClick={() => {
                                     setHome(f.homeTeam);
                                     setAway(f.awayTeam);
-                                    setTime(new Date(f.kickoff).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
                                 }}
                                 className="group p-6 bg-neutral-900/50 border border-neutral-900 text-left hover:border-emerald-500/50 transition-all rounded-xl"
                             >
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center text-[8px] font-black text-neutral-600 uppercase tracking-tighter">
                                         <span>{new Date(f.kickoff).toLocaleDateString()}</span>
-                                        <span className="text-emerald-500">{new Date(f.kickoff).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                     </div>
                                         <div className="flex items-center gap-2">
                                             <div className="w-4 h-4 flex items-center justify-center bg-neutral-800 rounded-sm overflow-hidden">

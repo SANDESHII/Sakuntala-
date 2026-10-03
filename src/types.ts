@@ -77,7 +77,7 @@ export interface MatchContext {
   marketOdds: {
     pinnacleOver25: number | null;
     pinnacleUnder25: number | null;
-    source: 'THE_ODDS_API' | 'HISTORICAL' | 'NONE';
+    source?: string;
     sourceName?: string;
   };
 }
@@ -131,7 +131,6 @@ export interface AnalysisResult {
   usedRealOdds?: boolean;
   goalDistribution?: GoalDistribution[];
   scoreMatrix?: number[][];
-  // Arena Integration
   arena?: {
     consensus: ConsensusResult;
     predictions: ArenaPrediction[];

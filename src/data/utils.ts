@@ -6,33 +6,16 @@ export function inferSeason(): number {
   return month < 6 ? year - 1 : year;
 }
 
-export function normalizeLeagueToId(league: string): number {
-  const normalized = league.toUpperCase().trim();
-  const map: Record<string, number> = {
-    'EPL': 39,
-    'LA_LIGA': 140,
-    'BUNDESLIGA': 78,
-    'SERIE_A': 135,
-    'LIGUE_1': 61,
-  };
-  
-  if (map[normalized]) return map[normalized];
-  if (normalized.includes('PREMIER')) return 39;
-  
-  return 39;
-}
+export const LEAGUE_MAP: Record<string, { apiId: number; oddsKey: string }> = {
+  'EPL': { apiId: 39, oddsKey: 'soccer_epl' },
+  'LA_LIGA': { apiId: 140, oddsKey: 'soccer_spain_la_liga' },
+  'BUNDESLIGA': { apiId: 78, oddsKey: 'soccer_germany_bundesliga' },
+  'SERIE_A': { apiId: 135, oddsKey: 'soccer_italy_serie_a' },
+  'LIGUE_1': { apiId: 61, oddsKey: 'soccer_france_ligue_one' },
+};
 
-export function getOddsSportKey(league: string): string {
+export function getLeagueConfig(league: string) {
   const normalized = league.toUpperCase().trim();
-  const map: Record<string, string> = {
-    'EPL': 'soccer_epl',
-    'LA_LIGA': 'soccer_spain_la_liga',
-    'BUNDESLIGA': 'soccer_germany_bundesliga',
-    'SERIE_A': 'soccer_italy_serie_a',
-    'LIGUE_1': 'soccer_france_ligue_one',
-  };
-  
-  if (map[normalized]) return map[normalized];
-  
-  return 'soccer_epl';
+  if (normalized.includes('PREMIER')) return LEAGUE_MAP.EPL;
+  return LEAGUE_MAP[normalized] || LEAGUE_MAP.EPL;
 }

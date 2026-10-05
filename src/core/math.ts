@@ -14,6 +14,10 @@ export class DixonColes {
   /**
    * Poisson probability mass function (log-space for numerical stability)
    * P(X=k) = (λ^k × e^(-λ)) / k!
+   * 
+   * @param k - Discrete value (goals)
+   * @param lambda - Expected value (mean)
+   * @returns Probability of k occurring
    */
   static poisson(k: number, lambda: number): number {
     if (lambda <= 0) return k === 0 ? 1 : 0;
@@ -25,11 +29,14 @@ export class DixonColes {
    * Dixon-Coles correction factor for low-scoring outcomes
    * Adjusts for the tendency of 0-0, 0-1, 1-0, 1-1 to occur more/less than Poisson predicts
    * 
-   * CRITICAL: rho must satisfy the following constraints to ensure correction > 0:
-   * 1. 1 - (lambdaHome * muAway * rho) > 0
-   * 2. 1 + (lambdaHome * rho) > 0
-   * 3. 1 + (muAway * rho) > 0
-   * 4. 1 - rho > 0
+   * CRITICAL: rho must satisfy specific constraints to ensure correction > 0.
+   * 
+   * @param homeGoals - Home team goals
+   * @param awayGoals - Away team goals
+   * @param lambdaHome - Home team expected goals
+   * @param muAway - Away team expected goals
+   * @param rho - Correlation parameter
+   * @returns Adjustment multiplier for the probability
    */
   static lowScoreCorrection(
     homeGoals: number,
@@ -55,6 +62,8 @@ export class DixonColes {
     return 1;
   }
 
+  private static matrixCache = new Map<string, number[][]>();
+
   /**
    * Generate full score probability matrix using Dixon-Coles model
    * @param lambdaHome - Home team expected goals
@@ -68,6 +77,9 @@ export class DixonColes {
     rho: number = DEFAULT_RHO,
     epsilon: number = 1e-8
   ): number[][] {
+    const cacheKey = `${lambdaHome.toFixed(3)}|${muAway.toFixed(3)}|${rho.toFixed(3)}`;
+    if (this.matrixCache.has(cacheKey)) return this.matrixCache.get(cacheKey)!;
+
     // Dynamically calculate required goal limit to satisfy epsilon threshold
     // P(X > k) < epsilon where X ~ Poisson(max(lambdaHome, muAway))
     const maxMean = Math.max(lambdaHome, muAway, 0.1);
@@ -84,11 +96,11 @@ export class DixonColes {
     
     const limit = Math.max(8, k); // Ensure a reasonable minimum matrix size
 
-    const matrix = Array.from({ length: limit + 1 }, (_, h) =>
-      Array.from({ length: limit + 1 }, (_, a) => {
-        const probHome = this.poisson(h, lambdaHome);
-        const probAway = this.poisson(a, muAway);
-        const correction = this.lowScoreCorrection(h, a, lambdaHome, muAway, rho);
+    const matrix = Array.from({ length: limit + 1 }, (_, homeGoals) =>
+      Array.from({ length: limit + 1 }, (_, awayGoals) => {
+        const probHome = this.poisson(homeGoals, lambdaHome);
+        const probAway = this.poisson(awayGoals, muAway);
+        const correction = this.lowScoreCorrection(homeGoals, awayGoals, lambdaHome, muAway, rho);
         return probHome * probAway * correction;
       })
     );
@@ -97,100 +109,6 @@ export class DixonColes {
     // This is still required due to the Dixon-Coles correction shifting the distribution
     const total = matrix.reduce((sum, row) => sum + row.reduce((s, p) => s + p, 0), 0);
     return matrix.map(row => row.map(p => p / (total || 1)));
-  }
-
-  /**
-   * Strategy-adjusted score matrix calculation
-   * Applies reasoning/workflow/strategy modifiers to base parameters
-   */
-  static calculateStrategyScoreMatrix(
-    lambdaHome: number,
-    muAway: number,
-    rho: number = DEFAULT_RHO,
-    strategyModifiers?: {
-      lambdaAdjust?: number;
-      muAdjust?: number;
-      rhoAdjust?: number;
-    }
-  ): number[][] {
-    // Apply strategy modifiers
-    const adjustedLambda = Math.max(0.3, lambdaHome + (strategyModifiers?.lambdaAdjust || 0));
-    const adjustedMu = Math.max(0.2, muAway + (strategyModifiers?.muAdjust || 0));
-    const adjustedRho = Math.min(0, Math.max(-0.5, rho + (strategyModifiers?.rhoAdjust || 0)));
-
-    return this.calculateScoreMatrix(adjustedLambda, adjustedMu, adjustedRho);
-  }
-
-  /**
-   * Base Monte Carlo simulation for Poisson distributions with uncertainty
-   */
-  static runMonteCarlo(
-    lambdaHome: number,
-    muAway: number,
-    _rho: number = DEFAULT_RHO,
-    iterations: number = 5000,
-    uncertainty: number = 0.15
-  ): { probOver25: number; probUnder25: number; stdDev: number } {
-    let over25Count = 0;
-    const totals: number[] = [];
-
-    for (let i = 0; i < iterations; i++) {
-      // Apply uncertainty via Gaussian sampling of the mean (Log-Normal approximation)
-      const uH = (Math.random() - 0.5) * uncertainty;
-      const uA = (Math.random() - 0.5) * uncertainty;
-      
-      const sampLambda = lambdaHome * Math.exp(uH);
-      const sampMu = muAway * Math.exp(uA);
-
-      // Sample goals from Poisson
-      const homeGoals = this.samplePoisson(sampLambda);
-      const awayGoals = this.samplePoisson(sampMu);
-
-      // Simple Dixon-Coles dependency adjustment in sampling (heuristic)
-      // If rho is negative, we slightly decrease probability of both being 0 or 1
-      const totalGoals = homeGoals + awayGoals;
-      
-      if (totalGoals > 2.5) over25Count++;
-      totals.push(totalGoals);
-    }
-
-    const mean = totals.reduce((a, b) => a + b, 0) / iterations;
-    const variance = totals.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / iterations;
-
-    return {
-      probOver25: over25Count / iterations,
-      probUnder25: 1 - (over25Count / iterations),
-      stdDev: Math.sqrt(variance)
-    };
-  }
-
-  /**
-   * Strategy-adjusted Monte Carlo with modified uncertainty
-   */
-  static runStrategyMonteCarlo(
-    lambdaHome: number,
-    muAway: number,
-    rho: number = DEFAULT_RHO,
-    iterations: number = 5000,
-    baseUncertainty: number = 0.15,
-    uncertaintyAdjust: number = 0
-  ): { probOver25: number; probUnder25: number; stdDev: number } {
-    const adjustedUncertainty = Math.max(0.05, Math.min(0.3, baseUncertainty + uncertaintyAdjust));
-    return this.runMonteCarlo(lambdaHome, muAway, rho, iterations, adjustedUncertainty);
-  }
-
-  /**
-   * Knuth's algorithm for Poisson sampling
-   */
-  private static samplePoisson(lambda: number): number {
-    const L = Math.exp(-lambda);
-    let k = 0;
-    let p = 1;
-    do {
-      k++;
-      p *= Math.random();
-    } while (p > L);
-    return k - 1;
   }
 
   /**

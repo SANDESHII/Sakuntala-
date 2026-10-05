@@ -1,20 +1,15 @@
 import 'dotenv/config';
 import express from 'express';
+import compression from 'compression';
 import { createServer as createViteServer } from 'vite';
-import { runBacktest, runArenaPrediction } from './src/core/engine';
+import { runPrediction, runBacktest } from './src/core/engine';
 import { getUpcomingFixtures, getLiveOdds } from './src/services/freeDataService';
-import { GoogleGenAI } from "@google/genai";
 
 async function startServer() {
   const app = express();
   const port = 3000;
 
-  // AI Setup
-  const ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
-    httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
-  });
-
+  app.use(compression());
   app.use(express.json());
 
   // ======================
@@ -24,17 +19,16 @@ async function startServer() {
     // Predict
     app.post('/api/predict', async (req, res) => {
         try {
-            const { homeTeam, awayTeam, league, arenaConfig, adaptiveThresholdContext } = req.body;
+            const { homeTeam, awayTeam, league, adaptiveThresholdContext } = req.body;
 
             if (!homeTeam || !awayTeam || !league) {
                 return res.status(400).json({ error: 'Required fields missing' });
             }
 
-            const result = await runArenaPrediction(
+            const result = await runPrediction(
                 homeTeam, 
                 awayTeam, 
                 league, 
-                arenaConfig || { enableArena: false, cardCount: 0 },
                 null,
                 null,
                 adaptiveThresholdContext
@@ -42,44 +36,6 @@ async function startServer() {
             res.json(result);
         } catch (error: any) {
             res.status(500).json({ error: error.message || 'Prediction failed' });
-        }
-    });
-
-    // Briefing
-    app.post('/api/briefing', async (req, res) => {
-        try {
-            const { analysis } = req.body;
-            if (!analysis) return res.status(400).json({ error: 'Analysis data required' });
-
-            const prompt = `
-                Act as a professional sports betting quant analyst. 
-                Analyze this football match data and provide a concise, high-density briefing.
-                
-                Match: ${analysis.homeStats.name} vs ${analysis.awayStats.name}
-                League: ${analysis.context.league}
-                Expected Goals: ${analysis.homeExpectedGoals.toFixed(2)} (H) - ${analysis.awayExpectedGoals.toFixed(2)} (A)
-                Market Type: ${analysis.predictionType}
-                Model Probability: ${(analysis.probability * 100).toFixed(1)}%
-                Market Edge: ${analysis.edge ? (analysis.edge * 100).toFixed(1) : 'N/A'}%
-                Stake Recommendation: ${analysis.recommendedStake.toFixed(2)} units (Kelly Fraction: 0.35)
-                Model Source: ${analysis.modelSource}
-
-                Briefing Requirements:
-                1. 2-3 sentences max.
-                2. Professional, cold, technical tone.
-                3. Focus on value discrepancy between model and market.
-                4. Mention if the "Dixon-Coles MLE" model finds specific weakness in defensive form.
-                5. No fluff, no "Good luck".
-            `;
-
-            const aiResponse = await ai.models.generateContent({
-                model: "gemini-3.8-flash",
-                contents: prompt,
-            });
-
-            res.json({ text: aiResponse.text });
-        } catch (error: any) {
-            res.status(500).json({ error: error.message || 'Briefing generation failed' });
         }
     });
 

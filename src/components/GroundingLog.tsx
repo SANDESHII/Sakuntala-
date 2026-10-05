@@ -1,5 +1,4 @@
 import { FC } from 'react';
-import { motion } from 'motion/react';
 import { Database, ShieldCheck, Globe, Search, AlertTriangle } from 'lucide-react';
 import { AnalysisResult } from '../types';
 
@@ -30,19 +29,16 @@ export const GroundingLog: FC<GroundingLogProps> = ({ analysis }) => {
           },
           { label: 'Model Date', value: context.date || 'REALTIME', icon: Database },
         ].map((item, i) => (
-          <motion.div
+          <div
             key={i}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className="p-8 bg-neutral-900/20 border border-neutral-900 rounded-2xl space-y-4"
+            className="p-8 bg-neutral-900/20 border border-neutral-900 rounded-2xl space-y-4 transition-all duration-300"
           >
             <item.icon className={`w-4 h-4 ${item.color || 'text-neutral-700'}`} />
             <div className="space-y-1">
               <p className="text-[10px] font-black text-neutral-600 uppercase tracking-widest">{item.label}</p>
               <p className={`text-sm font-bold uppercase ${item.value === 'FAILED' ? 'text-red-500' : 'text-neutral-300'}`}>{item.value}</p>
             </div>
-          </motion.div>
+          </div>
         ))}
       </div>
 

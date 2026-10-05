@@ -1,5 +1,4 @@
-import { FC, type FormEvent, useState, useEffect } from 'react';
-import { ELITE_LEAGUES } from '../core/constants';
+import { FC, type FormEvent, useState, useEffect, memo } from 'react';
 import { FixtureMatch } from '../types';
 import { Calendar } from 'lucide-react';
 
@@ -14,7 +13,7 @@ interface AnalysisFormProps {
     loading: boolean;
 }
 
-export const AnalysisForm: FC<AnalysisFormProps> = ({ 
+export const AnalysisForm: FC<AnalysisFormProps> = memo(({ 
     home, setHome, away, setAway, league, setLeague,
     onAnalyze, loading
 }) => {
@@ -36,7 +35,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
             } finally {
                 setLoadingFixtures(false);
             }
-        }, 800);
+        }, 500);
 
         return () => clearTimeout(timeoutId);
     }, [league]);
@@ -66,32 +65,16 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
                         <input 
                             type="text" 
                             value={f.val} 
+                            disabled={loading}
+                            autoFocus={i === 0}
                             onChange={(e) => {
                                 const val = e.target.value.toUpperCase();
                                 f.set(val);
                             }} 
-                            className="w-full bg-transparent border-b border-neutral-800 px-0 py-4 text-4xl text-white focus:outline-none focus:border-emerald-500 transition-all font-bold placeholder:text-neutral-800 uppercase tracking-tighter" 
+                            className="w-full bg-transparent border-b border-neutral-800 px-0 py-4 text-4xl text-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500 transition-all font-bold placeholder:text-neutral-800 uppercase tracking-tighter disabled:opacity-50 disabled:cursor-not-allowed" 
                             placeholder={f.placeholder} 
                             autoComplete="off"
                         />
-                        {f.label === 'League Code' && (
-                            <div className="flex flex-wrap gap-2 mt-4">
-                                {ELITE_LEAGUES.map(l => (
-                                    <button
-                                        key={l}
-                                        type="button"
-                                        onClick={() => setLeague(l)}
-                                        className={`px-3 py-1 text-[8px] font-black border transition-all ${
-                                            league === l 
-                                                ? 'bg-emerald-500 border-emerald-500 text-white' 
-                                                : 'bg-neutral-900 border-neutral-800 text-neutral-500 hover:border-neutral-700'
-                                        }`}
-                                    >
-                                        {l.replace(/_/g, ' ')}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
                     </div>
                 ))}
             </div>
@@ -180,5 +163,5 @@ export const AnalysisForm: FC<AnalysisFormProps> = ({
             </div>
         </form>
     );
-};
+});
 

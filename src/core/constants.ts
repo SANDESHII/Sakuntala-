@@ -26,17 +26,8 @@ export const TEAM_STATS: Record<string, {
 
 /**
  * Team aliases map canonical names to their common variants
+ * Moved to teamIds.ts
  */
-export const TEAM_ALIASES: Record<string, string> = {
-  'MANCHESTER CITY': 'MAN_CITY',
-  'MAN CITY': 'MAN_CITY',
-  'MANCHESTER UNITED': 'MAN_UTD',
-  'MAN UTD': 'MAN_UTD',
-  'ATHLETIC CLUB': 'ATHLETIC_BILBAO',
-  'SPURS': 'TOTTENHAM',
-  'PSG': 'PSG',
-  'PARIS SG': 'PSG',
-};
 
 export const LEAGUE_CONFIGS: Record<string, any> = {
   'EPL': { goalRate: 1.05, homeAdvantage: 0.30 },
@@ -47,86 +38,13 @@ export const LEAGUE_CONFIGS: Record<string, any> = {
   'STANDARD': { goalRate: 1.00, homeAdvantage: 0.28 }
 };
 
-export const ELITE_LEAGUES = ['EPL', 'LA_LIGA', 'BUNDESLIGA', 'SERIE_A', 'LIGUE_1'];
-
 /**
  * Model Math Constants
  */
 export const TIME_DECAY_PHI = 0.0065; 
 export const BASE_GOALS = 1.35;
 export const DEFAULT_RHO = -0.13;
-export const HOME_ADVANTAGE_GAMMA = 1.25;
-
-// ═══════════════════════════════════════════════════════════════
-// ARENA STRATEGY MODIFIERS
-// ═══════════════════════════════════════════════════════════════
-
-/**
- * Strategy-specific parameter modifiers
- * Each strategy adjusts the base model parameters differently
- */
-export const STRATEGY_MODIFIERS: Record<string, {
-  edgeThreshold: number;
-  kellyFraction: number;
-  confidenceMultiplier: number;
-}> = {
-  'simplest':            { edgeThreshold: 0.03,  kellyFraction: 0.25, confidenceMultiplier: 0.90 },
-  'maximal-rigour':      { edgeThreshold: 0.02,  kellyFraction: 0.40, confidenceMultiplier: 1.10 },
-  'user-empathy':        { edgeThreshold: 0.03,  kellyFraction: 0.30, confidenceMultiplier: 1.00 },
-  'edge-cases-first':    { edgeThreshold: 0.04,  kellyFraction: 0.20, confidenceMultiplier: 0.85 },
-  'speed':               { edgeThreshold: 0.03,  kellyFraction: 0.35, confidenceMultiplier: 0.90 },
-  'defensive':           { edgeThreshold: 0.05,  kellyFraction: 0.15, confidenceMultiplier: 0.80 },
-  'clarity':             { edgeThreshold: 0.03,  kellyFraction: 0.30, confidenceMultiplier: 1.00 },
-  'completeness':        { edgeThreshold: 0.025, kellyFraction: 0.35, confidenceMultiplier: 1.05 },
-  'fewest-moving-parts': { edgeThreshold: 0.03,  kellyFraction: 0.30, confidenceMultiplier: 0.95 },
-  'explicit-trade-offs': { edgeThreshold: 0.03,  kellyFraction: 0.30, confidenceMultiplier: 1.00 },
-  'built-to-last':       { edgeThreshold: 0.025, kellyFraction: 0.35, confidenceMultiplier: 1.05 },
-  'concrete-specifics':  { edgeThreshold: 0.03,  kellyFraction: 0.30, confidenceMultiplier: 1.00 },
-};
-
-/**
- * Workflow-specific adjustments
- */
-export const WORKFLOW_MODIFIERS: Record<string, {
-  rhoAdjust: number;
-  uncertaintyAdjust: number;
-}> = {
-  'draft-critique-rewrite':   { rhoAdjust:  0.00, uncertaintyAdjust:  0.00 },
-  'outline-first':            { rhoAdjust:  0.00, uncertaintyAdjust: -0.02 },
-  'test-first':               { rhoAdjust: -0.02, uncertaintyAdjust: -0.03 },
-  'research-then-synthesise': { rhoAdjust:  0.01, uncertaintyAdjust:  0.02 },
-  'three-drafts':             { rhoAdjust:  0.01, uncertaintyAdjust:  0.00 },
-  'requirements-checklist':   { rhoAdjust:  0.00, uncertaintyAdjust: -0.01 },
-  'iterative-deepening':      { rhoAdjust:  0.00, uncertaintyAdjust:  0.01 },
-  'build-then-break':         { rhoAdjust: -0.01, uncertaintyAdjust: -0.02 },
-  'smallest-version-first':   { rhoAdjust:  0.00, uncertaintyAdjust: -0.02 },
-  'options-matrix':           { rhoAdjust:  0.01, uncertaintyAdjust:  0.00 },
-  'open-questions-first':     { rhoAdjust:  0.00, uncertaintyAdjust:  0.01 },
-  'write-then-restructure':   { rhoAdjust:  0.00, uncertaintyAdjust:  0.00 },
-};
-
-/**
- * Reasoning mode parameter adjustments
- */
-export const REASONING_MODIFIERS: Record<string, {
-  lambdaAdjust: number;
-  muAdjust: number;
-  formWeight: number;
-}> = {
-  'first-principles':  { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.00 },
-  'inversion':         { lambdaAdjust: -0.10, muAdjust: -0.10, formWeight: 0.10 },
-  'analogy':           { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.20 },
-  'adversarial':       { lambdaAdjust:  0.05, muAdjust:  0.05, formWeight: 0.15 },
-  'constraint-first':  { lambdaAdjust: -0.05, muAdjust: -0.05, formWeight: 0.05 },
-  'worked-example':    { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.25 },
-  'socratic':          { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.30 },
-  'contrarian':        { lambdaAdjust: -0.15, muAdjust: -0.15, formWeight: 0.10 },
-  'systems-thinking':  { lambdaAdjust:  0.05, muAdjust:  0.05, formWeight: 0.20 },
-  'decomposition':     { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.15 },
-  'working-backwards': { lambdaAdjust:  0.10, muAdjust:  0.10, formWeight: 0.10 },
-  'probabilistic':     { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.05 },
-  'dialectical':       { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.20 },
-  'evidence-first':    { lambdaAdjust:  0.00, muAdjust:  0.00, formWeight: 0.00 },
-  'expert-panel':      { lambdaAdjust:  0.05, muAdjust:  0.05, formWeight: 0.25 },
-};
+export const HOME_ADVANTAGE_WEIGHT = 0.5;
+export const AWAY_DEFENSE_WEIGHT = 0.3;
+export const EDGE_THRESHOLD = 0.03;
 

@@ -1,5 +1,4 @@
 import { FC } from 'react';
-import { motion } from 'motion/react';
 import { BacktestSummary } from '../types';
 import { TrendingUp, Target, BarChart3, ShieldAlert } from 'lucide-react';
 
@@ -16,22 +15,19 @@ export const BacktestDisplay: FC<BacktestDisplayProps> = ({ summary }) => {
     ];
 
     return (
-        <div className="space-y-12">
+        <div className="space-y-12 transition-all duration-300">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {metrics.map((m, i) => (
-                    <motion.div 
+                    <div 
                         key={i}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.1 }}
-                        className="bg-neutral-900/50 border border-neutral-800 p-8 rounded-3xl space-y-4"
+                        className="bg-neutral-900/50 border border-neutral-800 p-8 rounded-3xl space-y-4 transition-all duration-300"
                     >
                         <m.icon className="w-5 h-5 text-neutral-600" />
                         <div className="space-y-1">
                             <p className="text-[10px] font-black text-neutral-600 uppercase tracking-widest">{m.label}</p>
                             <p className={`text-3xl font-black ${m.color}`}>{m.value}</p>
                         </div>
-                    </motion.div>
+                    </div>
                 ))}
             </div>
 

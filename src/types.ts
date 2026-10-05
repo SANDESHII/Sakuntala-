@@ -1,13 +1,5 @@
 export type DataSource = 'api-football' | 'the-odds-api';
 
-export interface Provenance {
-  source: DataSource;
-  quality: 'high' | 'medium' | 'low';
-  timestamp: string;
-  season?: string | number;
-  sourceSeason?: string | number;
-}
-
 export interface HistoricalPrices {
   over25: { bestPrice: number; noVigPrice: number };
   under25: { bestPrice: number; noVigPrice: number };
@@ -131,72 +123,11 @@ export interface AnalysisResult {
   usedRealOdds?: boolean;
   goalDistribution?: GoalDistribution[];
   scoreMatrix?: number[][];
-  arena?: {
-    consensus: ConsensusResult;
-    predictions: ArenaPrediction[];
-  };
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ARENA SYSTEM TYPES
+// SUPPORTING TYPES
 // ═══════════════════════════════════════════════════════════════
-
-export interface ArenaConfig {
-  enableArena: boolean;
-  cardCount: number;
-  seed?: number;
-}
-
-export interface StrategyCard {
-  reasoning: {
-    id: string;
-    name: string;
-    how: string;
-    footballApplication: string;
-    icon?: string;
-  };
-  workflow: {
-    id: string;
-    name: string;
-    how: string;
-    footballApplication: string;
-    icon?: string;
-  };
-  strategy: {
-    id: string;
-    name: string;
-    how: string;
-    footballApplication: string;
-    icon?: string;
-  };
-}
-
-export interface ArenaPrediction {
-  card: StrategyCard;
-  prediction: 'OVER_25' | 'UNDER_25' | 'NO_BET';
-  confidence: number;
-  edge: number;
-  reasoning: string;
-  scores: {
-    correctness: number;
-    completeness: number;
-    robustness: number;
-    specificity: number;
-    clarity: number;
-  };
-  weightedTotal: number;
-  fatal: boolean;
-}
-
-export interface ConsensusResult {
-  prediction: string;
-  confidence: number;
-  edge: number;
-  agreement: number;
-  topReasoning: string;
-  surviving: ArenaPrediction[];
-  dissenting: ArenaPrediction[];
-}
 
 export interface FixtureMatch {
   homeTeam: string;
@@ -251,18 +182,4 @@ export interface BacktestSummary {
   }[];
   matches: BacktestMatch[];
   error?: string;
-}
-
-export class QuotaExceededError extends Error {
-  constructor(public source: DataSource) {
-    super(`Quota exceeded for ${source}`);
-    this.name = 'QuotaExceededError';
-  }
-}
-
-export class DataGapError extends Error {
-  constructor(public field: string, public context?: string) {
-    super(`Missing ${field}${context ? ` for ${context}` : ''}`);
-    this.name = 'DataGapError';
-  }
 }

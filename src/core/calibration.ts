@@ -12,7 +12,9 @@
 
 import * as FreeDataService from '../services/freeDataService';
 import { HistoricalMatch } from '../types';
-import { TIME_DECAY_PHI, DEFAULT_RHO, HOME_ADVANTAGE_GAMMA } from './constants';
+import { TIME_DECAY_PHI, DEFAULT_RHO, BASE_GOALS } from './constants';
+
+const HOME_ADVANTAGE_GAMMA = 1.25;
 
 export interface FittedTeamParams {
   attack: number;   // α — attacking strength (1.0 = league average)
@@ -30,14 +32,19 @@ export interface FittedLeagueParams {
 interface MatchData {
   home: string;
   away: string;
-  hg: number;
-  ag: number;
+  homeGoals: number;
+  awayGoals: number;
   daysAgo: number; // For temporal weighting
 }
 
 /**
  * Fit attack/defense parameters via gradient ascent on
  * the Dixon-Coles log-likelihood with temporal weighting.
+ * 
+ * @param matches - Historical match data with goals and temporal information
+ * @param iterations - Number of gradient ascent iterations
+ * @param lr - Learning rate
+ * @returns Fitted league and team parameters
  */
 export function fitDixonColes(
   matches: MatchData[],
@@ -64,54 +71,54 @@ export function fitDixonColes(
   let rho = DEFAULT_RHO;
 
   for (let iter = 0; iter < iterations; iter++) {
-    const gA: Record<string, number> = {};
-    const gD: Record<string, number> = {};
-    for (const t of teams) { gA[t] = 0; gD[t] = 0; }
-    let gG = 0, gR = 0;
+    const gradientAttack: Record<string, number> = {};
+    const gradientDefense: Record<string, number> = {};
+    for (const t of teams) { gradientAttack[t] = 0; gradientDefense[t] = 0; }
+    let gradientGamma = 0, gradientRho = 0;
 
-    for (const { home, away, hg: h, ag: a, daysAgo } of matches) {
+    for (const { home, away, homeGoals, awayGoals, daysAgo } of matches) {
       const weight = Math.exp(-TIME_DECAY_PHI * daysAgo);
-      const lam = Math.max(atk[home] * def[away] * gamma, 1e-10);
-      const mu  = Math.max(atk[away] * def[home], 1e-10);
+      const lambda = Math.max(atk[home] * def[away] * gamma, 1e-10);
+      const muAway = Math.max(atk[away] * def[home], 1e-10);
 
       // d logL / d lambda  and  d logL / d mu
-      const dL_lam = h / lam - 1;
-      const dL_mu  = a / mu - 1;
+      const dL_lambda = homeGoals / lambda - 1;
+      const dL_muAway = awayGoals / muAway - 1;
 
       // Tau partial derivatives with safety bounds
-      let dt_lam = 0, dt_mu = 0;
-      const minRhoMatch = -1 / Math.max(lam, mu, 1);
+      let dt_lambda = 0, dt_muAway = 0;
+      const minRhoMatch = -1 / Math.max(lambda, muAway, 1);
       const safeRhoMatch = Math.max(minRhoMatch + 0.001, rho);
 
-      if (h === 0 && a === 0) {
-        const d = 1 - lam * mu * safeRhoMatch;
-        dt_lam = (-mu * safeRhoMatch) / d;
-        dt_mu  = (-lam * safeRhoMatch) / d;
-      } else if (h === 0 && a === 1) {
-        dt_lam = safeRhoMatch / (1 + lam * safeRhoMatch);
-      } else if (h === 1 && a === 0) {
-        dt_mu = safeRhoMatch / (1 + mu * safeRhoMatch);
+      if (homeGoals === 0 && awayGoals === 0) {
+        const d = 1 - lambda * muAway * safeRhoMatch;
+        dt_lambda = (-muAway * safeRhoMatch) / d;
+        dt_muAway = (-lambda * safeRhoMatch) / d;
+      } else if (homeGoals === 0 && awayGoals === 1) {
+        dt_lambda = safeRhoMatch / (1 + lambda * safeRhoMatch);
+      } else if (homeGoals === 1 && awayGoals === 0) {
+        dt_muAway = safeRhoMatch / (1 + muAway * safeRhoMatch);
       }
 
-      const grad_lam = weight * (dL_lam + dt_lam);
-      const grad_mu  = weight * (dL_mu  + dt_mu);
+      const grad_lambda = weight * (dL_lambda + dt_lambda);
+      const grad_muAway = weight * (dL_muAway + dt_muAway);
 
       // Chain rule: d lam / d atk_home = def_away * gamma
-      gA[home] += grad_lam * def[away] * gamma;
-      gD[away] += grad_lam * atk[home] * gamma;
-      gA[away] += grad_mu  * def[home];
-      gD[home] += grad_mu  * atk[away];
+      gradientAttack[home] += grad_lambda * def[away] * gamma;
+      gradientDefense[away] += grad_lambda * atk[home] * gamma;
+      gradientAttack[away] += grad_muAway * def[home];
+      gradientDefense[home] += grad_muAway * atk[away];
 
       // d lam / d gamma = atk_home * def_away
-      gG += grad_lam * atk[home] * def[away];
+      gradientGamma += grad_lambda * atk[home] * def[away];
 
       // d logL / d rho with safety bounds
       let dr = 0;
-      if (h === 0 && a === 0)      dr = weight * ((-lam * mu) / (1 - lam * mu * safeRhoMatch));
-      else if (h === 0 && a === 1) dr = weight * (lam / (1 + lam * safeRhoMatch));
-      else if (h === 1 && a === 0) dr = weight * (mu  / (1 + mu * safeRhoMatch));
-      else if (h === 1 && a === 1) dr = weight * (-1  / (1 - safeRhoMatch));
-      gR += dr;
+      if (homeGoals === 0 && awayGoals === 0)      dr = weight * ((-lambda * muAway) / (1 - lambda * muAway * safeRhoMatch));
+      else if (homeGoals === 0 && awayGoals === 1) dr = weight * (lambda / (1 + lambda * safeRhoMatch));
+      else if (homeGoals === 1 && awayGoals === 0) dr = weight * (muAway / (1 + muAway * safeRhoMatch));
+      else if (homeGoals === 1 && awayGoals === 1) dr = weight * (-1 / (1 - safeRhoMatch));
+      gradientRho += dr;
     }
 
     // Update (gradient ascent)
@@ -122,8 +129,8 @@ export function fitDixonColes(
       const penaltyA = -2 * REG_LAMBDA * (atk[t] - 1);
       const penaltyD = -2 * REG_LAMBDA * (def[t] - 1);
 
-      atk[t] = Math.max(0.2, Math.min(3.0, atk[t] + lr * (gA[t] + penaltyA) / n));
-      def[t] = Math.max(0.2, Math.min(3.0, def[t] + lr * (gD[t] + penaltyD) / n));
+      atk[t] = Math.max(0.2, Math.min(3.0, atk[t] + lr * (gradientAttack[t] + penaltyA) / n));
+      def[t] = Math.max(0.2, Math.min(3.0, def[t] + lr * (gradientDefense[t] + penaltyD) / n));
     }
 
     // Resolve identifiability Scale Symmetry: Ensure mean(atk) = 1.0 by shifting scale to defense
@@ -134,8 +141,8 @@ export function fitDixonColes(
       def[t] *= currentAvgA;
     }
 
-    gamma = Math.max(0.8, Math.min(2.0, gamma + lr * gG / n));
-    rho   = Math.max(-0.5, Math.min(0.0, rho + lr * gR / n));
+    gamma = Math.max(0.8, Math.min(2.0, gamma + lr * gradientGamma / n));
+    rho   = Math.max(-0.5, Math.min(0.0, rho + lr * gradientRho / n));
     lr *= 0.998;
   }
 
@@ -153,45 +160,21 @@ export function fitDixonColes(
   return { homeAdvantage: gamma, rho, teams: result };
 }
 
-/**
- * Fit with strategy-specific hyperparameters
- * Different strategies use different learning rates and regularization
- */
-export function fitDixonColesWithStrategy(
-  matches: MatchData[],
-  strategy: string,
-  iterations = 500,
-  baseLr = 0.01
-): FittedLeagueParams {
-  // Strategy-specific hyperparameters
-  const strategyLr = ({
-    'maximal-rigour': baseLr * 1.2,
-    'speed': baseLr * 0.8,
-    'built-to-last': baseLr * 1.1,
-  } as Record<string, number>)[strategy] || baseLr;
-
-  // Call the base fitting with modified learning rate
-  return fitDixonColes(matches, iterations, strategyLr);
-}
-
 // ── API Integration ────────────────────────────────────────────
-
-const cache: Record<string, { params: FittedLeagueParams; ts: number }> = {};
-const TTL = 6 * 60 * 60 * 1000; // 6 hours
 
 /**
  * Fit parameters from real historical data via API.
- * Cached for 6 hours.
+ * 
+ * @param league - League identifier (e.g., 'EPL')
+ * @param asOfDate - Optional cutoff date for walk-forward testing
+ * @param historicalMatches - Optional pre-fetched historical matches
+ * @returns Fitted league parameters
  */
 export async function fitFromAPI(
   league: string, 
   asOfDate?: string, 
   historicalMatches?: HistoricalMatch[]
 ): Promise<FittedLeagueParams> {
-  const cacheKey = asOfDate ? `${league}_${asOfDate}` : league;
-  const c = cache[cacheKey];
-  if (c && Date.now() - c.ts < TTL) return c.params;
-
   const raw = historicalMatches || await FreeDataService.getHistoricalFixtures(league, 150);
   if (raw.length < 20) return { homeAdvantage: HOME_ADVANTAGE_GAMMA, rho: DEFAULT_RHO, teams: {} };
 
@@ -208,15 +191,13 @@ export async function fitFromAPI(
     return {
       home: m.home,
       away: m.away,
-      hg: m.homeGoals || 0,
-      ag: m.awayGoals || 0,
+      homeGoals: m.homeGoals || 0,
+      awayGoals: m.awayGoals || 0,
       daysAgo: diffDays
     };
   });
 
-  const fitted = fitDixonColes(matches, 500, 0.01);
-  cache[cacheKey] = { params: fitted, ts: Date.now() };
-  return fitted;
+  return fitDixonColes(matches, 500, 0.01);
 }
 
 
@@ -229,6 +210,11 @@ export async function fitFromAPI(
  * Specification:
  * lambda_home = alpha_home * beta_away * gamma (home advantage)
  * mu_away     = alpha_away * beta_home
+ * 
+ * @param fitted - Result of MLE fitting
+ * @param homeTeam - Home team name
+ * @param awayTeam - Away team name
+ * @returns Predicted expected goals and confidence indicator
  */
 export function predictGoals(
   fitted: FittedLeagueParams,
@@ -245,9 +231,8 @@ export function predictGoals(
 
   // MLE lambda/mu calculation
   // Param semantics: attack/defense are multipliers on league average
-  const leagueAvg = 1.35; // Global baseline
-  let lambdaHome = h.attack * a.defense * fitted.homeAdvantage * leagueAvg;
-  let muAway = a.attack * h.defense * leagueAvg;
+  let lambdaHome = h.attack * a.defense * fitted.homeAdvantage * BASE_GOALS;
+  let muAway = a.attack * h.defense * BASE_GOALS;
 
   // Sanity Clamps (consistent with MODEL_CONFIG in engine.ts)
   lambdaHome = Math.max(0.3, Math.min(4.0, lambdaHome));

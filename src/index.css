@@ -7,8 +7,13 @@
 }
 
 @layer base {
+  html {
+    font-size: 16px;
+  }
+  
   body {
-    @apply bg-[#050505] text-neutral-300 font-sans selection:bg-emerald-500/20 antialiased overflow-x-hidden;
+    @apply bg-[#050505] text-neutral-300 font-sans selection:bg-emerald-500/20 antialiased overflow-x-hidden text-sm md:text-base;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
   
   h1, h2, h3, h4, h5, h6 {
@@ -32,4 +37,22 @@
 
 ::-webkit-scrollbar-thumb {
   @apply bg-neutral-900 rounded-full hover:bg-neutral-800 transition-colors;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.page-transition {
+  animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+button, a {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+button:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
 }

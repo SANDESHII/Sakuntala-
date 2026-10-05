@@ -1,5 +1,4 @@
-import { FC } from 'react';
-import { motion } from 'motion/react';
+import { FC, memo } from 'react';
 
 interface ScoreHeatmapProps {
   matrix: number[][];
@@ -7,7 +6,7 @@ interface ScoreHeatmapProps {
   awayTeam: string;
 }
 
-export const ScoreHeatmap: FC<ScoreHeatmapProps> = ({ matrix, homeTeam, awayTeam }) => {
+export const ScoreHeatmap: FC<ScoreHeatmapProps> = memo(({ matrix, homeTeam, awayTeam }) => {
   const limit = Math.min(matrix.length - 1, 5); // Show up to 5x5
   const maxProb = Math.max(...matrix.flat());
 
@@ -53,11 +52,8 @@ export const ScoreHeatmap: FC<ScoreHeatmapProps> = ({ matrix, homeTeam, awayTeam
                 const intensity = maxProb > 0 ? (prob / maxProb) : 0;
                 
                 return (
-                  <motion.div
+                  <div
                     key={`${h}-${a}`}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: (h + a) * 0.02 }}
                     className="relative group aspect-square flex items-center justify-center rounded-sm md:rounded-md transition-all border border-neutral-900/50"
                     style={{
                       backgroundColor: `rgba(16, 185, 129, ${intensity * 0.4})`,
@@ -71,7 +67,7 @@ export const ScoreHeatmap: FC<ScoreHeatmapProps> = ({ matrix, homeTeam, awayTeam
                     {intensity > 0.7 && (
                       <div className="absolute inset-0 border border-emerald-500/20 rounded-md animate-pulse" />
                     )}
-                  </motion.div>
+                  </div>
                 );
               })}
             </div>
@@ -80,4 +76,4 @@ export const ScoreHeatmap: FC<ScoreHeatmapProps> = ({ matrix, homeTeam, awayTeam
       </div>
     </div>
   );
-};
+});

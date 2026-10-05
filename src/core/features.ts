@@ -3,7 +3,13 @@ import { InternalTeamData, HistoricalMatch } from '../types';
 export class FeatureEngine {
   /**
    * Computes team features as of a specific historical date.
-   * Uses only matches that occurred before that date.
+   * Uses only matches that occurred before that date for point-in-time evaluation.
+   * 
+   * @param teamName - Name of the team to compute features for
+   * @param _league - League identifier
+   * @param asOfDate - Cutoff date for historical data
+   * @param history - Pool of historical matches
+   * @returns Internal team metrics for prediction
    */
   static async computeFeatures(
     teamName: string,
@@ -61,45 +67,15 @@ export class FeatureEngine {
 
     const played = last5.length;
     return {
-      attackStrength: scored / (played * 1.35),
-      defenseStrength: conceded / (played * 1.35),
+      attackStrength: 1.0,
+      defenseStrength: 1.0,
       avgGoalsScored: scored / played,
       avgGoalsConceded: conceded / played,
-      homeAdvantageHeuristic: 0.3, // Static for simplicity in feature engine
+      homeAdvantageHeuristic: 0.3,
       form,
       cleanSheetRate: cleanSheets / played,
-      quality: played >= 5 ? 'high' : 'medium'
-    };
-  }
-
-  /**
-   * Workflow-adjusted feature computation
-   * Different workflows weight recent form differently
-   */
-  static async computeFeaturesWithWorkflow(
-    teamName: string,
-    league: string,
-    asOfDate: string,
-    workflow: string,
-    history?: HistoricalMatch[]
-  ): Promise<InternalTeamData> {
-    const baseFeatures = await this.computeFeatures(teamName, league, asOfDate, history);
-
-    // Workflow-specific form weighting
-    const workflowFormWeight = ({
-      'research-then-synthesise': 0.4, // Weight recent form more
-      'smallest-version-first': 0.2,   // Weight recent form less
-      'iterative-deepening': 0.35,
-      'build-then-break': 0.3,
-    } as Record<string, number>)[workflow] || 0.25;
-
-    // Adjust attack/defense strength based on workflow
-    const formMultiplier = 1 + (workflowFormWeight - 0.25) * 0.2;
-
-    return {
-      ...baseFeatures,
-      attackStrength: baseFeatures.attackStrength * formMultiplier,
-      defenseStrength: baseFeatures.defenseStrength * (2 - formMultiplier),
+      quality: played >= 5 ? 'medium' : 'low'
     };
   }
 }
+

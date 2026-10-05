@@ -1,16 +1,63 @@
-import { FC } from 'react';
-import { Zap, Shield, Target, Activity, LucideIcon, Binary, BarChart3 } from 'lucide-react';
+import { FC, memo, useState, useEffect } from 'react';
+import { Zap, Shield, Target, Activity, LucideIcon, Binary, BarChart3, Info } from 'lucide-react';
 import { AnalysisResult } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { ScoreHeatmap } from './ScoreHeatmap';
-import { BriefingPanel } from './BriefingPanel';
+
+const AnimatedNumber = ({ value, duration = 1000 }: { value: number; duration?: number }) => {
+    const [displayValue, setDisplayValue] = useState(0);
+
+    useEffect(() => {
+        let start = 0;
+        const end = value;
+        const range = end - start;
+        let startTime: number | null = null;
+
+        const step = (timestamp: number) => {
+            if (!startTime) startTime = timestamp;
+            const progress = Math.min((timestamp - startTime) / duration, 1);
+            setDisplayValue(Math.floor(progress * range + start));
+            if (progress < 1) {
+                window.requestAnimationFrame(step);
+            }
+        };
+
+        window.requestAnimationFrame(step);
+    }, [value, duration]);
+
+    return <>{displayValue}</>;
+};
+
+const generateBriefing = (analysis: AnalysisResult) => {
+    const { homeStats, awayStats, predictionType, probability, edge, verdict } = analysis;
+    const isOver = predictionType === 'OVER_25';
+    
+    return [
+        `Analysis of ${homeStats.name} vs ${awayStats.name} indicates a ${probability}% probability of ${isOver ? 'over' : 'under'} 2.5 goals.`,
+        verdict === 'EXECUTE_BET' 
+            ? `With a model edge of ${edge}%, this represents a high-value opportunity.`
+            : `The market appears efficient with no significant edge detected.`,
+        `Home xG: ${analysis.homeExpectedGoals.toFixed(2)}, Away xG: ${analysis.awayExpectedGoals.toFixed(2)}.`
+    ].join(' ');
+};
+
+const Briefing = ({ analysis }: { analysis: AnalysisResult }) => (
+    <div className="bg-neutral-900/30 border border-neutral-800 rounded-[48px] p-12 lg:p-16 space-y-8">
+        <div className="flex items-center gap-4">
+            <Info className="w-5 h-5 text-emerald-500" />
+            <h3 className="text-[11px] font-black text-neutral-400 uppercase tracking-[0.3em]">Strategic Briefing</h3>
+        </div>
+        <p className="text-sm text-neutral-500 leading-relaxed font-medium">
+            {generateBriefing(analysis)}
+        </p>
+    </div>
+);
 
 interface ResultGridProps {
     analysis: AnalysisResult;
 }
 
-const StatCard: FC<{ label: string; value: string | number; subValue?: string; icon: LucideIcon }> = ({ label, value, subValue, icon: Icon }) => (
-    <div className="bg-neutral-900/40 p-10 rounded-[32px] border border-neutral-800/50 flex flex-col justify-between space-y-10 hover:bg-neutral-900/60 transition-all group shadow-sm">
+const StatCard = memo(({ label, value, subValue, icon: Icon }: { label: string; value: string | number; subValue?: string; icon: LucideIcon }) => (
+    <div className="bg-neutral-900/40 p-10 rounded-[32px] border border-neutral-800/50 flex flex-col justify-between space-y-10 hover:bg-neutral-900/60 transition-all group shadow-sm hover:scale-105 hover:shadow-emerald-500/5">
         <div className="flex items-center justify-between">
             <span className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.25em]">{label}</span>
             <div className="p-2 bg-neutral-800/50 rounded-xl group-hover:bg-emerald-500/10 transition-colors">
@@ -22,69 +69,11 @@ const StatCard: FC<{ label: string; value: string | number; subValue?: string; i
             <p className="text-[10px] font-black text-neutral-600 uppercase tracking-[0.2em] leading-none">{subValue}</p>
         </div>
     </div>
-);
+));
 
-const ArenaConsensusView: FC<{ arena: NonNullable<AnalysisResult['arena']> }> = ({ arena }) => {
-    const { consensus, predictions } = arena;
-    
+export const ResultGrid: FC<ResultGridProps> = memo(({ analysis }) => {
     return (
-        <div className="bg-neutral-900/30 border border-neutral-800 rounded-[48px] p-12 lg:p-16 space-y-16">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
-                <div className="space-y-4">
-                    <div className="flex items-center gap-4">
-                        <Zap className="w-5 h-5 text-emerald-500" />
-                        <h3 className="text-[11px] font-black text-neutral-400 uppercase tracking-[0.3em]">Arena Multi-Strategy Consensus</h3>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <span className="text-5xl font-black text-white tracking-tighter uppercase">{consensus.prediction}</span>
-                        <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-[10px] font-black text-emerald-500 uppercase tracking-widest">
-                            {consensus.agreement}% Agreement
-                        </div>
-                    </div>
-                </div>
-                <div className="text-right">
-                    <span className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.3em] block mb-2">Consensus Edge</span>
-                    <span className="text-6xl font-black text-white tracking-tighter">+{consensus.edge}%</span>
-                </div>
-            </div>
-
-            <div className="p-8 bg-neutral-950 border border-neutral-900 rounded-[32px] border-l-4 border-l-emerald-500">
-                <p className="text-xs font-bold text-neutral-300 leading-relaxed uppercase tracking-wide">
-                    {consensus.topReasoning}
-                </p>
-            </div>
-
-            <div className="space-y-8">
-                <div className="flex items-center justify-between">
-                    <h4 className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.3em]">Parallel Strategy Matrix</h4>
-                    <span className="text-[10px] font-bold text-neutral-700 uppercase tracking-widest">{predictions.length} Simulations</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
-                    {predictions.map((p, i) => (
-                        <div key={i} className={`p-4 rounded-2xl border transition-all ${p.fatal ? 'bg-red-500/5 border-red-500/20 opacity-50' : p.prediction === consensus.prediction ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-neutral-900 border-neutral-800'}`}>
-                            <div className="flex justify-between items-start mb-4">
-                                <span className={`text-[8px] font-black uppercase tracking-tighter ${p.prediction === 'OVER_25' ? 'text-emerald-500' : p.prediction === 'UNDER_25' ? 'text-amber-500' : 'text-neutral-500'}`}>
-                                    {p.prediction.replace('_25', '')}
-                                </span>
-                                <span className="text-[8px] font-black text-neutral-600 uppercase">{p.confidence}%</span>
-                            </div>
-                            <div className="space-y-1">
-                                <div className="h-0.5 w-full bg-neutral-800 rounded-full overflow-hidden">
-                                    <div className={`h-full ${p.fatal ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${p.weightedTotal}%` }} />
-                                </div>
-                                <span className="text-[7px] font-black text-neutral-700 uppercase block truncate">{p.card.reasoning.name.split('-')[0]}</span>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
-    return (
-        <div className="space-y-24">
+        <div className="space-y-24 page-transition">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-12 pb-24 border-b border-neutral-900/50">
                 <div className="space-y-10">
                     <div className="flex items-center gap-4">
@@ -104,7 +93,9 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                 <div className="flex flex-col items-end gap-6">
                     <div className="text-right space-y-2">
                         <span className="text-[11px] font-black text-neutral-500 uppercase tracking-[0.4em] block">Confidence Level</span>
-                        <span className="text-9xl font-black text-white tracking-tighter leading-none">{analysis.probability}%</span>
+                        <span className="text-9xl font-black text-white tracking-tighter leading-none">
+                            <AnimatedNumber value={analysis.probability} />%
+                        </span>
                         {analysis.marketImpliedProb !== null && (
                             <div className="flex items-center justify-end gap-3 pt-4">
                                 <span className="text-[10px] font-black text-neutral-700 uppercase tracking-[0.3em]">Market Implied</span>
@@ -138,9 +129,6 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                             icon={Shield} 
                         />
                     </div>
-
-                    {/* Arena Consensus */}
-                    {analysis.arena && <ArenaConsensusView arena={analysis.arena} />}
 
                     {/* Team Deep Dive */}
                     <div className="bg-neutral-900/30 border border-neutral-800 rounded-[48px] p-12 lg:p-16">
@@ -191,48 +179,32 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                                 <span className="text-[10px] font-bold text-neutral-700 uppercase tracking-widest">Total Match Goals</span>
                             </div>
                             
-                            <div className="h-[300px] w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={analysis.goalDistribution} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1f1f1f" />
-                                        <XAxis 
-                                            dataKey="goals" 
-                                            axisLine={false} 
-                                            tickLine={false} 
-                                            tick={{ fill: '#525252', fontSize: 10, fontWeight: 800 }} 
-                                            dy={10}
-                                        />
-                                        <YAxis 
-                                            axisLine={false} 
-                                            tickLine={false} 
-                                            tick={{ fill: '#525252', fontSize: 10, fontWeight: 800 }}
-                                            tickFormatter={(val) => `${val}%`}
-                                        />
-                                        <Tooltip 
-                                            cursor={{ fill: '#171717' }}
-                                            contentStyle={{ 
-                                                backgroundColor: '#0a0a0a', 
-                                                border: '1px solid #262626', 
-                                                borderRadius: '12px',
-                                                fontSize: '12px',
-                                                fontWeight: 'bold'
-                                            }}
-                                            itemStyle={{ color: '#10b981' }}
-                                        />
-                                        <Bar dataKey="probability" radius={[8, 8, 0, 0]}>
-                                            {analysis.goalDistribution.map((_, index) => (
-                                                <Cell 
-                                                    key={`cell-${index}`} 
-                                                    fill={
-                                                        (analysis.predictionType === 'OVER_25' && (index >= 3)) ||
-                                                        (analysis.predictionType === 'UNDER_25' && (index <= 2))
-                                                        ? '#10b981' : '#262626'
-                                                    } 
-                                                />
-                                            ))}
-                                        </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
+                            <div className="h-[300px] w-full flex items-end gap-2 px-4 pb-8">
+                                {analysis.goalDistribution.map((item, index) => {
+                                    const isHighlighted = 
+                                        (analysis.predictionType === 'OVER_25' && index >= 3) ||
+                                        (analysis.predictionType === 'UNDER_25' && index <= 2);
+                                    
+                                    return (
+                                        <div key={index} className="flex-1 flex flex-col items-center gap-4 group">
+                                            <div className="w-full relative flex flex-col justify-end h-[240px]">
+                                                <div 
+                                                    className={`w-full rounded-t-xl transition-all duration-500 ${isHighlighted ? 'bg-emerald-500' : 'bg-neutral-800'} group-hover:opacity-80`}
+                                                    style={{ height: `${item.probability}%` }}
+                                                >
+                                                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                                        <span className="text-[10px] font-black text-white bg-neutral-950 px-2 py-1 rounded border border-neutral-800">
+                                                            {item.probability.toFixed(1)}%
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <span className="text-[10px] font-black text-neutral-600 uppercase tabular-nums">
+                                                {item.goals}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
                             </div>
                             
                             <div className="flex gap-8 items-center pt-8 border-t border-neutral-800/50">
@@ -260,7 +232,7 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
                     )}
 
                     {/* Automated Briefing */}
-                    <BriefingPanel analysis={analysis} />
+                    <Briefing analysis={analysis} />
                 </div>
 
                 <div className="lg:col-span-4 space-y-10">
@@ -374,4 +346,4 @@ export const ResultGrid: FC<ResultGridProps> = ({ analysis }) => {
             </div>
         </div>
     );
-};
+});

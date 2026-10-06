@@ -117,10 +117,7 @@ export interface AnalysisResult {
   context: MatchContext;
   dataSource: 'LIVE' | 'FALLBACK_STATIC';
   modelSource: 'MLE_FITTED' | 'HEURISTIC_FALLBACK';
-  modelSpecification?: string;
   isLowConfidence?: boolean;
-  isThresholdAdaptive?: boolean;
-  usedRealOdds?: boolean;
   goalDistribution?: GoalDistribution[];
   scoreMatrix?: number[][];
 }

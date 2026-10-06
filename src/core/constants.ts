@@ -47,4 +47,5 @@ export const DEFAULT_RHO = -0.13;
 export const HOME_ADVANTAGE_WEIGHT = 0.5;
 export const AWAY_DEFENSE_WEIGHT = 0.3;
 export const EDGE_THRESHOLD = 0.03;
+export const REG_LAMBDA = 0.5; // L2 penalty coefficient for shrinkage towards 1.0
 

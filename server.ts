@@ -19,7 +19,7 @@ async function startServer() {
     // Predict
     app.post('/api/predict', async (req, res) => {
         try {
-            const { homeTeam, awayTeam, league, adaptiveThresholdContext } = req.body;
+            const { homeTeam, awayTeam, league, asOfDate } = req.body;
 
             if (!homeTeam || !awayTeam || !league) {
                 return res.status(400).json({ error: 'Required fields missing' });
@@ -31,7 +31,7 @@ async function startServer() {
                 league, 
                 null,
                 null,
-                adaptiveThresholdContext
+                asOfDate
             );
             res.json(result);
         } catch (error: any) {

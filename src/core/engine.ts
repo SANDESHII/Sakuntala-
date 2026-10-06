@@ -28,21 +28,14 @@ async function resolveTeamData(
     const hist = await FeatureEngine.computeFeatures(teamName, leagueKey, asOfDate, fixtureCache?.[leagueKey]);
     return { data: hist, isGeneric: hist.quality === 'low', dataSource: 'FALLBACK_STATIC' };
   }
-
   const live = await FreeDataService.getTeamStats(teamName, leagueKey);
-  if (live) return { data: live, isGeneric: false, dataSource: 'LIVE' };
-
-  const identity = resolveTeam(teamName);
-  if (TEAM_STATS[identity.id]) {
-    return { data: { ...TEAM_STATS[identity.id] }, isGeneric: false, dataSource: 'FALLBACK_STATIC' };
-  }
-
+  const staticData = TEAM_STATS[resolveTeam(teamName).id];
   return { 
-    data: { 
+    data: live || staticData || { 
       attackStrength: 1.0, defenseStrength: 1.0, avgGoalsScored: 1.35, avgGoalsConceded: 1.35,
       homeAdvantageHeuristic: leagueConfig.homeAdvantage, form: [1, 1, 1, 1, 1], cleanSheetRate: 0.25 
     }, 
-    isGeneric: true, dataSource: 'FALLBACK_STATIC' 
+    isGeneric: !live && !staticData, dataSource: live ? 'LIVE' : 'FALLBACK_STATIC' 
   };
 }
 
@@ -80,7 +73,6 @@ export async function runPrediction(
   league: string,
   fittedOverride: Calibration.FittedLeagueParams | null = null,
   historicalOddsOverride: any = null,
-  adaptiveThresholdContext: any[] | null = null,
   asOfDate?: string,
   fixtureCache?: Record<string, HistoricalMatch[]>
 ): Promise<AnalysisResult> {
@@ -121,9 +113,7 @@ export async function runPrediction(
   const edge = pick === 'OVER_25' ? over25Edge : pick === 'UNDER_25' ? under25Edge : 0;
   const marketOdds = pick === 'OVER_25' ? marketOddsOver25 : pick === 'UNDER_25' ? marketOddsUnder25 : null;
 
-  const threshold = adaptiveThresholdContext && edge > 0
-    ? (adaptiveThresholdContext.find(s => edge >= s.min && edge < s.max)?.avgClv ?? 0) < 0 ? 0.04 : 0.03
-    : 0.03;
+  const threshold = EDGE_THRESHOLD;
 
   const p = pick === 'OVER_25' ? probOver25 : pick === 'UNDER_25' ? probUnder25 : 0;
   const kelly = (marketOdds && edge > threshold) ? Math.min(0.05, ((p * marketOdds - 1) / (marketOdds - 1)) * MODEL_CONFIG.KELLY_FRACTION) : 0;
@@ -175,7 +165,7 @@ export async function runBacktest(): Promise<BacktestSummary> {
 
   for (const match of evalPool) {
     const odds = await FreeDataService.getHistoricalOddsForMatch(match.league, match.date, match.home, match.away);
-    const prediction = await runPrediction(match.home, match.away, match.league, null, odds?.takenPrices, null, match.date, fixtureCache);
+    const prediction = await runPrediction(match.home, match.away, match.league, null, odds?.takenPrices, match.date, fixtureCache);
     const isHit = (prediction.predictionType === 'OVER_25' && (match.homeGoals + match.awayGoals) > 2.5) || (prediction.predictionType === 'UNDER_25' && (match.homeGoals + match.awayGoals) < 2.5);
     
     if (prediction.predictionType !== 'NO_BET' && prediction.marketOdds) {

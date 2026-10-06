@@ -32,8 +32,7 @@ export const App: FC = () => {
                 body: JSON.stringify({
                     homeTeam: inputs.home.toUpperCase().trim(),
                     awayTeam: inputs.away.toUpperCase().trim(),
-                    league: inputs.league,
-                    adaptiveThresholdContext: backtestSummary?.edgeSegments
+                    league: inputs.league
                 })
             });
             
@@ -90,6 +89,15 @@ export const App: FC = () => {
     }, []);
 
     useEffect(() => {
+        const handleKey = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') handleAnalyze();
+            if ((e.metaKey || e.ctrlKey) && e.key === 'b') setActiveTab('backtest');
+        };
+        window.addEventListener('keydown', handleKey);
+        return () => window.removeEventListener('keydown', handleKey);
+    }, [inputs, loadingAnalysis, activeTab]);
+
+    useEffect(() => {
         if (activeTab === 'backtest' && !backtestSummary) {
             loadBacktest();
         }
@@ -113,9 +121,6 @@ export const App: FC = () => {
                         <div className="flex items-center gap-3 transition-all duration-300">
                             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                             <span className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.4em]">Proprietary Dixon-Coles Engine</span>
-                            {backtestSummary && (
-                                <span className="px-2 py-0.5 bg-purple-500/10 border border-purple-500/20 rounded text-[8px] font-black text-purple-500 uppercase tracking-widest">Adaptive V2</span>
-                            )}
                         </div>
                         <h2 className="text-6xl md:text-8xl font-black tracking-tighter text-white leading-none uppercase">
                             Terminal<span className="text-emerald-500">_</span>

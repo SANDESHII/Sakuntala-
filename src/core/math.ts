@@ -63,6 +63,7 @@ export class DixonColes {
   }
 
   private static matrixCache = new Map<string, number[][]>();
+  private static readonly MAX_CACHE_SIZE = 50;
 
   /**
    * Generate full score probability matrix using Dixon-Coles model
@@ -79,6 +80,11 @@ export class DixonColes {
   ): number[][] {
     const cacheKey = `${lambdaHome.toFixed(3)}|${muAway.toFixed(3)}|${rho.toFixed(3)}`;
     if (this.matrixCache.has(cacheKey)) return this.matrixCache.get(cacheKey)!;
+
+    if (this.matrixCache.size >= DixonColes.MAX_CACHE_SIZE) {
+      const firstKey = this.matrixCache.keys().next().value;
+      if (firstKey) this.matrixCache.delete(firstKey);
+    }
 
     // Dynamically calculate required goal limit to satisfy epsilon threshold
     // P(X > k) < epsilon where X ~ Poisson(max(lambdaHome, muAway))

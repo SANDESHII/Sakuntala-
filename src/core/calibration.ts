@@ -12,7 +12,7 @@
 
 import * as FreeDataService from '../services/freeDataService';
 import { HistoricalMatch } from '../types';
-import { TIME_DECAY_PHI, DEFAULT_RHO, BASE_GOALS } from './constants';
+import { TIME_DECAY_PHI, DEFAULT_RHO, BASE_GOALS, REG_LAMBDA } from './constants';
 
 const HOME_ADVANTAGE_GAMMA = 1.25;
 
@@ -78,52 +78,46 @@ export function fitDixonColes(
 
     for (const { home, away, homeGoals, awayGoals, daysAgo } of matches) {
       const weight = Math.exp(-TIME_DECAY_PHI * daysAgo);
-      const lambda = Math.max(atk[home] * def[away] * gamma, 1e-10);
-      const muAway = Math.max(atk[away] * def[home], 1e-10);
+      const homeExp = Math.max(atk[home] * def[away] * gamma, 1e-10);
+      const awayExp = Math.max(atk[away] * def[home], 1e-10);
 
-      // d logL / d lambda  and  d logL / d mu
-      const dL_lambda = homeGoals / lambda - 1;
-      const dL_muAway = awayGoals / muAway - 1;
+      const dL_home = homeGoals / homeExp - 1;
+      const dL_away = awayGoals / awayExp - 1;
 
-      // Tau partial derivatives with safety bounds
-      let dt_lambda = 0, dt_muAway = 0;
-      const minRhoMatch = -1 / Math.max(lambda, muAway, 1);
+      let dt_home = 0, dt_away = 0;
+      const minRhoMatch = -1 / Math.max(homeExp, awayExp, 1);
       const safeRhoMatch = Math.max(minRhoMatch + 0.001, rho);
 
       if (homeGoals === 0 && awayGoals === 0) {
-        const d = 1 - lambda * muAway * safeRhoMatch;
-        dt_lambda = (-muAway * safeRhoMatch) / d;
-        dt_muAway = (-lambda * safeRhoMatch) / d;
+        const d = 1 - homeExp * awayExp * safeRhoMatch;
+        dt_home = (-awayExp * safeRhoMatch) / d;
+        dt_away = (-homeExp * safeRhoMatch) / d;
       } else if (homeGoals === 0 && awayGoals === 1) {
-        dt_lambda = safeRhoMatch / (1 + lambda * safeRhoMatch);
+        dt_home = safeRhoMatch / (1 + homeExp * safeRhoMatch);
       } else if (homeGoals === 1 && awayGoals === 0) {
-        dt_muAway = safeRhoMatch / (1 + muAway * safeRhoMatch);
+        dt_away = safeRhoMatch / (1 + awayExp * safeRhoMatch);
       }
 
-      const grad_lambda = weight * (dL_lambda + dt_lambda);
-      const grad_muAway = weight * (dL_muAway + dt_muAway);
+      const gradHome = weight * (dL_home + dt_home);
+      const gradAway = weight * (dL_away + dt_away);
 
-      // Chain rule: d lam / d atk_home = def_away * gamma
-      gradientAttack[home] += grad_lambda * def[away] * gamma;
-      gradientDefense[away] += grad_lambda * atk[home] * gamma;
-      gradientAttack[away] += grad_muAway * def[home];
-      gradientDefense[home] += grad_muAway * atk[away];
+      gradientAttack[home] += gradHome * def[away] * gamma;
+      gradientDefense[away] += gradHome * atk[home] * gamma;
+      gradientAttack[away] += gradAway * def[home];
+      gradientDefense[home] += gradAway * atk[away];
 
-      // d lam / d gamma = atk_home * def_away
-      gradientGamma += grad_lambda * atk[home] * def[away];
+      gradientGamma += gradHome * atk[home] * def[away];
 
-      // d logL / d rho with safety bounds
       let dr = 0;
-      if (homeGoals === 0 && awayGoals === 0)      dr = weight * ((-lambda * muAway) / (1 - lambda * muAway * safeRhoMatch));
-      else if (homeGoals === 0 && awayGoals === 1) dr = weight * (lambda / (1 + lambda * safeRhoMatch));
-      else if (homeGoals === 1 && awayGoals === 0) dr = weight * (muAway / (1 + muAway * safeRhoMatch));
+      if (homeGoals === 0 && awayGoals === 0)      dr = weight * ((-homeExp * awayExp) / (1 - homeExp * awayExp * safeRhoMatch));
+      else if (homeGoals === 0 && awayGoals === 1) dr = weight * (homeExp / (1 + homeExp * safeRhoMatch));
+      else if (homeGoals === 1 && awayGoals === 0) dr = weight * (awayExp / (1 + awayExp * safeRhoMatch));
       else if (homeGoals === 1 && awayGoals === 1) dr = weight * (-1 / (1 - safeRhoMatch));
       gradientRho += dr;
     }
 
     // Update (gradient ascent)
     const n = matches.length;
-    const REG_LAMBDA = 0.5; // L2 penalty coefficient for shrinkage towards 1.0
     for (const t of teams) {
       // Shrinkage: d/d(param) [ -REG_LAMBDA * (param - 1)^2 ] = -2 * REG_LAMBDA * (param - 1)
       const penaltyA = -2 * REG_LAMBDA * (atk[t] - 1);
@@ -224,15 +218,15 @@ export function predictGoals(
   const hKey = homeTeam.toUpperCase();
   const aKey = awayTeam.toUpperCase();
   
-  const h = fitted.teams[hKey];
-  const a = fitted.teams[aKey];
+  const homeParams = fitted.teams[hKey];
+  const awayParams = fitted.teams[aKey];
   
-  if (!h || !a) return null;
+  if (!homeParams || !awayParams) return null;
 
   // MLE lambda/mu calculation
   // Param semantics: attack/defense are multipliers on league average
-  let lambdaHome = h.attack * a.defense * fitted.homeAdvantage * BASE_GOALS;
-  let muAway = a.attack * h.defense * BASE_GOALS;
+  let lambdaHome = homeParams.attack * awayParams.defense * fitted.homeAdvantage * BASE_GOALS;
+  let muAway = awayParams.attack * homeParams.defense * BASE_GOALS;
 
   // Sanity Clamps (consistent with MODEL_CONFIG in engine.ts)
   lambdaHome = Math.max(0.3, Math.min(4.0, lambdaHome));
@@ -241,6 +235,6 @@ export function predictGoals(
   return {
     lambdaHome,
     muAway,
-    lowConfidence: h.lowConfidence || a.lowConfidence
+    lowConfidence: homeParams.lowConfidence || awayParams.lowConfidence
   };
 }

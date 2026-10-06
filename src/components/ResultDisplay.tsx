@@ -307,11 +307,6 @@ export const ResultGrid: FC<ResultGridProps> = memo(({ analysis }) => {
                                 <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
                                     <div className="h-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" style={{ width: analysis.modelSource === 'MLE_FITTED' ? '100%' : '40%' }} />
                                 </div>
-                                {analysis.modelSpecification && (
-                                    <p className="text-[8px] text-neutral-600 font-bold uppercase tracking-tight leading-relaxed">
-                                        Spec: {analysis.modelSpecification}
-                                    </p>
-                                )}
                             </div>
                             <div className="space-y-3">
                                 <div className="flex justify-between text-[10px] font-black uppercase text-neutral-400 tracking-widest">
@@ -320,24 +315,6 @@ export const ResultGrid: FC<ResultGridProps> = memo(({ analysis }) => {
                                 </div>
                                 <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
                                     <div className={`h-full ${analysis.isLowConfidence ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: analysis.isLowConfidence ? '30%' : '100%' }} />
-                                </div>
-                            </div>
-                            <div className="space-y-3">
-                                <div className="flex justify-between text-[10px] font-black uppercase text-neutral-400 tracking-widest">
-                                    <span>Attack Rating</span>
-                                    <span>HEURISTIC: {analysis.context.homeAttackRating}v{analysis.context.awayAttackRating}</span>
-                                </div>
-                                <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
-                                    <div className="h-full bg-amber-500/50 shadow-[0_0_8px_rgba(245,158,11,0.3)]" style={{ width: `${(analysis.context.homeAttackRating / 10) * 100}%` }} />
-                                </div>
-                            </div>
-                            <div className="space-y-3">
-                                <div className="flex justify-between text-[10px] font-black uppercase text-neutral-400 tracking-widest">
-                                    <span>Adaptive Threshold</span>
-                                    <span>{analysis.isThresholdAdaptive ? 'ENABLED' : 'NONE'}</span>
-                                </div>
-                                <div className="h-1 bg-neutral-900 rounded-full overflow-hidden">
-                                    <div className={`h-full ${analysis.isThresholdAdaptive ? 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)]' : 'bg-neutral-800'}`} style={{ width: analysis.isThresholdAdaptive ? '100%' : '10%' }} />
                                 </div>
                             </div>
                         </div>

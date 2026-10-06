@@ -1,4 +1,4 @@
-import { AnalysisResult, InternalTeamData, HistoricalMatch, BacktestSummary } from '../types';
+import { AnalysisResult, InternalTeamData, HistoricalMatch, BacktestSummary, BacktestMatch } from '../types';
 import { TEAM_STATS, LEAGUE_CONFIGS, BASE_GOALS, DEFAULT_RHO, HOME_ADVANTAGE_WEIGHT, AWAY_DEFENSE_WEIGHT, EDGE_THRESHOLD } from './constants';
 import { DixonColes } from './math';
 import * as FreeDataService from '../services/freeDataService';
@@ -151,109 +151,103 @@ export async function runPrediction(
  */
 export async function runBacktest(): Promise<BacktestSummary> {
   const leagues = ['EPL', 'LA_LIGA', 'BUNDESLIGA', 'SERIE_A', 'LIGUE_1'];
-  const backtestMatches: any[] = [];
+  const matches: BacktestMatch[] = [];
   const evalPool: any[] = [];
   const fixtureCache: Record<string, HistoricalMatch[]> = {};
 
   for (const l of leagues) {
     const raw = await FreeDataService.getHistoricalFixtures(l, 80, false);
     fixtureCache[l] = raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    evalPool.push(...fixtureCache[l].slice(-8));
+    evalPool.push(...fixtureCache[l].slice(-6));
   }
 
-  let totalPnl = 0, totalStake = 0, brierSum = 0, brierCount = 0;
-  let o25Hits = 0, o25Total = 0, u25Hits = 0, u25Total = 0, clvSum = 0;
-  
-  const edgeBuckets: Record<string, { count: number; hits: number; sumEdge: number; sumClv: number }> = {
-    '0.0-1.0': { count: 0, hits: 0, sumEdge: 0, sumClv: 0 },
-    '1.0-2.0': { count: 0, hits: 0, sumEdge: 0, sumClv: 0 },
-    '2.0-3.0': { count: 0, hits: 0, sumEdge: 0, sumClv: 0 },
-    '3.0+': { count: 0, hits: 0, sumEdge: 0, sumClv: 0 }
-  };
+  let totalPnl = 0, totalStake = 0, totalMatches = 0;
+  let over25Correct = 0, over25Total = 0, under25Correct = 0, under25Total = 0;
+  let brierSum = 0, clvSum = 0, clvCount = 0;
+
+  const segments = [
+    { segment: 'Low Edge (0-2%)', min: 0, max: 2, count: 0, hits: 0, avgEdge: 0, avgClv: 0, edgeSum: 0, clvSum: 0, clvCount: 0, hitRate: 0 },
+    { segment: 'Mid Edge (2-5%)', min: 2, max: 5, count: 0, hits: 0, avgEdge: 0, avgClv: 0, edgeSum: 0, clvSum: 0, clvCount: 0, hitRate: 0 },
+    { segment: 'High Edge (5-8%)', min: 5, max: 8, count: 0, hits: 0, avgEdge: 0, avgClv: 0, edgeSum: 0, clvSum: 0, clvCount: 0, hitRate: 0 },
+    { segment: 'Elite Edge (8%+)', min: 8, max: 100, count: 0, hits: 0, avgEdge: 0, avgClv: 0, edgeSum: 0, clvSum: 0, clvCount: 0, hitRate: 0 },
+  ];
 
   for (const match of evalPool) {
-    const odds = await FreeDataService.getHistoricalOddsForMatch(match.league, match.date, match.home, match.away);
-    const prediction = await runPrediction(match.home, match.away, match.league, null, odds?.takenPrices, match.date, fixtureCache);
-    
-    const actualTotalGoals = match.homeGoals + match.awayGoals;
-    const actualOver = actualTotalGoals > 2.5 ? 1 : 0;
-    const isHit = (prediction.predictionType === 'OVER_25' && actualOver === 1) || (prediction.predictionType === 'UNDER_25' && actualOver === 0);
-    
-    brierSum += Math.pow(prediction.rawProbability - actualOver, 2);
-    brierCount++;
+    try {
+      const odds = await FreeDataService.getHistoricalOddsForMatch(match.league, match.date, match.home, match.away);
+      const prediction = await runPrediction(match.home, match.away, match.league, null, odds?.takenPrices, match.date, fixtureCache);
 
-    const takenOdds = prediction.marketOdds || 0;
-    const closingOdds = (prediction.predictionType === 'OVER_25' ? odds?.closingPrices?.over25 : odds?.closingPrices?.under25) || takenOdds;
-    const clv = closingOdds > 0 ? takenOdds / closingOdds : 1;
-    clvSum += clv;
+      const totalGoals = match.homeGoals + match.awayGoals;
+      const isOver25Correct = totalGoals > 2.5;
+      const isUnder25Correct = totalGoals < 2.5;
 
-    if (prediction.predictionType !== 'NO_BET' && takenOdds > 0) {
-      const pnl = isHit ? (prediction.recommendedStake * takenOdds - prediction.recommendedStake) : -prediction.recommendedStake;
-      totalPnl += pnl;
-      totalStake += prediction.recommendedStake;
-      
-      if (prediction.predictionType === 'OVER_25') { o25Total++; if (isHit) o25Hits++; }
-      else { u25Total++; if (isHit) u25Hits++; }
+      // Brier score
+      brierSum += Math.pow(prediction.rawProbability - (isOver25Correct ? 1 : 0), 2);
 
-      const edgeVal = prediction.edge || 0;
-      let bucket = '0.0-1.0';
-      if (edgeVal >= 3.0) bucket = '3.0+';
-      else if (edgeVal >= 2.0) bucket = '2.0-3.0';
-      else if (edgeVal >= 1.0) bucket = '1.0-2.0';
-      
-      edgeBuckets[bucket].count++;
-      if (isHit) edgeBuckets[bucket].hits++;
-      edgeBuckets[bucket].sumEdge += edgeVal;
-      edgeBuckets[bucket].sumClv += clv;
-    }
+      // CLV
+      let clv = 0;
+      const closingPrice = prediction.predictionType === 'OVER_25' ? odds?.closingPrices?.over25 : odds?.closingPrices?.under25;
+      if (closingPrice && closingPrice > 1 && prediction.marketOdds && prediction.marketOdds > 1) {
+        clv = (prediction.marketOdds / closingPrice - 1) * 100;
+        clvSum += clv;
+        clvCount++;
+      }
 
-    backtestMatches.push({
-      match: {
-        homeTeam: match.home,
-        awayTeam: match.away,
-        actualScore: [match.homeGoals, match.awayGoals],
-        league: match.league,
-        isReal: true
-      },
-      prediction: {
-        predictionType: prediction.predictionType,
-        probability: prediction.probability,
-        rawProbability: prediction.rawProbability
-      },
-      marketEdge: prediction.edge,
-      isOver25Correct: actualOver === 1,
-      isUnder25Correct: actualOver === 0,
-      pnl: prediction.predictionType !== 'NO_BET' ? (isHit ? (prediction.recommendedStake * takenOdds - prediction.recommendedStake) : -prediction.recommendedStake) : 0,
-      clv,
-      stake: prediction.recommendedStake,
-      takenOdds,
-      closingOdds
-    });
+      // PnL
+      let pnl = 0;
+      if (prediction.predictionType !== 'NO_BET' && prediction.marketOdds) {
+        const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
+        pnl = isHit ? (prediction.recommendedStake * prediction.marketOdds - prediction.recommendedStake) : -prediction.recommendedStake;
+        totalPnl += pnl;
+        totalStake += prediction.recommendedStake;
+        totalMatches++;
+      }
+
+      // Accuracy tracking
+      if (prediction.predictionType === 'OVER_25') { over25Total++; if (isOver25Correct) over25Correct++; }
+      if (prediction.predictionType === 'UNDER_25') { under25Total++; if (isUnder25Correct) under25Correct++; }
+
+      // Edge segments
+      const absEdge = Math.abs(prediction.edge || 0);
+      const seg = segments.find(s => absEdge >= s.min && absEdge < s.max);
+      if (seg && prediction.predictionType !== 'NO_BET') {
+        seg.count++;
+        seg.edgeSum += absEdge;
+        if (clv !== 0) { seg.clvSum += clv; seg.clvCount++; }
+        const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
+        if (isHit) seg.hits++;
+      }
+
+      matches.push({
+        match: { homeTeam: match.home, awayTeam: match.away, actualScore: [match.homeGoals, match.awayGoals], league: match.league, isReal: true },
+        prediction: { predictionType: prediction.predictionType, probability: prediction.probability, rawProbability: prediction.rawProbability },
+        marketEdge: prediction.edge ? prediction.edge / 100 : null,
+        isOver25Correct,
+        isUnder25Correct,
+        pnl,
+        clv,
+        stake: prediction.recommendedStake,
+        takenOdds: prediction.marketOdds
+      });
+    } catch { continue; }
   }
 
-  const edgeSegments = Object.entries(edgeBuckets).map(([segment, data]) => {
-    const [min, max] = segment.endsWith('+') ? [3, 10] : segment.split('-').map(Number);
-    return {
-      segment,
-      min,
-      max: max || 10,
-      count: data.count,
-      hits: data.hits,
-      hitRate: data.count > 0 ? (data.hits / data.count) * 100 : 0,
-      avgEdge: data.count > 0 ? data.sumEdge / data.count : 0,
-      avgClv: data.count > 0 ? data.sumClv / data.count : 0
-    };
+  // Finalize segments
+  segments.forEach(s => {
+    s.hitRate = s.count > 0 ? s.hits / s.count : 0;
+    s.avgEdge = s.count > 0 ? s.edgeSum / s.count : 0;
+    s.avgClv = s.clvCount > 0 ? s.clvSum / s.clvCount : 0;
   });
 
   return {
-    totalMatches: brierCount,
+    totalMatches,
+    brierScore: matches.length > 0 ? brierSum / matches.length : 0,
+    over25Accuracy: over25Total > 0 ? (over25Correct / over25Total) * 100 : 0,
+    under25Accuracy: under25Total > 0 ? (under25Correct / under25Total) * 100 : 0,
     totalPnl: Math.round(totalPnl * 100) / 100,
     totalYield: totalStake > 0 ? (totalPnl / totalStake) * 100 : 0,
-    brierScore: brierCount > 0 ? brierSum / brierCount : 0,
-    over25Accuracy: o25Total > 0 ? (o25Hits / o25Total) * 100 : 0,
-    under25Accuracy: u25Total > 0 ? (u25Hits / u25Total) * 100 : 0,
-    avgClv: brierCount > 0 ? clvSum / brierCount : 1,
-    edgeSegments,
-    matches: backtestMatches.slice(-20).reverse()
+    avgClv: clvCount > 0 ? clvSum / clvCount : 0,
+    edgeSegments: segments.map(({ segment, min, max, count, hits, hitRate, avgEdge, avgClv }) => ({ segment, min, max, count, hits, hitRate, avgEdge, avgClv })),
+    matches: matches.slice(0, 20)
   };
 }

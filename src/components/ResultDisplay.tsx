@@ -55,7 +55,7 @@ export const ResultGrid: FC<ResultGridProps> = memo(({ analysis }) => {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
                 <div className="lg:col-span-8 space-y-20">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        <StatCard label="Model Edge" value={analysis.edge !== null ? `${analysis.edge > 0 ? '+' : ''}${analysis.edge}%` : '--'} subValue={analysis.context.marketOdds?.sourceName ? `vs ${analysis.context.marketOdds.sourceName}` : 'Market Data'} icon={Zap} />
+                        <StatCard label="Model Edge" value={analysis.edge !== null ? `${analysis.edge > 0 ? '+' : ''}${analysis.edge}%` : '--'} subValue={`vs ${analysis.context.marketOdds.source || 'NONE'}`} icon={Zap} />
                         <StatCard label="Combined xG" value={(analysis.homeExpectedGoals + analysis.awayExpectedGoals).toFixed(2)} subValue="Poisson Mean" icon={Activity} />
                         <StatCard label="Confidence" value={analysis.isLowConfidence ? 'LOW' : 'HIGH'} subValue={analysis.dataSource === 'LIVE' ? 'Verified Feed' : 'Fallback'} icon={Shield} />
                     </div>

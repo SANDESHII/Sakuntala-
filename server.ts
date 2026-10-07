@@ -4,6 +4,7 @@ import compression from 'compression';
 import { createServer as createViteServer } from 'vite';
 import { runPrediction, runBacktest } from './src/core/engine';
 import { getUpcomingFixtures, checkApiHealth } from './src/services/freeDataService';
+import { LEAGUE_CONFIGS } from './src/core/constants';
 import { logger } from './src/services/logger';
 
 async function startServer() {
@@ -26,6 +27,11 @@ async function startServer() {
                 return res.status(400).json({ error: 'Required fields missing' });
             }
 
+            const leagueKey = league.toUpperCase().replace(/ /g, '_');
+            if (!LEAGUE_CONFIGS[leagueKey] && leagueKey !== 'STANDARD') {
+                return res.status(400).json({ error: `Unsupported league: ${league}` });
+            }
+
             const result = await runPrediction(
                 homeTeam, 
                 awayTeam, 
@@ -36,7 +42,8 @@ async function startServer() {
             );
             res.json(result);
         } catch (error: any) {
-            logger.error('POST /api/predict', error, { body: req.body });
+            const { homeTeam, awayTeam, league } = req.body;
+            logger.error('POST /api/predict', error, { homeTeam, awayTeam, league });
             res.status(500).json({ error: error.message || 'Prediction failed' });
         }
     });

@@ -1,16 +1,16 @@
 import { FC, useState, useEffect } from 'react';
 
 export const Header: FC = () => {
-    const [isHealthy, setIsHealthy] = useState(true);
+    const [healthStatus, setHealthStatus] = useState<'OPERATIONAL' | 'DEGRADED' | 'ERROR'>('OPERATIONAL');
 
     useEffect(() => {
         const check = async () => {
             try {
                 const res = await fetch('/api/health');
                 const data = await res.json();
-                setIsHealthy(data.status === 'OPERATIONAL');
+                setHealthStatus(data.status);
             } catch {
-                setIsHealthy(false);
+                setHealthStatus('ERROR');
             }
         };
         check();
@@ -23,7 +23,10 @@ export const Header: FC = () => {
             <div className="max-w-7xl mx-auto h-full px-6 flex items-center">
                 <div className="flex items-center gap-4">
                     <span className="text-sm font-black text-white uppercase tracking-[0.4em]">Alpha Terminal</span>
-                    <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${isHealthy ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                    <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                        healthStatus === 'OPERATIONAL' ? 'bg-emerald-500' : 
+                        healthStatus === 'DEGRADED' ? 'bg-amber-500' : 'bg-red-500'
+                    }`} />
                 </div>
             </div>
         </header>

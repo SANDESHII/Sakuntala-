@@ -100,8 +100,8 @@ export async function runPrediction(
     ? { o25: historicalOddsOverride.over25?.bestPrice, u25: historicalOddsOverride.under25?.bestPrice }
     : getBestOdds(liveOdds.find((o: any) => resolveTeam(o.home_team).id === resolveTeam(homeTeam).id));
 
-  const over25Edge = probOver25 - (1 / marketOddsOver25);
-  const under25Edge = probUnder25 - (1 / marketOddsUnder25);
+  const over25Edge = marketOddsOver25 > 1 ? probOver25 - (1 / marketOddsOver25) : -1;
+  const under25Edge = marketOddsUnder25 > 1 ? probUnder25 - (1 / marketOddsUnder25) : -1;
   const thresholdBase = MODEL_CONFIG.EDGE_THRESHOLD;
   const isLowConfidence = mle?.lowConfidence || false;
 
@@ -158,17 +158,19 @@ export async function runBacktest(): Promise<BacktestSummary> {
   const allFixtures: Record<string, HistoricalMatch[]> = {};
   const evalPool: any[] = [];
   
-  for (const l of leagues) {
+  await Promise.all(leagues.map(async (l) => {
     try {
       // Fetch 150 matches with odds included to warm cache
       const raw = await FreeDataService.getHistoricalFixtures(l, 150, true);
-      allFixtures[l] = raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      const sorted = raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      allFixtures[l] = sorted;
       // Take a slice for evaluation (last 6 matches per league)
-      evalPool.push(...allFixtures[l].slice(-6).map(m => ({ ...m, league: l })));
+      const slice = sorted.slice(-6).map(m => ({ ...m, league: l }));
+      evalPool.push(...slice);
     } catch (e: any) {
       logger.error('runBacktest_fetch', e, { league: l });
     }
-  }
+  }));
 
   let totalPnl = 0, totalStake = 0, totalMatches = 0;
   let over25Correct = 0, over25Total = 0, under25Correct = 0, under25Total = 0;

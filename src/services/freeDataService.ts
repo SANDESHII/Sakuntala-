@@ -249,18 +249,28 @@ export async function getTeamStats(teamName: string, league: string) {
 
 export async function getLiveOdds(league: string) {
     if (!isLiveCapable()) return [];
-    return withCache(`live_odds_${league}`, () => fetchOddsApiLive(getLeagueConfig(league).oddsKey), LIVE_ODDS_TTL);
+    try {
+        return await withCache(`live_odds_${league}`, () => fetchOddsApiLive(getLeagueConfig(league).oddsKey), LIVE_ODDS_TTL);
+    } catch (err: any) {
+        logger.error('getLiveOdds', err, { league });
+        return [];
+    }
 }
 
 export async function getUpcomingFixtures(league: string, limit = 10): Promise<FixtureMatch[]> {
     if (!isLiveCapable()) return [];
-    return withCache(`fixtures_${league}_${limit}`, async () => {
-        const fixtures = await fetchApiFootballFixtures(league, limit, 'NS');
-        return fixtures.map((f: any) => ({
-            homeTeam: f.home, awayTeam: f.away, homeLogo: f.homeLogo || null, awayLogo: f.awayLogo || null,
-            kickoff: f.date, league: league.toUpperCase(), fixtureId: f.id
-        }));
-    }, FIXTURES_TTL);
+    try {
+        return await withCache(`fixtures_${league}_${limit}`, async () => {
+            const fixtures = await fetchApiFootballFixtures(league, limit, 'NS');
+            return fixtures.map((f: any) => ({
+                homeTeam: f.home, awayTeam: f.away, homeLogo: f.homeLogo || null, awayLogo: f.awayLogo || null,
+                kickoff: f.date, league: league.toUpperCase(), fixtureId: f.id
+            }));
+        }, FIXTURES_TTL);
+    } catch (err: any) {
+        logger.error('getUpcomingFixtures', err, { league });
+        return [];
+    }
 }
 
 async function fetchOddsBatch(sportKey: string, date: string) {
@@ -277,33 +287,38 @@ async function fetchOddsBatch(sportKey: string, date: string) {
 export async function getHistoricalFixtures(league: string, limit = 150, fetchOdds = true): Promise<HistoricalMatch[]> {
     if (!isLiveCapable()) return [];
     
-    const fixtures = await fetchApiFootballFixtures(league, limit, 'FT');
-    if (!fetchOdds) return fixtures.map((f: any) => ({ ...f }));
+    try {
+        const fixtures = await fetchApiFootballFixtures(league, limit, 'FT');
+        if (!fetchOdds) return fixtures.map((f: any) => ({ ...f }));
 
-    const sportKey = getLeagueConfig(league).oddsKey;
-    const dates = [...new Set(fixtures.map((f: any) => f.date.split('T')[0]))] as string[];
+        const sportKey = getLeagueConfig(league).oddsKey;
+        const dates = [...new Set(fixtures.map((f: any) => f.date.split('T')[0]))] as string[];
 
-    // Fetch odds for all dates at once (1 API call per date)
-    const allOdds = await Promise.all(dates.map(date => fetchOddsBatch(sportKey, date)));
+        // Fetch odds for all dates at once (1 API call per date)
+        const allOdds = await Promise.all(dates.map(date => fetchOddsBatch(sportKey, date)));
 
-    return fixtures.map((f: any) => {
-        const dateStr = f.date.split('T')[0];
-        const dateOdds = allOdds[dates.indexOf(dateStr)];
-        const hIdent = resolveById('apiFootball', f.homeId);
-        const matchOdds = dateOdds?.find((m: any) => m.home_team === hIdent.externalIds.theOddsApi);
+        return fixtures.map((f: any) => {
+            const dateStr = f.date.split('T')[0];
+            const dateOdds = allOdds[dates.indexOf(dateStr)];
+            const hIdent = resolveById('apiFootball', f.homeId);
+            const matchOdds = dateOdds?.find((m: any) => m.home_team === hIdent.externalIds.theOddsApi);
 
-        const result: HistoricalMatch = { ...f, date: dateStr };
-        if (matchOdds) {
-            const mapped = mapOddsMatch(matchOdds, f.date);
-            result.takenPrices = { 
-                over25: mapped.over25.bestPrice, 
-                over25NoVig: mapped.over25.noVigPrice,
-                under25: mapped.under25.bestPrice, 
-                under25NoVig: mapped.under25.noVigPrice
-            };
-            result.closingPrices = { ...result.takenPrices }; // Approximation
-            result.takenAt = f.date;
-        }
-        return result;
-    });
+            const result: HistoricalMatch = { ...f, date: dateStr };
+            if (matchOdds) {
+                const mapped = mapOddsMatch(matchOdds, f.date);
+                result.takenPrices = { 
+                    over25: mapped.over25.bestPrice, 
+                    over25NoVig: mapped.over25.noVigPrice,
+                    under25: mapped.under25.bestPrice, 
+                    under25NoVig: mapped.under25.noVigPrice
+                };
+                result.closingPrices = { ...result.takenPrices }; // Approximation
+                result.takenAt = f.date;
+            }
+            return result;
+        });
+    } catch (err: any) {
+        logger.error('getHistoricalFixtures', err, { league });
+        return [];
+    }
 }

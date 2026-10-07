@@ -27,7 +27,6 @@ export const App: FC = () => {
         
         setError(null); 
         setLoadingAnalysis(true); 
-        setAnalysis(null);
 
         try {
             const response = await fetch('/api/predict', {
@@ -73,8 +72,8 @@ export const App: FC = () => {
                     ts: Date.now()
                 }));
             }
-        } catch (err) {
-            // Silently fail or use telemetry in production for background loads
+        } catch (err: any) {
+            setError(err.message || 'BACKTEST MODULE FAILED TO LOAD');
         }
     };
 
@@ -181,7 +180,7 @@ export const App: FC = () => {
                                     )}
                                 </div>
                             </div>
-                            {analysis && !loadingAnalysis && (
+                            {analysis && (
                                 <div className="space-y-24 transition-all duration-300 page-transition">
                                     <ResultGrid analysis={analysis} />
                                     <GroundingLog analysis={analysis} />

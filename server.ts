@@ -3,7 +3,7 @@ import express from 'express';
 import compression from 'compression';
 import { createServer as createViteServer } from 'vite';
 import { runPrediction, runBacktest } from './src/core/engine';
-import { getUpcomingFixtures, getLiveOdds, checkApiHealth } from './src/services/freeDataService';
+import { getUpcomingFixtures, checkApiHealth } from './src/services/freeDataService';
 import { logger } from './src/services/logger';
 
 async function startServer() {
@@ -53,19 +53,6 @@ async function startServer() {
         } catch (error: any) {
             logger.error('GET /api/fixtures', error, { query: req.query });
             res.status(500).json({ error: error.message || 'Failed to fetch fixtures' });
-        }
-    });
-
-    // Odds
-    app.get('/api/odds', async (req, res) => {
-        try {
-            const league = (req.query.league as string) || 'EPL';
-            const odds = await getLiveOdds(league);
-            res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=1800');
-            res.json(odds);
-        } catch (error: any) {
-            logger.error('GET /api/odds', error, { query: req.query });
-            res.status(500).json({ error: error.message || 'Failed to fetch odds' });
         }
     });
 

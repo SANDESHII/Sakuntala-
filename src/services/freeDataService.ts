@@ -127,9 +127,17 @@ const getApiFootballConfig = () => {
     const key = cleanKey(process.env.API_FOOTBALL_KEY);
     if (!key) throw new Error('[Service] Missing API Key');
     const isRapid = !/^[a-f0-9]{32}$/i.test(key);
+    const headers: Record<string, string> = {};
+    if (isRapid) {
+        headers['x-rapidapi-key'] = key;
+        headers['x-rapidapi-host'] = 'api-football-v1.p.rapidapi.com';
+    } else {
+        headers['x-apisports-key'] = key;
+    }
+        
     return {
         baseUrl: isRapid ? 'https://api-football-v1.p.rapidapi.com/v3' : 'https://v3.football.api-sports.io',
-        headers: isRapid ? { 'x-rapidapi-key': key, 'x-rapidapi-host': 'api-football-v1.p.rapidapi.com' } : { 'x-apisports-key': key }
+        headers
     };
 };
 
@@ -168,17 +176,6 @@ async function fetchOddsApiLive(sport: string) {
     return fetchWithRetry<any[]>('the-odds-api', `https://api.the-odds-api.com/v4/sports/${sport}/odds`, {
         params: { apiKey, regions: 'eu,uk', markets: 'h2h,totals', oddsFormat: 'decimal' }
     });
-}
-
-async function fetchOddsApiSnapshot(sport: string, date: string) {
-    return withCache(`odds_snap_${sport}_${date}`, async () => {
-        const apiKey = getOddsApiKey();
-        if (!apiKey) throw new Error('[Service] Odds API Key missing.');
-        const res = await fetchWithRetry<any>('the-odds-api', `https://api.the-odds-api.com/v4/historical/sports/${sport}/odds`, {
-            params: { apiKey, regions: 'eu,uk', markets: 'totals', oddsFormat: 'decimal', date }
-        });
-        return res.data || [];
-    }, HISTORICAL_TTL);
 }
 
 function mapOddsMatch(match: any, timestamp: string): HistoricalPrices {
@@ -309,33 +306,4 @@ export async function getHistoricalFixtures(league: string, limit = 150, fetchOd
         }
         return result;
     });
-}
-
-export async function getHistoricalOddsForMatch(league: string, date: string, homeName: string, awayName: string) {
-    if (!isLiveCapable()) return null;
-    return withCache(`hist_odds_${league}_${date}_${homeName}_${awayName}`, async () => {
-        const sportKey = getLeagueConfig(league).oddsKey;
-        const kickoff = new Date(date);
-        const takenIso = new Date(kickoff.getTime() - 86400000).toISOString().split('.')[0] + 'Z';
-        const kickoffIso = kickoff.toISOString().split('.')[0] + 'Z';
-
-        const [tSnap, cSnap] = await Promise.all([fetchOddsApiSnapshot(sportKey, takenIso), fetchOddsApiSnapshot(sportKey, kickoffIso)]);
-        const findM = (snap: any[]) => snap.find(m => (m.home_team === homeName && m.away_team === awayName) || (m.home_team === awayName && m.away_team === homeName));
-        const tM = findM(tSnap), cM = findM(cSnap);
-
-        if (!tM && !cM) return null;
-
-        const result: any = {};
-        if (tM) {
-            const mapped = mapOddsMatch(tM, takenIso);
-            result.takenPrices = { over25: mapped.over25.bestPrice, over25NoVig: mapped.over25.noVigPrice, under25: mapped.under25.bestPrice, under25NoVig: mapped.under25.noVigPrice };
-            result.takenAt = takenIso;
-        }
-        if (cM) {
-            const mapped = mapOddsMatch(cM, kickoffIso);
-            result.closingPrices = { over25: mapped.over25.bestPrice, over25NoVig: mapped.over25.noVigPrice, under25: mapped.under25.bestPrice, under25NoVig: mapped.under25.noVigPrice };
-            result.closedAt = kickoffIso;
-        }
-        return result;
-    }, HISTORICAL_TTL);
 }

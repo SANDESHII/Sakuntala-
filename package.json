@@ -5,16 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "start": "node server.ts",
+    "start": "tsx server.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit",
-    "test": "vitest run"
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
-    "@types/compression": "^1.8.1",
-    "@types/express": "^5.0.6",
     "compression": "^1.8.2",
     "dotenv": "^18.0.4",
     "express": "^5.2.1",
@@ -24,13 +21,14 @@
     "tsx": "^4.23.15"
   },
   "devDependencies": {
+    "@types/compression": "^1.8.1",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.14.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
     "tailwindcss": "^4.0.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0",
-    "vitest": "^5.0.1"
+    "vite": "^6.2.0"
   }
 }

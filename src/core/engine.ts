@@ -5,6 +5,7 @@ import * as FreeDataService from '../services/freeDataService';
 import * as Calibration from './calibration';
 import { FeatureEngine } from './features';
 import { resolveTeam } from '../data/teamIds';
+import { logger } from '../services/logger';
 
 const MODEL_CONFIG = {
   LEAGUE_AVG_GOALS: BASE_GOALS,
@@ -139,9 +140,10 @@ export async function runPrediction(
     isLowConfidence,
     scoreMatrix: scoreMatrix.slice(0, 6).map(r => r.slice(0, 6))
   };
-} catch (err: any) {
-  throw new Error(`[Engine] Prediction failed: ${err.message}`);
-}
+  } catch (err: any) {
+    logger.error('runPrediction', err, { homeTeam, awayTeam, league });
+    throw new Error(`[Engine] Prediction failed: ${err.message}`);
+  }
 }
 
 /**
@@ -151,14 +153,21 @@ export async function runPrediction(
  */
 export async function runBacktest(): Promise<BacktestSummary> {
   const leagues = ['EPL', 'LA_LIGA', 'BUNDESLIGA', 'SERIE_A', 'LIGUE_1'];
-  const matches: BacktestMatch[] = [];
+  
+  // Step 1: Fetch all data ONCE
+  const allFixtures: Record<string, HistoricalMatch[]> = {};
   const evalPool: any[] = [];
-  const fixtureCache: Record<string, HistoricalMatch[]> = {};
-
+  
   for (const l of leagues) {
-    const raw = await FreeDataService.getHistoricalFixtures(l, 80, false);
-    fixtureCache[l] = raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    evalPool.push(...fixtureCache[l].slice(-6));
+    try {
+      // Fetch 150 matches with odds included to warm cache
+      const raw = await FreeDataService.getHistoricalFixtures(l, 150, true);
+      allFixtures[l] = raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      // Take a slice for evaluation (last 6 matches per league)
+      evalPool.push(...allFixtures[l].slice(-6).map(m => ({ ...m, league: l })));
+    } catch (e: any) {
+      logger.error('runBacktest_fetch', e, { league: l });
+    }
   }
 
   let totalPnl = 0, totalStake = 0, totalMatches = 0;
@@ -172,28 +181,39 @@ export async function runBacktest(): Promise<BacktestSummary> {
     { segment: 'Elite Edge (8%+)', min: 8, max: 100, count: 0, hits: 0, avgEdge: 0, avgClv: 0, edgeSum: 0, clvSum: 0, clvCount: 0, hitRate: 0 },
   ];
 
+  const results: BacktestMatch[] = [];
+
+  // Parallelize predictions within leagues or handle them sequentially to avoid overwhelming
   for (const match of evalPool) {
     try {
-      const odds = await FreeDataService.getHistoricalOddsForMatch(match.league, match.date, match.home, match.away);
-      const prediction = await runPrediction(match.home, match.away, match.league, null, odds?.takenPrices, match.date, fixtureCache);
+      // Since we fetched odds in getHistoricalFixtures, we use match.takenPrices/closingPrices
+      const prediction = await runPrediction(
+        match.home, 
+        match.away, 
+        match.league, 
+        null, 
+        { takenPrices: match.takenPrices, closingPrices: match.closingPrices }, 
+        match.date, 
+        allFixtures
+      );
 
       const totalGoals = match.homeGoals + match.awayGoals;
       const isOver25Correct = totalGoals > 2.5;
       const isUnder25Correct = totalGoals < 2.5;
 
-      // Brier score
+      // Brier score (normalized Over 2.5 prob)
       brierSum += Math.pow(prediction.rawProbability - (isOver25Correct ? 1 : 0), 2);
 
-      // CLV
+      // CLV calculation
       let clv = 0;
-      const closingPrice = prediction.predictionType === 'OVER_25' ? odds?.closingPrices?.over25 : odds?.closingPrices?.under25;
+      const closingPrice = prediction.predictionType === 'OVER_25' ? match.closingPrices?.over25 : match.closingPrices?.under25;
       if (closingPrice && closingPrice > 1 && prediction.marketOdds && prediction.marketOdds > 1) {
         clv = (prediction.marketOdds / closingPrice - 1) * 100;
         clvSum += clv;
         clvCount++;
       }
 
-      // PnL
+      // PnL & Yield
       let pnl = 0;
       if (prediction.predictionType !== 'NO_BET' && prediction.marketOdds) {
         const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
@@ -218,7 +238,7 @@ export async function runBacktest(): Promise<BacktestSummary> {
         if (isHit) seg.hits++;
       }
 
-      matches.push({
+      results.push({
         match: { homeTeam: match.home, awayTeam: match.away, actualScore: [match.homeGoals, match.awayGoals], league: match.league, isReal: true },
         prediction: { predictionType: prediction.predictionType, probability: prediction.probability, rawProbability: prediction.rawProbability },
         marketEdge: prediction.edge ? prediction.edge / 100 : null,
@@ -227,12 +247,16 @@ export async function runBacktest(): Promise<BacktestSummary> {
         pnl,
         clv,
         stake: prediction.recommendedStake,
-        takenOdds: prediction.marketOdds
+        takenOdds: prediction.marketOdds,
+        closingOdds: closingPrice
       });
-    } catch { continue; }
+    } catch (e: any) {
+      logger.warn('runBacktest_match', `Failed to process match ${match?.home} vs ${match?.away}: ${e.message}`);
+      continue;
+    }
   }
 
-  // Finalize segments
+  // Finalize segments stats
   segments.forEach(s => {
     s.hitRate = s.count > 0 ? s.hits / s.count : 0;
     s.avgEdge = s.count > 0 ? s.edgeSum / s.count : 0;
@@ -241,13 +265,13 @@ export async function runBacktest(): Promise<BacktestSummary> {
 
   return {
     totalMatches,
-    brierScore: matches.length > 0 ? brierSum / matches.length : 0,
+    brierScore: results.length > 0 ? brierSum / results.length : 0,
     over25Accuracy: over25Total > 0 ? (over25Correct / over25Total) * 100 : 0,
     under25Accuracy: under25Total > 0 ? (under25Correct / under25Total) * 100 : 0,
     totalPnl: Math.round(totalPnl * 100) / 100,
     totalYield: totalStake > 0 ? (totalPnl / totalStake) * 100 : 0,
     avgClv: clvCount > 0 ? clvSum / clvCount : 0,
-    edgeSegments: segments.map(({ segment, min, max, count, hits, hitRate, avgEdge, avgClv }) => ({ segment, min, max, count, hits, hitRate, avgEdge, avgClv })),
-    matches: matches.slice(0, 20)
+    edgeSegments: segments,
+    matches: results.slice(0, 20)
   };
 }

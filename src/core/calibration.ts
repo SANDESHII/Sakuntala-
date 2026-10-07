@@ -13,6 +13,7 @@
 import * as FreeDataService from '../services/freeDataService';
 import { HistoricalMatch } from '../types';
 import { TIME_DECAY_PHI, DEFAULT_RHO, BASE_GOALS, REG_LAMBDA } from './constants';
+import { logger } from '../services/logger';
 
 const HOME_ADVANTAGE_GAMMA = 1.25;
 
@@ -156,6 +157,9 @@ export function fitDixonColes(
 
 // ── API Integration ────────────────────────────────────────────
 
+const fittedCache = new Map<string, { params: FittedLeagueParams; ts: number }>();
+const FITTED_TTL = 6 * 60 * 60 * 1000; // 6 hours
+
 /**
  * Fit parameters from real historical data via API.
  * 
@@ -169,7 +173,20 @@ export async function fitFromAPI(
   asOfDate?: string, 
   historicalMatches?: HistoricalMatch[]
 ): Promise<FittedLeagueParams> {
-  const raw = historicalMatches || await FreeDataService.getHistoricalFixtures(league, 150);
+  const isLive = !asOfDate && !historicalMatches;
+  if (isLive) {
+    const cached = fittedCache.get(league);
+    if (cached && Date.now() - cached.ts < FITTED_TTL) return cached.params;
+  }
+
+  const raw = historicalMatches || await (async () => {
+    try {
+      return await FreeDataService.getHistoricalFixtures(league, 150);
+    } catch (err: any) {
+      logger.error('fitFromAPI_fetch', err, { league });
+      return [];
+    }
+  })();
   if (raw.length < 20) return { homeAdvantage: HOME_ADVANTAGE_GAMMA, rho: DEFAULT_RHO, teams: {} };
 
   const cutoff = asOfDate ? new Date(asOfDate).getTime() : Date.now();
@@ -179,19 +196,17 @@ export async function fitFromAPI(
      return { homeAdvantage: HOME_ADVANTAGE_GAMMA, rho: DEFAULT_RHO, teams: {} };
   }
 
-  const matches: MatchData[] = filtered.map(m => {
-    const kickoffTs = new Date(m.date).getTime();
-    const diffDays = Math.max(0, (cutoff - kickoffTs) / (1000 * 60 * 60 * 24));
-    return {
-      home: m.home,
-      away: m.away,
-      homeGoals: m.homeGoals || 0,
-      awayGoals: m.awayGoals || 0,
-      daysAgo: diffDays
-    };
-  });
+  const matches: MatchData[] = filtered.map(m => ({
+    home: m.home,
+    away: m.away,
+    homeGoals: m.homeGoals || 0,
+    awayGoals: m.awayGoals || 0,
+    daysAgo: Math.max(0, (cutoff - new Date(m.date).getTime()) / (1000 * 60 * 60 * 24))
+  }));
 
-  return fitDixonColes(matches, 500, 0.01);
+  const params = fitDixonColes(matches, 500, 0.01);
+  if (isLive) fittedCache.set(league, { params, ts: Date.now() });
+  return params;
 }
 
 

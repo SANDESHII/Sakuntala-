@@ -3,7 +3,8 @@ import express from 'express';
 import compression from 'compression';
 import { createServer as createViteServer } from 'vite';
 import { runPrediction, runBacktest } from './src/core/engine';
-import { getUpcomingFixtures, getLiveOdds } from './src/services/freeDataService';
+import { getUpcomingFixtures, getLiveOdds, checkApiHealth } from './src/services/freeDataService';
+import { logger } from './src/services/logger';
 
 async function startServer() {
   const app = express();
@@ -35,6 +36,7 @@ async function startServer() {
             );
             res.json(result);
         } catch (error: any) {
+            logger.error('POST /api/predict', error, { body: req.body });
             res.status(500).json({ error: error.message || 'Prediction failed' });
         }
     });
@@ -49,6 +51,7 @@ async function startServer() {
             res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=3600');
             res.json(fixtures);
         } catch (error: any) {
+            logger.error('GET /api/fixtures', error, { query: req.query });
             res.status(500).json({ error: error.message || 'Failed to fetch fixtures' });
         }
     });
@@ -61,7 +64,28 @@ async function startServer() {
             res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=1800');
             res.json(odds);
         } catch (error: any) {
+            logger.error('GET /api/odds', error, { query: req.query });
             res.status(500).json({ error: error.message || 'Failed to fetch odds' });
+        }
+    });
+
+    // Health Check
+    app.get('/api/health', async (_req, res) => {
+        try {
+            const [football, odds] = await Promise.all([
+                checkApiHealth('api-football'),
+                checkApiHealth('the-odds-api')
+            ]);
+            res.json({
+                status: football && odds ? 'OPERATIONAL' : 'DEGRADED',
+                services: {
+                    apiFootball: football ? 'HEALTHY' : 'DOWN',
+                    theOddsApi: odds ? 'HEALTHY' : 'DOWN'
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error: any) {
+            res.status(500).json({ status: 'ERROR', message: error.message });
         }
     });
 
@@ -84,6 +108,7 @@ async function startServer() {
 
             res.json(result);
         } catch (error: any) {
+            logger.error('GET /api/backtest', error);
             res.status(500).json({
                 totalMatches: 0,
                 totalPnl: 0,
@@ -121,6 +146,6 @@ async function startServer() {
 }
 
 startServer().catch((err) => {
-  console.error('Failed to start server:', err);
+  logger.error('startServer', err);
   process.exit(1);
 });

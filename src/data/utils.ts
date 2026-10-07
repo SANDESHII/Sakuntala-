@@ -1,9 +1,13 @@
-export function inferSeason(): number {
-  const now = new Date();
-  const month = now.getMonth(); // 0-indexed (0=Jan, 6=July)
-  const year = now.getFullYear();
-  // If we're before July, the season started in the previous year
-  return month < 6 ? year - 1 : year;
+const SEASON_START_MONTH: Record<string, number> = {
+  'EPL': 7, 'LA_LIGA': 7, 'BUNDESLIGA': 7, 'SERIE_A': 7, 'LIGUE_1': 7,
+  'MLS': 2, 'A_LEAGUE': 9,
+};
+
+export function inferSeason(league: string = 'EPL'): number {
+  const month = new Date().getMonth();
+  const year = new Date().getFullYear();
+  const startMonth = SEASON_START_MONTH[league.toUpperCase()] || 7;
+  return month < startMonth ? year - 1 : year;
 }
 
 export const LEAGUE_MAP: Record<string, { apiId: number; oddsKey: string }> = {

@@ -1,4 +1,4 @@
-import { useState, useEffect, FC } from 'react';
+import { useState, useEffect, FC, useRef } from 'react';
 import { AlertCircle, LayoutDashboard, History } from 'lucide-react';
 import { AnalysisResult, BacktestSummary } from './types';
 import { Header } from './components/Header';
@@ -17,9 +17,13 @@ export const App: FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'terminal' | 'backtest'>('terminal');
     const [backtestSummary, setBacktestSummary] = useState<BacktestSummary | null>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const handleAnalyze = async () => {
         if (loadingAnalysis || !inputs.home || !inputs.away) return;
+        
+        if (abortControllerRef.current) abortControllerRef.current.abort();
+        abortControllerRef.current = new AbortController();
         
         setError(null); 
         setLoadingAnalysis(true); 
@@ -29,6 +33,7 @@ export const App: FC = () => {
             const response = await fetch('/api/predict', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                signal: abortControllerRef.current.signal,
                 body: JSON.stringify({
                     homeTeam: inputs.home.toUpperCase().trim(),
                     awayTeam: inputs.away.toUpperCase().trim(),
@@ -44,6 +49,7 @@ export const App: FC = () => {
             const result = await response.json();
             setAnalysis(result);
         } catch (err: any) { 
+            if (err.name === 'AbortError') return;
             setError(err.message || 'ANALYSIS FAILED'); 
         } finally { 
             setLoadingAnalysis(false); 
@@ -71,6 +77,12 @@ export const App: FC = () => {
             // Silently fail or use telemetry in production for background loads
         }
     };
+
+    useEffect(() => {
+        return () => {
+            if (abortControllerRef.current) abortControllerRef.current.abort();
+        };
+    }, []);
 
     useEffect(() => {
         const initializeAdaptiveThresholding = async () => {

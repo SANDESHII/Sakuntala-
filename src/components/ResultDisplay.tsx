@@ -2,9 +2,32 @@ import { FC, memo } from 'react';
 import { Zap, Shield, Activity, LucideIcon } from 'lucide-react';
 import { AnalysisResult } from '../types';
 import { ScoreHeatmap } from './ScoreHeatmap';
-import { Briefing } from './BriefingModule';
+import { Info } from 'lucide-react';
 
 interface ResultGridProps { analysis: AnalysisResult; }
+
+const Briefing = ({ analysis }: { analysis: AnalysisResult }) => {
+  const { homeStats, awayStats, predictionType, probability, edge, verdict } = analysis;
+  const isOver = predictionType === 'OVER_25';
+  
+  const text = [
+    `Analysis of ${homeStats.name} vs ${awayStats.name} indicates a ${probability}% probability of ${isOver ? 'over' : 'under'} 2.5 goals.`,
+    verdict === 'EXECUTE_BET' 
+      ? `With a model edge of ${edge}%, this represents a high-value opportunity.`
+      : `The market appears efficient with no significant edge detected.`,
+    `Home xG: ${analysis.homeExpectedGoals.toFixed(2)}, Away xG: ${analysis.awayExpectedGoals.toFixed(2)}.`
+  ].join(' ');
+
+  return (
+    <div className="bg-neutral-900/30 border border-neutral-800 rounded-[48px] p-12 lg:p-16 space-y-8">
+      <div className="flex items-center gap-4">
+        <Info className="w-5 h-5 text-emerald-500" />
+        <h3 className="text-[11px] font-black text-neutral-400 uppercase tracking-[0.3em]">Strategic Briefing</h3>
+      </div>
+      <p className="text-sm text-neutral-500 leading-relaxed font-medium">{text}</p>
+    </div>
+  );
+};
 
 const StatCard = memo(({ label, value, subValue, icon: Icon }: { label: string; value: string | number; subValue?: string; icon: LucideIcon }) => (
     <div className="bg-neutral-900/40 p-10 rounded-[32px] border border-neutral-800/50 flex flex-col justify-between space-y-10 hover:bg-neutral-900/60 transition-all group shadow-sm hover:scale-105 hover:shadow-emerald-500/5">
@@ -34,11 +57,21 @@ export const ResultGrid: FC<ResultGridProps> = memo(({ analysis }) => {
                             </span>
                         </div>
                         <span className="text-neutral-800 font-black">/</span>
-                        <span className="text-[10px] font-black text-neutral-600 uppercase tracking-[0.4em]">Proprietary Engine</span>
+                        <span className="text-[10px] font-black text-neutral-600 uppercase tracking-[0.4em]">
+                            {analysis.context.league} • {analysis.kickoff || 'TBD'}
+                        </span>
                     </div>
-                    <h2 className="text-8xl md:text-9xl font-black text-white tracking-tighter leading-[0.75] uppercase max-w-4xl">
-                        {analysis.predictionLabel}<span className="text-neutral-800">.</span>
-                    </h2>
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-4 text-white/40 font-black text-xs uppercase tracking-widest">
+                            <span>{analysis.homeStats.name}</span>
+                            <span className="text-emerald-500">VS</span>
+                            <span>{analysis.awayStats.name}</span>
+                        </div>
+                        <p className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.5em] mb-2">Live Forecast</p>
+                        <h2 className="text-8xl md:text-9xl font-black text-white tracking-tighter leading-[0.75] uppercase max-w-4xl">
+                            {analysis.predictionLabel}<span className="text-neutral-800">.</span>
+                        </h2>
+                    </div>
                 </div>
                 <div className="text-right space-y-2">
                     <span className="text-[11px] font-black text-neutral-500 uppercase tracking-[0.4em] block">Confidence Level</span>

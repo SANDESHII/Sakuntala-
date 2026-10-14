@@ -9,12 +9,14 @@ interface AnalysisFormProps {
     setAway: (v: string) => void;
     league: string;
     setLeague: (v: string) => void;
+    kickoff: string;
+    setKickoff: (v: string) => void;
     onAnalyze: () => void;
     loading: boolean;
 }
 
 export const AnalysisForm: FC<AnalysisFormProps> = memo(({ 
-    home, setHome, away, setAway, league, setLeague,
+    home, setHome, away, setAway, league, setLeague, kickoff, setKickoff,
     onAnalyze, loading
 }) => {
     const [fixtures, setFixtures] = useState<FixtureMatch[]>([]);
@@ -41,9 +43,17 @@ export const AnalysisForm: FC<AnalysisFormProps> = memo(({
     }, [league]);
 
     const fields = [
-        { label: 'Home Side', val: home, set: setHome, placeholder: 'ARSENAL' },
-        { label: 'Away Side', val: away, set: setAway, placeholder: 'CHELSEA' },
-        { label: 'League Code', val: league, set: setLeague, placeholder: 'EPL' }
+        { label: 'Home Side', val: home, set: setHome, placeholder: 'ARSENAL', type: 'text' },
+        { label: 'Away Side', val: away, set: setAway, placeholder: 'CHELSEA', type: 'text' },
+        { label: 'Kickoff Time', val: kickoff, set: setKickoff, placeholder: 'HH:MM', type: 'text' }
+    ];
+
+    const leagues = [
+        { id: 'EPL', name: 'Premier League' },
+        { id: 'LA_LIGA', name: 'La Liga' },
+        { id: 'BUNDESLIGA', name: 'Bundesliga' },
+        { id: 'SERIE_A', name: 'Serie A' },
+        { id: 'LIGUE_1', name: 'Ligue 1' }
     ];
 
     const handleSubmit = (e: FormEvent) => {
@@ -57,25 +67,40 @@ export const AnalysisForm: FC<AnalysisFormProps> = memo(({
             className="bg-neutral-950 p-12 lg:p-16 border border-neutral-900 max-w-5xl mx-auto rounded-[40px]"
         >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-12">
+                <div className="space-y-4">
+                    <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
+                        Competition
+                    </label>
+                    <select 
+                        value={league}
+                        disabled={loading}
+                        onChange={(e) => setLeague(e.target.value)}
+                        className="w-full bg-transparent border-b border-neutral-800 px-0 py-4 text-4xl text-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500 transition-all font-bold uppercase tracking-tighter disabled:opacity-50 appearance-none cursor-pointer"
+                    >
+                        {leagues.map(l => (
+                            <option key={l.id} value={l.id} className="bg-neutral-900 text-sm">{l.name}</option>
+                        ))}
+                    </select>
+                </div>
+
                 {fields.map((f, i) => (
-                    <div key={i} className="space-y-4">
-                        <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
-                            {f.label}
-                        </label>
-                        <input 
-                            type="text" 
-                            value={f.val} 
-                            disabled={loading}
-                            autoFocus={i === 0}
-                            onChange={(e) => {
-                                const val = e.target.value.toUpperCase();
-                                f.set(val);
-                            }} 
-                            className="w-full bg-transparent border-b border-neutral-800 px-0 py-4 text-4xl text-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500 transition-all font-bold placeholder:text-neutral-800 uppercase tracking-tighter disabled:opacity-50 disabled:cursor-not-allowed" 
-                            placeholder={f.placeholder} 
-                            autoComplete="off"
-                        />
-                    </div>
+                  <div key={i} className="space-y-4">
+                    <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
+                      {f.label}
+                    </label>
+                    <input 
+                      type="text" 
+                      value={f.val} 
+                      disabled={loading}
+                      onChange={(e) => {
+                        const val = f.label === 'Kickoff Time' ? e.target.value : e.target.value.toUpperCase();
+                        f.set(val);
+                      }} 
+                      className="w-full bg-transparent border-b border-neutral-800 px-0 py-4 text-4xl text-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500 transition-all font-bold placeholder:text-neutral-800 uppercase tracking-tighter disabled:opacity-50 disabled:cursor-not-allowed" 
+                      placeholder={f.placeholder} 
+                      autoComplete="off"
+                    />
+                  </div>
                 ))}
             </div>
 
@@ -114,12 +139,14 @@ export const AnalysisForm: FC<AnalysisFormProps> = memo(({
                                 onClick={() => {
                                     setHome(f.homeTeam);
                                     setAway(f.awayTeam);
+                                    const time = new Date(f.kickoff).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+                                    setKickoff(time);
                                 }}
                                 className="group p-6 bg-neutral-900/50 border border-neutral-900 text-left hover:border-emerald-500/50 transition-all rounded-xl"
                             >
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center text-[8px] font-black text-neutral-600 uppercase tracking-tighter">
-                                        <span>{new Date(f.kickoff).toLocaleDateString()}</span>
+                                        <span>{new Date(f.kickoff).toLocaleDateString()} • {new Date(f.kickoff).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                     </div>
                                         <div className="flex items-center gap-2">
                                             <div className="w-4 h-4 flex items-center justify-center bg-neutral-800 rounded-sm overflow-hidden">

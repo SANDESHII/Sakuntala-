@@ -118,6 +118,7 @@ export interface AnalysisResult {
   dataSource: 'LIVE' | 'FALLBACK_STATIC';
   modelSource: 'MLE_FITTED' | 'HEURISTIC_FALLBACK';
   isLowConfidence?: boolean;
+  kickoff?: string;
   goalDistribution?: GoalDistribution[];
   scoreMatrix?: number[][];
 }

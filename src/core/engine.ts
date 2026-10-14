@@ -1,5 +1,5 @@
 import { AnalysisResult, InternalTeamData, HistoricalMatch, BacktestSummary, BacktestMatch } from '../types';
-import { TEAM_STATS, LEAGUE_CONFIGS, BASE_GOALS, DEFAULT_RHO, HOME_ADVANTAGE_WEIGHT, AWAY_DEFENSE_WEIGHT, EDGE_THRESHOLD } from './constants';
+import { TEAM_STATS, LEAGUE_CONFIGS, BASE_GOALS, DEFAULT_RHO, HOME_ADVANTAGE_WEIGHT, AWAY_DEFENSE_WEIGHT, EDGE_THRESHOLD, DEFAULT_CLEAN_SHEET_RATE, DEFAULT_FORM } from './constants';
 import { DixonColes } from './math';
 import * as FreeDataService from '../services/freeDataService';
 import * as Calibration from './calibration';
@@ -33,8 +33,8 @@ async function resolveTeamData(
   const staticData = TEAM_STATS[resolveTeam(teamName).id];
   return { 
     data: live || staticData || { 
-      attackStrength: 1.0, defenseStrength: 1.0, avgGoalsScored: 1.35, avgGoalsConceded: 1.35,
-      homeAdvantageHeuristic: leagueConfig.homeAdvantage, form: [1, 1, 1, 1, 1], cleanSheetRate: 0.25 
+      attackStrength: 1.0, defenseStrength: 1.0, avgGoalsScored: BASE_GOALS, avgGoalsConceded: BASE_GOALS,
+      homeAdvantageHeuristic: leagueConfig.homeAdvantage, form: DEFAULT_FORM, cleanSheetRate: DEFAULT_CLEAN_SHEET_RATE 
     }, 
     isGeneric: !live && !staticData, dataSource: live ? 'LIVE' : 'FALLBACK_STATIC' 
   };

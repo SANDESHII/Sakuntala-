@@ -1,4 +1,5 @@
 import { InternalTeamData, HistoricalMatch } from '../types';
+import { BASE_GOALS, DEFAULT_CLEAN_SHEET_RATE, DEFAULT_FORM } from './constants';
 
 export class FeatureEngine {
   /**
@@ -21,11 +22,11 @@ export class FeatureEngine {
       return {
         attackStrength: 1.0,
         defenseStrength: 1.0,
-        avgGoalsScored: 1.35,
-        avgGoalsConceded: 1.35,
+        avgGoalsScored: BASE_GOALS,
+        avgGoalsConceded: BASE_GOALS,
         homeAdvantageHeuristic: 0.3,
-        form: [1, 1, 1, 1, 1],
-        cleanSheetRate: 0.25,
+        form: DEFAULT_FORM,
+        cleanSheetRate: DEFAULT_CLEAN_SHEET_RATE,
         quality: 'low'
       };
     }
@@ -40,11 +41,11 @@ export class FeatureEngine {
       return {
         attackStrength: 1.0,
         defenseStrength: 1.0,
-        avgGoalsScored: 1.35,
-        avgGoalsConceded: 1.35,
+        avgGoalsScored: BASE_GOALS,
+        avgGoalsConceded: BASE_GOALS,
         homeAdvantageHeuristic: 0.3,
-        form: [1, 1, 1, 1, 1],
-        cleanSheetRate: 0.25,
+        form: DEFAULT_FORM,
+        cleanSheetRate: DEFAULT_CLEAN_SHEET_RATE,
         quality: 'low'
       };
     }

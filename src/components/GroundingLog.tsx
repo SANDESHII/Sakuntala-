@@ -25,18 +25,18 @@ export const GroundingLog: FC<GroundingLogProps> = ({ analysis }) => {
             label: 'Integrity Check', 
             value: isIntegrityPassed ? 'PASSED' : 'FAILED', 
             icon: isIntegrityPassed ? ShieldCheck : AlertTriangle,
-            color: isIntegrityPassed ? 'text-neutral-700' : 'text-red-500'
+            color: isIntegrityPassed ? 'text-emerald-500' : 'text-red-500'
           },
           { label: 'Model Date', value: context.date || 'REALTIME', icon: Database },
         ].map((item, i) => (
           <div
             key={i}
-            className="p-8 bg-neutral-900/20 border border-neutral-900 rounded-2xl space-y-4 transition-all duration-300"
+            className="p-8 bg-neutral-900/20 border border-neutral-900 rounded-2xl space-y-4 hover:bg-neutral-900/40 hover:border-neutral-800 transition-all duration-300 group"
           >
-            <item.icon className={`w-4 h-4 ${item.color || 'text-neutral-700'}`} />
+            <item.icon className={`w-4 h-4 transition-transform group-hover:scale-110 ${item.color || 'text-neutral-700'}`} />
             <div className="space-y-1">
-              <p className="text-[10px] font-black text-neutral-600 uppercase tracking-widest">{item.label}</p>
-              <p className={`text-sm font-bold uppercase ${item.value === 'FAILED' ? 'text-red-500' : 'text-neutral-300'}`}>{item.value}</p>
+              <p className="text-[10px] font-black text-neutral-600 uppercase tracking-widest group-hover:text-neutral-500 transition-colors">{item.label}</p>
+              <p className={`text-sm font-bold uppercase transition-colors ${item.value === 'FAILED' ? 'text-red-500' : 'text-neutral-300 group-hover:text-white'}`}>{item.value}</p>
             </div>
           </div>
         ))}

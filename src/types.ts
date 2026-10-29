@@ -123,9 +123,7 @@ export interface AnalysisResult {
   scoreMatrix?: number[][];
 }
 
-// ═══════════════════════════════════════════════════════════════
-// SUPPORTING TYPES
-// ═══════════════════════════════════════════════════════════════
+// --- Supporting Types ---
 
 export interface FixtureMatch {
   homeTeam: string;

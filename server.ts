@@ -111,7 +111,14 @@ async function startServer() {
   }
 
   app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
+    console.log(`
+  🚀 Alpha Terminal System Active
+  ──────────────────────────────
+  URL: http://localhost:${port}
+  ENV: ${process.env.NODE_ENV || 'development'}
+  DB:  Static Fallbacks Pre-loaded
+  ──────────────────────────────
+    `);
   });
 }
 

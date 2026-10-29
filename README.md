@@ -13,3 +13,8 @@ Professional-grade football analytical terminal utilizing Dixon-Coles Poisson mo
 - `GET /api/fixtures?league=EPL` - Fetch upcoming matches
 - `POST /api/predict` - Execute full Dixon-Coles analysis
 - `GET /api/backtest` - Run historical model grounding
+
+## Configuration
+Requires the following environment variables for live data feeds:
+- `API_FOOTBALL_KEY`: From api-football.com
+- `ODDS_API_KEY`: From the-odds-api.com

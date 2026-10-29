@@ -31,7 +31,7 @@ export const LoadingOverlay: FC<LoadingOverlayProps> = ({ loading }) => {
     if (!loading) return null;
 
     return (
-        <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center p-8 transition-all duration-300">
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-xl flex flex-col items-center justify-center p-8 transition-opacity duration-500">
             <div className="max-w-md w-full space-y-16">
                 <div className="relative flex items-center justify-center">
                     <div className="w-48 h-48 border-[0.5px] border-neutral-900 rounded-full animate-[spin_4s_linear_infinite]" />

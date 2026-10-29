@@ -53,3 +53,26 @@ export const DEFAULT_CLEAN_SHEET_RATE = 0.25;
 export const DEFAULT_HOME_ADVANTAGE = 0.30;
 export const DEFAULT_FORM = [1, 1, 1, 1, 1];
 
+export const MODEL_CONFIG = {
+  LEAGUE_AVG_GOALS: BASE_GOALS,
+  EDGE_THRESHOLD: EDGE_THRESHOLD,
+  MAX_LAMBDA: 4.0,
+  MIN_LAMBDA: 0.3,
+  MAX_MU: 3.5,
+  MIN_MU: 0.2,
+  KELLY_FRACTION: 0.35,
+};
+
+export const LEAGUE_MAP: Record<string, { apiId: number; oddsKey: string }> = {
+  'EPL': { apiId: 39, oddsKey: 'soccer_epl' },
+  'LA_LIGA': { apiId: 140, oddsKey: 'soccer_spain_la_liga' },
+  'BUNDESLIGA': { apiId: 78, oddsKey: 'soccer_germany_bundesliga' },
+  'SERIE_A': { apiId: 135, oddsKey: 'soccer_italy_serie_a' },
+  'LIGUE_1': { apiId: 61, oddsKey: 'soccer_france_ligue_one' },
+};
+
+export const SEASON_START_MONTH: Record<string, number> = {
+  'EPL': 7, 'LA_LIGA': 7, 'BUNDESLIGA': 7, 'SERIE_A': 7, 'LIGUE_1': 7,
+  'MLS': 2, 'A_LEAGUE': 9,
+};
+

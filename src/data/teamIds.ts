@@ -7,9 +7,29 @@ export const TEAM_ALIASES: Record<string, string> = {
   'MANCHESTER UNITED': 'MAN_UTD',
   'MAN UTD': 'MAN_UTD',
   'ATHLETIC CLUB': 'ATHLETIC_BILBAO',
+  'ATHLETIC BILBAO': 'ATHLETIC_BILBAO',
   'SPURS': 'TOTTENHAM',
+  'TOTTENHAM HOTSPUR': 'TOTTENHAM',
   'PSG': 'PSG',
   'PARIS SG': 'PSG',
+  'PARIS SAINT GERMAIN': 'PSG',
+  'BRIGHTON & HOVE ALBION': 'BRIGHTON',
+  'BRIGHTON AND HOVE ALBION': 'BRIGHTON',
+  'WOLVERHAMPTON WANDERERS': 'WOLVES',
+  'WEST HAM UNITED': 'WEST_HAM',
+  'NEWCASTLE UNITED': 'NEWCASTLE',
+  'AFC BOURNEMOUTH': 'BOURNEMOUTH',
+  'REAL BETIS': 'BETIS',
+  'REAL SOCIEDAD': 'REAL_SOCIEDAD',
+  'BAYERN MUNICH': 'BAYERN',
+  'BORUSSIA DORTMUND': 'DORTMUND',
+  'RB LEIPZIG': 'RB_LEIPZIG',
+  'BAYER LEVERKUSEN': 'LEVERKUSEN',
+  'BORUSSIA MONCHENGLADBACH': 'GLADBACH',
+  'AC MILAN': 'MILAN',
+  'INTER MILAN': 'INTER',
+  'AS ROMA': 'ROMA',
+  'HELLAS VERONA': 'VERONA',
 };
 
 export const TEAM_IDS: Record<string, { apiFootball: number; theOddsApi: string }> = {
@@ -136,7 +156,12 @@ export function resolveById(source: 'apiFootball' | 'theOddsApi', id: string | n
 }
 
 export function resolveTeam(name: string): TeamIdentity {
-  const normalized = name.toUpperCase().trim().replace(/_/g, ' ').replace(/\s+/g, ' ');
+  const normalized = name.toUpperCase()
+    .trim()
+    .replace(/[.&]/g, ' ') // replace dots and ampersands with space
+    .replace(/[']/g, '')    // remove single quotes
+    .replace(/\s+/g, ' '); // collapse multiple spaces
+    
   const underscoreName = normalized.replace(/ /g, '_');
   
   if (TEAM_STATS[underscoreName] || TEAM_IDS[underscoreName]) {

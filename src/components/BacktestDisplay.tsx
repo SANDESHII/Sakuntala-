@@ -20,11 +20,11 @@ export const BacktestDisplay: FC<BacktestDisplayProps> = ({ summary }) => {
                 {metrics.map((m, i) => (
                     <div 
                         key={i}
-                        className="bg-neutral-900/50 border border-neutral-800 p-8 rounded-3xl space-y-4 transition-all duration-300"
+                        className="bg-neutral-900/50 border border-neutral-800 p-8 rounded-3xl space-y-4 hover:bg-neutral-900/80 hover:border-neutral-700 hover:scale-[1.02] transition-all duration-300 group shadow-lg"
                     >
-                        <m.icon className="w-5 h-5 text-neutral-600" />
+                        <m.icon className="w-5 h-5 text-neutral-600 group-hover:text-emerald-500 transition-colors" />
                         <div className="space-y-1">
-                            <p className="text-[10px] font-black text-neutral-600 uppercase tracking-widest">{m.label}</p>
+                            <p className="text-[10px] font-black text-neutral-600 uppercase tracking-widest group-hover:text-neutral-500 transition-colors">{m.label}</p>
                             <p className={`text-3xl font-black ${m.color}`}>{m.value}</p>
                         </div>
                     </div>

@@ -1,5 +1,5 @@
 import { AnalysisResult, InternalTeamData, HistoricalMatch, BacktestSummary, BacktestMatch } from '../types';
-import { TEAM_STATS, LEAGUE_CONFIGS, BASE_GOALS, DEFAULT_RHO, HOME_ADVANTAGE_WEIGHT, AWAY_DEFENSE_WEIGHT, EDGE_THRESHOLD, DEFAULT_CLEAN_SHEET_RATE, DEFAULT_FORM } from './constants';
+import { TEAM_STATS, LEAGUE_CONFIGS, BASE_GOALS, DEFAULT_RHO, HOME_ADVANTAGE_WEIGHT, AWAY_DEFENSE_WEIGHT, EDGE_THRESHOLD, DEFAULT_CLEAN_SHEET_RATE, DEFAULT_FORM, MODEL_CONFIG } from './constants';
 import { DixonColes } from './math';
 import * as FreeDataService from '../services/freeDataService';
 import * as Calibration from './calibration';
@@ -7,13 +7,7 @@ import { FeatureEngine } from './features';
 import { resolveTeam } from '../data/teamIds';
 import { logger } from '../services/logger';
 
-const MODEL_CONFIG = {
-  LEAGUE_AVG_GOALS: BASE_GOALS,
-  EDGE_THRESHOLD: EDGE_THRESHOLD,
-  MAX_LAMBDA: 4.0,
-  MIN_LAMBDA: 0.3,
-  KELLY_FRACTION: 0.35,
-};
+
 
 /**
  * Resolve team data using historical, live, static, or fallback paths.
@@ -90,7 +84,7 @@ export async function runPrediction(
 
   const mle = Calibration.predictGoals(fittedParams, homeTeam, awayTeam);
   const lambdaHome = mle ? mle.lambdaHome : Math.max(MODEL_CONFIG.MIN_LAMBDA, Math.min(MODEL_CONFIG.MAX_LAMBDA, homeRes.data.attackStrength * awayRes.data.defenseStrength * leagueConfig.goalRate * BASE_GOALS * (1 + leagueConfig.homeAdvantage * HOME_ADVANTAGE_WEIGHT)));
-  const muAway = mle ? mle.muAway : Math.max(0.2, Math.min(3.5, awayRes.data.attackStrength * homeRes.data.defenseStrength * leagueConfig.goalRate * BASE_GOALS * (1 - leagueConfig.homeAdvantage * AWAY_DEFENSE_WEIGHT)));
+  const muAway = mle ? mle.muAway : Math.max(MODEL_CONFIG.MIN_MU, Math.min(MODEL_CONFIG.MAX_MU, awayRes.data.attackStrength * homeRes.data.defenseStrength * leagueConfig.goalRate * BASE_GOALS * (1 - leagueConfig.homeAdvantage * AWAY_DEFENSE_WEIGHT)));
   
   const scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, mle ? fittedParams.rho : DEFAULT_RHO);
   const probOver25 = DixonColes.calculateOverUnder(scoreMatrix, 2.5);
@@ -160,8 +154,8 @@ export async function runBacktest(): Promise<BacktestSummary> {
   
   await Promise.all(leagues.map(async (l) => {
     try {
-      // Fetch 150 matches with odds included to warm cache
-      const raw = await FreeDataService.getHistoricalFixtures(l, 150, true);
+      // Fetch 300 matches with odds included to warm cache
+      const raw = await FreeDataService.getHistoricalFixtures(l, 300, true);
       const sorted = raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       allFixtures[l] = sorted;
       // Take a slice for evaluation (last 6 matches per league)
@@ -185,77 +179,78 @@ export async function runBacktest(): Promise<BacktestSummary> {
 
   const results: BacktestMatch[] = [];
 
-  // Parallelize predictions within leagues or handle them sequentially to avoid overwhelming
-  for (const match of evalPool) {
-    try {
-      // Since we fetched odds in getHistoricalFixtures, we use match.takenPrices/closingPrices
-      const prediction = await runPrediction(
-        match.home, 
-        match.away, 
-        match.league, 
-        null, 
-        { takenPrices: match.takenPrices, closingPrices: match.closingPrices }, 
-        match.date, 
-        allFixtures
-      );
+  const CHUNK_SIZE = 5;
+  for (let i = 0; i < evalPool.length; i += CHUNK_SIZE) {
+    const chunk = evalPool.slice(i, i + CHUNK_SIZE);
+    await Promise.all(chunk.map(async (match) => {
+      try {
+        const prediction = await runPrediction(
+          match.home, 
+          match.away, 
+          match.league, 
+          null, 
+          { takenPrices: match.takenPrices, closingPrices: match.closingPrices }, 
+          match.date, 
+          allFixtures
+        );
 
-      const totalGoals = match.homeGoals + match.awayGoals;
-      const isOver25Correct = totalGoals > 2.5;
-      const isUnder25Correct = totalGoals < 2.5;
+        const totalGoals = match.homeGoals + match.awayGoals;
+        const isOver25Correct = totalGoals > 2.5;
+        const isUnder25Correct = totalGoals < 2.5;
 
-      // Brier score (normalized Over 2.5 prob)
-      brierSum += Math.pow(prediction.rawProbability - (isOver25Correct ? 1 : 0), 2);
+        // Brier score
+        brierSum += Math.pow(prediction.rawProbability - (isOver25Correct ? 1 : 0), 2);
 
-      // CLV calculation
-      let clv = 0;
-      const closingPrice = prediction.predictionType === 'OVER_25' ? match.closingPrices?.over25 : match.closingPrices?.under25;
-      if (closingPrice && closingPrice > 1 && prediction.marketOdds && prediction.marketOdds > 1) {
-        clv = (prediction.marketOdds / closingPrice - 1) * 100;
-        clvSum += clv;
-        clvCount++;
+        // CLV
+        let clv = 0;
+        const closingPrice = prediction.predictionType === 'OVER_25' ? match.closingPrices?.over25 : match.closingPrices?.under25;
+        if (closingPrice && closingPrice > 1 && prediction.marketOdds && prediction.marketOdds > 1) {
+          clv = (prediction.marketOdds / closingPrice - 1) * 100;
+          clvSum += clv;
+          clvCount++;
+        }
+
+        // PnL & Yield
+        let pnl = 0;
+        if (prediction.predictionType !== 'NO_BET' && prediction.marketOdds) {
+          const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
+          pnl = isHit ? (prediction.recommendedStake * prediction.marketOdds - prediction.recommendedStake) : -prediction.recommendedStake;
+          totalPnl += pnl;
+          totalStake += prediction.recommendedStake;
+          totalMatches++;
+        }
+
+        // Accuracy
+        if (prediction.predictionType === 'OVER_25') { over25Total++; if (isOver25Correct) over25Correct++; }
+        if (prediction.predictionType === 'UNDER_25') { under25Total++; if (isUnder25Correct) under25Correct++; }
+
+        // Segments
+        const absEdge = Math.abs(prediction.edge || 0);
+        const seg = segments.find(s => absEdge >= s.min && absEdge < s.max);
+        if (seg && prediction.predictionType !== 'NO_BET') {
+          seg.count++;
+          seg.edgeSum += absEdge;
+          if (clv !== 0) { seg.clvSum += clv; seg.clvCount++; }
+          const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
+          if (isHit) seg.hits++;
+        }
+
+        results.push({
+          match: { homeTeam: match.home, awayTeam: match.away, actualScore: [match.homeGoals, match.awayGoals], league: match.league, isReal: true },
+          prediction: { predictionType: prediction.predictionType, probability: prediction.probability, rawProbability: prediction.rawProbability },
+          marketEdge: prediction.edge ? prediction.edge / 100 : null,
+          isOver25Correct,
+          isUnder25Correct,
+          pnl,
+          clv,
+          stake: prediction.recommendedStake,
+          takenOdds: prediction.marketOdds,
+          closingOdds: closingPrice
+        });
+      } catch (e: any) {
+        logger.warn('runBacktest_match', `Failed to process match ${match?.home} vs ${match?.away}: ${e.message}`);
       }
-
-      // PnL & Yield
-      let pnl = 0;
-      if (prediction.predictionType !== 'NO_BET' && prediction.marketOdds) {
-        const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
-        pnl = isHit ? (prediction.recommendedStake * prediction.marketOdds - prediction.recommendedStake) : -prediction.recommendedStake;
-        totalPnl += pnl;
-        totalStake += prediction.recommendedStake;
-        totalMatches++;
-      }
-
-      // Accuracy tracking
-      if (prediction.predictionType === 'OVER_25') { over25Total++; if (isOver25Correct) over25Correct++; }
-      if (prediction.predictionType === 'UNDER_25') { under25Total++; if (isUnder25Correct) under25Correct++; }
-
-      // Edge segments
-      const absEdge = Math.abs(prediction.edge || 0);
-      const seg = segments.find(s => absEdge >= s.min && absEdge < s.max);
-      if (seg && prediction.predictionType !== 'NO_BET') {
-        seg.count++;
-        seg.edgeSum += absEdge;
-        if (clv !== 0) { seg.clvSum += clv; seg.clvCount++; }
-        const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
-        if (isHit) seg.hits++;
-      }
-
-      results.push({
-        match: { homeTeam: match.home, awayTeam: match.away, actualScore: [match.homeGoals, match.awayGoals], league: match.league, isReal: true },
-        prediction: { predictionType: prediction.predictionType, probability: prediction.probability, rawProbability: prediction.rawProbability },
-        marketEdge: prediction.edge ? prediction.edge / 100 : null,
-        isOver25Correct,
-        isUnder25Correct,
-        pnl,
-        clv,
-        stake: prediction.recommendedStake,
-        takenOdds: prediction.marketOdds,
-        closingOdds: closingPrice
-      });
-    } catch (e: any) {
-      logger.warn('runBacktest_match', `Failed to process match ${match?.home} vs ${match?.away}: ${e.message}`);
-      continue;
-    }
+    }));
   }
 
   // Finalize segments stats

@@ -1,4 +1,4 @@
-import { useState, useEffect, FC, useRef, lazy, Suspense, memo } from 'react';
+import { useState, useEffect, FC, useRef, lazy, Suspense } from 'react';
 import { AlertCircle, LayoutDashboard, History } from 'lucide-react';
 import { AnalysisResult, BacktestSummary } from './types';
 import { Header } from './components/Header';
@@ -119,7 +119,7 @@ export const App: FC = () => {
       <div className="relative z-10">
         <Header />
         <LoadingOverlay loading={loadingAnalysis} />
-        <main className="max-w-7xl mx-auto px-6 pt-32 pb-24 space-y-12">
+        <main className="max-w-7xl mx-auto px-6 pt-32 pb-24 space-y-12 min-h-[calc(100vh-80px)]">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8 mb-24">
             <div className="space-y-3">
               <div className="flex items-center gap-3">
@@ -175,9 +175,13 @@ export const App: FC = () => {
                   </div>
                 </div>
                 {analysis && (
-                  <div className="space-y-24 page-transition">
-                    <ResultGrid analysis={analysis} />
-                    <GroundingLog analysis={analysis} />
+                  <div className="space-y-24 transition-all duration-300">
+                    <div className="page-transition">
+                      <ResultGrid analysis={analysis} />
+                    </div>
+                    <div className="page-transition delay-300">
+                      <GroundingLog analysis={analysis} />
+                    </div>
                   </div>
                 )}
               </div>

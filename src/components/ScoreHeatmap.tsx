@@ -54,7 +54,7 @@ export const ScoreHeatmap: FC<ScoreHeatmapProps> = memo(({ matrix, homeTeam, awa
                 return (
                   <div
                     key={`${h}-${a}`}
-                    className="relative group aspect-square flex items-center justify-center rounded-sm md:rounded-md transition-all border border-neutral-900/50"
+                    className="relative group aspect-square flex items-center justify-center rounded-sm md:rounded-md transition-all border border-neutral-900/50 hover:border-emerald-500/50"
                     style={{
                       backgroundColor: `rgba(16, 185, 129, ${intensity * 0.4})`,
                       boxShadow: intensity > 0.8 ? 'inset 0 0 12px rgba(16, 185, 129, 0.2)' : 'none'
@@ -64,6 +64,10 @@ export const ScoreHeatmap: FC<ScoreHeatmapProps> = memo(({ matrix, homeTeam, awa
                       {(prob * 100).toFixed(1)}%
                     </span>
                     
+                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black border border-neutral-800 px-2 py-1 rounded text-[8px] font-black text-white whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl uppercase tracking-tighter">
+                      {h} - {a}
+                    </div>
+
                     {intensity > 0.7 && (
                       <div className="absolute inset-0 border border-emerald-500/20 rounded-md animate-pulse" />
                     )}

@@ -12,7 +12,7 @@
 
 import * as FreeDataService from '../services/freeDataService';
 import { HistoricalMatch } from '../types';
-import { TIME_DECAY_PHI, DEFAULT_RHO, BASE_GOALS, REG_LAMBDA } from './constants';
+import { TIME_DECAY_PHI, DEFAULT_RHO, BASE_GOALS, REG_LAMBDA, MODEL_CONFIG } from './constants';
 import { logger } from '../services/logger';
 
 const HOME_ADVANTAGE_GAMMA = 1.25;
@@ -71,16 +71,21 @@ export function fitDixonColes(
   let gamma = HOME_ADVANTAGE_GAMMA;  // home advantage
   let rho = DEFAULT_RHO;
 
+  let prevLL = -Infinity;
   for (let iter = 0; iter < iterations; iter++) {
     const gradientAttack: Record<string, number> = {};
     const gradientDefense: Record<string, number> = {};
     for (const t of teams) { gradientAttack[t] = 0; gradientDefense[t] = 0; }
     let gradientGamma = 0, gradientRho = 0;
+    let currentLL = 0;
 
     for (const { home, away, homeGoals, awayGoals, daysAgo } of matches) {
       const weight = Math.exp(-TIME_DECAY_PHI * daysAgo);
       const homeExp = Math.max(atk[home] * def[away] * gamma, 1e-10);
       const awayExp = Math.max(atk[away] * def[home], 1e-10);
+
+      // Log-likelihood contribution
+      currentLL += weight * (homeGoals * Math.log(homeExp) - homeExp + awayGoals * Math.log(awayExp) - awayExp);
 
       const dL_home = homeGoals / homeExp - 1;
       const dL_away = awayGoals / awayExp - 1;
@@ -117,10 +122,13 @@ export function fitDixonColes(
       gradientRho += dr;
     }
 
+    // Convergence check
+    if (Math.abs(currentLL - prevLL) < 1e-6) break;
+    prevLL = currentLL;
+
     // Update (gradient ascent)
     const n = matches.length;
     for (const t of teams) {
-      // Shrinkage: d/d(param) [ -REG_LAMBDA * (param - 1)^2 ] = -2 * REG_LAMBDA * (param - 1)
       const penaltyA = -2 * REG_LAMBDA * (atk[t] - 1);
       const penaltyD = -2 * REG_LAMBDA * (def[t] - 1);
 
@@ -128,8 +136,6 @@ export function fitDixonColes(
       def[t] = Math.max(0.2, Math.min(3.0, def[t] + lr * (gradientDefense[t] + penaltyD) / n));
     }
 
-    // Resolve identifiability Scale Symmetry: Ensure mean(atk) = 1.0 by shifting scale to defense
-    // This ensures the model remains identifiable and the normalization doesn't happen "after" optimization
     const currentAvgA = teams.reduce((s, t) => s + atk[t], 0) / teams.length;
     for (const t of teams) {
       atk[t] /= currentAvgA;
@@ -181,7 +187,7 @@ export async function fitFromAPI(
 
   const raw = historicalMatches || await (async () => {
     try {
-      return await FreeDataService.getHistoricalFixtures(league, 150);
+      return await FreeDataService.getHistoricalFixtures(league, 300);
     } catch (err: any) {
       logger.error('fitFromAPI_fetch', err, { league });
       return [];
@@ -243,9 +249,9 @@ export function predictGoals(
   let lambdaHome = homeParams.attack * awayParams.defense * fitted.homeAdvantage * BASE_GOALS;
   let muAway = awayParams.attack * homeParams.defense * BASE_GOALS;
 
-  // Sanity Clamps (consistent with MODEL_CONFIG in engine.ts)
-  lambdaHome = Math.max(0.3, Math.min(4.0, lambdaHome));
-  muAway = Math.max(0.2, Math.min(3.5, muAway));
+  // Sanity Clamps (consistent with MODEL_CONFIG)
+  lambdaHome = Math.max(MODEL_CONFIG.MIN_LAMBDA, Math.min(MODEL_CONFIG.MAX_LAMBDA, lambdaHome));
+  muAway = Math.max(MODEL_CONFIG.MIN_MU, Math.min(MODEL_CONFIG.MAX_MU, muAway));
 
   return {
     lambdaHome,

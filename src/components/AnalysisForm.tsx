@@ -2,6 +2,8 @@ import { FC, type FormEvent, useState, useEffect, memo } from 'react';
 import { FixtureMatch } from '../types';
 import { Calendar } from 'lucide-react';
 
+import { BaseInput } from './BaseInput';
+
 interface AnalysisFormProps {
     home: string;
     setHome: (v: string) => void;
@@ -33,7 +35,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = memo(({
                 const data = await response.json();
                 setFixtures(data);
             } catch {
-                // Silently fallback to manual entry on data feed interruption
+                // Fallback
             } finally {
                 setLoadingFixtures(false);
             }
@@ -41,12 +43,6 @@ export const AnalysisForm: FC<AnalysisFormProps> = memo(({
 
         return () => clearTimeout(timeoutId);
     }, [league]);
-
-    const fields = [
-        { label: 'Home Side', val: home, set: setHome, placeholder: 'ARSENAL', type: 'text' },
-        { label: 'Away Side', val: away, set: setAway, placeholder: 'CHELSEA', type: 'text' },
-        { label: 'Kickoff Time', val: kickoff, set: setKickoff, placeholder: 'HH:MM', type: 'text' }
-    ];
 
     const leagues = [
         { id: 'EPL', name: 'Premier League' },
@@ -64,18 +60,18 @@ export const AnalysisForm: FC<AnalysisFormProps> = memo(({
     return (
         <form 
             onSubmit={handleSubmit} 
-            className="bg-neutral-950 p-12 lg:p-16 border border-neutral-900 max-w-5xl mx-auto rounded-[40px]"
+            className="bg-neutral-950 p-12 lg:p-16 border border-neutral-900 max-w-5xl mx-auto rounded-[40px] shadow-2xl"
         >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-12">
-                <div className="space-y-4">
-                    <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
+                <div className="space-y-4 group">
+                    <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest group-focus-within:text-emerald-500 transition-colors">
                         Competition
                     </label>
                     <select 
                         value={league}
                         disabled={loading}
                         onChange={(e) => setLeague(e.target.value)}
-                        className="w-full bg-transparent border-b border-neutral-800 px-0 py-4 text-4xl text-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500 transition-all font-bold uppercase tracking-tighter disabled:opacity-50 appearance-none cursor-pointer"
+                        className="w-full bg-transparent border-b border-neutral-800 px-0 py-4 text-4xl text-white focus:outline-none focus:border-emerald-500 transition-all font-bold uppercase tracking-tighter disabled:opacity-50 appearance-none cursor-pointer"
                     >
                         {leagues.map(l => (
                             <option key={l.id} value={l.id} className="bg-neutral-900 text-sm">{l.name}</option>
@@ -83,34 +79,41 @@ export const AnalysisForm: FC<AnalysisFormProps> = memo(({
                     </select>
                 </div>
 
-                {fields.map((f, i) => (
-                  <div key={i} className="space-y-4">
-                    <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
-                      {f.label}
-                    </label>
-                    <input 
-                      type="text" 
-                      value={f.val} 
-                      disabled={loading}
-                      onChange={(e) => {
-                        const val = f.label === 'Kickoff Time' ? e.target.value : e.target.value.toUpperCase();
-                        f.set(val);
-                      }} 
-                      className="w-full bg-transparent border-b border-neutral-800 px-0 py-4 text-4xl text-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500 transition-all font-bold placeholder:text-neutral-800 uppercase tracking-tighter disabled:opacity-50 disabled:cursor-not-allowed" 
-                      placeholder={f.placeholder} 
-                      autoComplete="off"
-                    />
-                  </div>
-                ))}
+                <BaseInput 
+                    label="Home Side" 
+                    value={home} 
+                    onChange={(e) => setHome(e.target.value.toUpperCase())}
+                    placeholder="ARSENAL"
+                    disabled={loading}
+                    autoComplete="off"
+                />
+
+                <BaseInput 
+                    label="Away Side" 
+                    value={away} 
+                    onChange={(e) => setAway(e.target.value.toUpperCase())}
+                    placeholder="CHELSEA"
+                    disabled={loading}
+                    autoComplete="off"
+                />
+
+                <BaseInput 
+                    label="Kickoff Time" 
+                    value={kickoff} 
+                    onChange={(e) => setKickoff(e.target.value)}
+                    placeholder="HH:MM"
+                    disabled={loading}
+                    autoComplete="off"
+                />
             </div>
 
             <button 
                 type="submit" 
                 disabled={loading || !home || !away} 
-                className={`w-full mt-12 py-10 font-black tracking-[0.2em] text-sm uppercase transition-all rounded-2xl ${
+                className={`w-full mt-12 py-10 font-black tracking-[0.2em] text-sm uppercase transition-all rounded-2xl active:scale-[0.98] ${
                     loading || !home || !away 
                         ? 'bg-neutral-900 text-neutral-700 cursor-not-allowed' 
-                        : 'bg-white text-black hover:bg-emerald-500'
+                        : 'bg-white text-black hover:bg-emerald-500 hover:shadow-[0_0_30px_rgba(16,185,129,0.3)]'
                 }`}
             >
                 {loading ? 'PROCESSING...' : 'RUN ANALYSIS'}
@@ -142,7 +145,7 @@ export const AnalysisForm: FC<AnalysisFormProps> = memo(({
                                     const time = new Date(f.kickoff).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
                                     setKickoff(time);
                                 }}
-                                className="group p-6 bg-neutral-900/50 border border-neutral-900 text-left hover:border-emerald-500/50 transition-all rounded-xl"
+                                className="group p-6 bg-neutral-900/30 border border-neutral-900 text-left hover:border-emerald-500/50 hover:bg-neutral-900/50 hover:scale-[1.02] transition-all duration-300 rounded-xl"
                             >
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center text-[8px] font-black text-neutral-600 uppercase tracking-tighter">

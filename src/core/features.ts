@@ -7,14 +7,12 @@ export class FeatureEngine {
    * Uses only matches that occurred before that date for point-in-time evaluation.
    * 
    * @param teamName - Name of the team to compute features for
-   * @param _league - League identifier
    * @param asOfDate - Cutoff date for historical data
    * @param history - Pool of historical matches
    * @returns Internal team metrics for prediction
    */
   static async computeFeatures(
     teamName: string,
-    _league: string,
     asOfDate: string,
     history?: HistoricalMatch[]
   ): Promise<InternalTeamData> {

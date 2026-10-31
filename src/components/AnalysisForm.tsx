@@ -17,6 +17,24 @@ interface AnalysisFormProps {
     loading: boolean;
 }
 
+const TeamRow = ({ logo, name }: { logo?: string | null, name: string }) => (
+    <div className="flex items-center gap-2">
+        <div className="w-4 h-4 flex items-center justify-center bg-neutral-800 rounded-sm overflow-hidden">
+            {logo ? (
+                <img 
+                    src={logo} 
+                    alt="" 
+                    className="w-full h-full object-contain opacity-50 group-hover:opacity-100 transition-opacity"
+                    onError={(e) => (e.currentTarget.style.display = 'none')}
+                />
+            ) : (
+                <div className="w-1.5 h-1.5 bg-neutral-600 rounded-full" />
+            )}
+        </div>
+        <span className="text-[10px] font-black text-white truncate">{name}</span>
+    </div>
+);
+
 export const AnalysisForm: FC<AnalysisFormProps> = memo(({ 
     home, setHome, away, setAway, league, setLeague, kickoff, setKickoff,
     onAnalyze, loading
@@ -151,36 +169,8 @@ export const AnalysisForm: FC<AnalysisFormProps> = memo(({
                                     <div className="flex justify-between items-center text-[8px] font-black text-neutral-600 uppercase tracking-tighter">
                                         <span>{new Date(f.kickoff).toLocaleDateString()} • {new Date(f.kickoff).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                     </div>
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-4 h-4 flex items-center justify-center bg-neutral-800 rounded-sm overflow-hidden">
-                                                {f.homeLogo ? (
-                                                    <img 
-                                                        src={f.homeLogo} 
-                                                        alt="" 
-                                                        className="w-full h-full object-contain opacity-50 group-hover:opacity-100 transition-opacity"
-                                                        onError={(e) => (e.currentTarget.style.display = 'none')}
-                                                    />
-                                                ) : (
-                                                    <div className="w-1.5 h-1.5 bg-neutral-600 rounded-full" />
-                                                )}
-                                            </div>
-                                            <span className="text-[10px] font-black text-white truncate">{f.homeTeam}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-4 h-4 flex items-center justify-center bg-neutral-800 rounded-sm overflow-hidden">
-                                                {f.awayLogo ? (
-                                                    <img 
-                                                        src={f.awayLogo} 
-                                                        alt="" 
-                                                        className="w-full h-full object-contain opacity-50 group-hover:opacity-100 transition-opacity"
-                                                        onError={(e) => (e.currentTarget.style.display = 'none')}
-                                                    />
-                                                ) : (
-                                                    <div className="w-1.5 h-1.5 bg-neutral-600 rounded-full" />
-                                                )}
-                                            </div>
-                                            <span className="text-[10px] font-black text-white truncate">{f.awayTeam}</span>
-                                        </div>
+                                    <TeamRow logo={f.homeLogo} name={f.homeTeam} />
+                                    <TeamRow logo={f.awayLogo} name={f.awayTeam} />
                                 </div>
                             </button>
                         ))}

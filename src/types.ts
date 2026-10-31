@@ -179,3 +179,7 @@ export interface BacktestSummary {
   matches: BacktestMatch[];
   error?: string;
 }
+
+export interface BacktestError extends BacktestSummary {
+  error: string;
+}

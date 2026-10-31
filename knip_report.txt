@@ -1,0 +1,15 @@
+Unused files (3)
+dist/assets/BacktestDisplay-BM-csXnx.js
+dist/assets/index-C0LlJ4ix.js          
+dist/assets/index-DpHwCUds.css         
+Unused devDependencies (3)
+depcheck  package.json:30:6
+jscpd     package.json:31:6
+madge     package.json:33:6
+Unused exports (1)
+EDGE_THRESHOLD  src/core/constants.ts:49:14
+Unused exported types (4)
+MatchContext      interface  src/types.ts:60:18 
+GoalDistribution  interface  src/types.ts:77:18 
+BacktestError     interface  src/types.ts:183:18
+BacktestResponse  type       src/types.ts:187:13

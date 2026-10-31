@@ -17,7 +17,7 @@ import { logger } from '../services/logger';
 
 const HOME_ADVANTAGE_GAMMA = 1.25;
 
-export interface FittedTeamParams {
+interface FittedTeamParams {
   attack: number;   // α — attacking strength (1.0 = league average)
   defense: number;  // β — defensive strength (1.0 = league average)
   matchCount: number;
@@ -47,7 +47,7 @@ interface MatchData {
  * @param lr - Learning rate
  * @returns Fitted league and team parameters
  */
-export function fitDixonColes(
+function fitDixonColes(
   matches: MatchData[],
   iterations = 500,
   lr = 0.01
@@ -188,8 +188,8 @@ export async function fitFromAPI(
   const raw = historicalMatches || await (async () => {
     try {
       return await FreeDataService.getHistoricalFixtures(league, 300);
-    } catch (err: any) {
-      logger.error('fitFromAPI_fetch', err, { league });
+    } catch (err: unknown) {
+      logger.error('fitFromAPI_fetch', err instanceof Error ? err : new Error(String(err)), { league });
       return [];
     }
   })();

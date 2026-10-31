@@ -1,7 +1,7 @@
 import { TEAM_STATS } from '../core/constants';
 import { TeamIdentity } from '../types';
 
-export const TEAM_ALIASES: Record<string, string> = {
+const TEAM_ALIASES: Record<string, string> = {
   'MANCHESTER CITY': 'MAN_CITY',
   'MAN CITY': 'MAN_CITY',
   'MANCHESTER UNITED': 'MAN_UTD',
@@ -32,7 +32,7 @@ export const TEAM_ALIASES: Record<string, string> = {
   'HELLAS VERONA': 'VERONA',
 };
 
-export const TEAM_IDS: Record<string, { apiFootball: number; theOddsApi: string }> = {
+const TEAM_IDS: Record<string, { apiFootball: number; theOddsApi: string }> = {
   'ARSENAL': { apiFootball: 42, theOddsApi: 'Arsenal' },
   'MAN_CITY': { apiFootball: 50, theOddsApi: 'Manchester City' },
   'LIVERPOOL': { apiFootball: 40, theOddsApi: 'Liverpool' },

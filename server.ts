@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import compression from 'compression';
-import { createServer as createViteServer } from 'vite';
+
 import { runPrediction, runBacktest } from './src/core/engine';
 import { getUpcomingFixtures, checkApiHealth } from './src/services/freeDataService';
 import { LEAGUE_CONFIGS } from './src/core/constants';
@@ -9,7 +9,7 @@ import { logger } from './src/services/logger';
 
 async function startServer() {
   const app = express();
-  const port = 3000;
+  const port = process.env.PORT || 3000;
 
   app.use(compression());
   app.use(express.json());
@@ -27,12 +27,12 @@ async function startServer() {
         return res.status(400).json({ error: `Unsupported league: ${league}` });
       }
 
-      const result = await runPrediction(homeTeam, awayTeam, league, null, null, asOfDate);
+      const result = await runPrediction(homeTeam, awayTeam, league, null, asOfDate);
       res.json(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
       const { homeTeam, awayTeam, league } = req.body;
-      logger.error('POST /api/predict', error, { homeTeam, awayTeam, league });
-      res.status(500).json({ error: error.message || 'Prediction failed' });
+      logger.error('POST /api/predict', error instanceof Error ? error : new Error(String(error)), { homeTeam, awayTeam, league });
+      res.status(500).json({ error: (error as Error).message || 'Prediction failed' });
     }
   });
 
@@ -43,9 +43,9 @@ async function startServer() {
       const fixtures = await getUpcomingFixtures(league, limit);
       res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=3600');
       res.json(fixtures);
-    } catch (error: any) {
-      logger.error('GET /api/fixtures', error, { query: req.query });
-      res.status(500).json({ error: error.message || 'Failed to fetch fixtures' });
+    } catch (error: unknown) {
+      logger.error('GET /api/fixtures', error instanceof Error ? error : new Error(String(error)), { query: req.query });
+      res.status(500).json({ error: (error as Error).message || 'Failed to fetch fixtures' });
     }
   });
 
@@ -63,8 +63,8 @@ async function startServer() {
         },
         timestamp: new Date().toISOString()
       });
-    } catch (error: any) {
-      res.status(500).json({ status: 'ERROR', message: error.message });
+    } catch (error: unknown) {
+      res.status(500).json({ status: 'ERROR', message: (error as Error).message });
     }
   });
 
@@ -79,16 +79,16 @@ async function startServer() {
       }
 
       const result = await runBacktest();
-      if (result && result.totalMatches > 0 && !result.error) {
+      if (result && result.totalMatches > 0) {
         backtestCache = { result, ts: Date.now() };
       }
       res.json(result);
-    } catch (error: any) {
-      logger.error('GET /api/backtest', error);
+    } catch (error: unknown) {
+      logger.error('GET /api/backtest', error instanceof Error ? error : new Error(String(error)));
       res.status(500).json({
-        totalMatches: 0, totalPnl: 0, totalYield: 0, avgClv: 0,
+        totalMatches: 0, totalPnl: 0, totalYield: 0, avgClv: 0, brierScore: 0,
         over25Accuracy: 0, under25Accuracy: 0, edgeSegments: [],
-        matches: [], error: error.message || 'Backtest failed'
+        matches: [], error: (error as Error).message || 'Backtest failed'
       });
     }
   });
@@ -99,10 +99,11 @@ async function startServer() {
 
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static('dist'));
-    app.get('*', (_req, res) => {
+    app.get('/{*splat}', (_req, res) => {
       res.sendFile('dist/index.html', { root: '.' });
     });
   } else {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -112,7 +113,7 @@ async function startServer() {
 
   app.listen(port, () => {
     console.log(`
-  🚀 Alpha Terminal System Active
+  🚀 Quantitative Football AI System Active
   ──────────────────────────────
   URL: http://localhost:${port}
   ENV: ${process.env.NODE_ENV || 'development'}
@@ -122,7 +123,7 @@ async function startServer() {
   });
 }
 
-startServer().catch((err) => {
-  logger.error('startServer', err);
+startServer().catch((err: unknown) => {
+  logger.error('startServer', err instanceof Error ? err : new Error(String(err)));
   process.exit(1);
 });

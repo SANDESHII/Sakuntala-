@@ -1,0 +1,81 @@
+{
+  "server.ts": [
+    "src/core/constants.ts",
+    "src/core/engine.ts",
+    "src/services/freeDataService.ts",
+    "src/services/logger.ts"
+  ],
+  "src/App.tsx": [
+    "src/components/AnalysisForm.tsx",
+    "src/components/BacktestDisplay.tsx",
+    "src/components/GroundingLog.tsx",
+    "src/components/Header.tsx",
+    "src/components/LoadingOverlay.tsx",
+    "src/components/ResultDisplay.tsx",
+    "src/types.ts"
+  ],
+  "src/components/AnalysisForm.tsx": [
+    "src/components/BaseInput.tsx",
+    "src/types.ts"
+  ],
+  "src/components/BacktestDisplay.tsx": [
+    "src/types.ts"
+  ],
+  "src/components/BaseInput.tsx": [],
+  "src/components/GroundingLog.tsx": [
+    "src/types.ts"
+  ],
+  "src/components/Header.tsx": [],
+  "src/components/LoadingOverlay.tsx": [],
+  "src/components/ResultDisplay.tsx": [
+    "src/components/ScoreHeatmap.tsx",
+    "src/types.ts"
+  ],
+  "src/components/ScoreHeatmap.tsx": [],
+  "src/core/calibration.ts": [
+    "src/core/constants.ts",
+    "src/services/freeDataService.ts",
+    "src/services/logger.ts",
+    "src/types.ts"
+  ],
+  "src/core/constants.ts": [],
+  "src/core/engine.ts": [
+    "src/core/calibration.ts",
+    "src/core/constants.ts",
+    "src/core/features.ts",
+    "src/core/math.ts",
+    "src/data/teamIds.ts",
+    "src/services/freeDataService.ts",
+    "src/services/logger.ts",
+    "src/types.ts"
+  ],
+  "src/core/features.ts": [
+    "src/core/constants.ts",
+    "src/types.ts"
+  ],
+  "src/core/math.ts": [
+    "src/core/constants.ts"
+  ],
+  "src/data/teamIds.ts": [
+    "src/core/constants.ts",
+    "src/types.ts"
+  ],
+  "src/data/utils.ts": [
+    "src/core/constants.ts"
+  ],
+  "src/index.css": [],
+  "src/main.tsx": [
+    "src/App.tsx",
+    "src/index.css"
+  ],
+  "src/services/freeDataService.ts": [
+    "src/core/constants.ts",
+    "src/data/teamIds.ts",
+    "src/data/utils.ts",
+    "src/services/logger.ts",
+    "src/types.ts"
+  ],
+  "src/services/logger.ts": [],
+  "src/types.ts": [],
+  "src/vite-env.d.ts": []
+}

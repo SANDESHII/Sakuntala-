@@ -24,16 +24,14 @@ export async function checkApiHealth(api: DataSource): Promise<boolean> {
     try {
         if (api === 'api-football') {
             const { baseUrl, headers } = getApiFootballConfig();
-            // Use status endpoint to check health and quota
-            const res = await fetch(`${baseUrl}/status`, { headers, signal: (AbortSignal as any).timeout?.(5000) });
+            const res = await fetch(`${baseUrl}/status`, { headers });
             const isHealthy = res.status === 200;
             apiHealth.set(api, { healthy: isHealthy, lastCheck: Date.now() });
             return isHealthy;
         } else if (api === 'the-odds-api') {
             const apiKey = getOddsApiKey();
             if (!apiKey) return false;
-            // Cheap endpoint to check health
-            const res = await fetch(`https://api.the-odds-api.com/v4/sports/?apiKey=${apiKey}`, { signal: (AbortSignal as any).timeout?.(3000) });
+            const res = await fetch(`https://api.the-odds-api.com/v4/sports/?apiKey=${apiKey}`);
             const isHealthy = res.status === 200;
             apiHealth.set(api, { healthy: isHealthy, lastCheck: Date.now() });
             return isHealthy;
@@ -90,8 +88,8 @@ async function fetchWithRetry<T>(source: DataSource, url: string, config: any = 
         const q = quotas.get(source);
         if (q) q.consumed++;
         return data;
-    } catch (e: any) {
-        if (retries > 0 && (e.name === 'AbortError' || e.name === 'TimeoutError' || e.message?.toLowerCase().includes('failed') || e.message?.toLowerCase().includes('network'))) {
+    } catch (e: unknown) {
+        if (retries > 0 && (e instanceof Error && (e.name === 'AbortError' || e.name === 'TimeoutError' || e.message?.toLowerCase().includes('failed') || e.message?.toLowerCase().includes('network')))) {
             await new Promise(r => setTimeout(r, 1000));
             return fetchWithRetry(source, url, config, retries - 1);
         }
@@ -163,8 +161,8 @@ async function fetchApiFootballFixtures(league: string, limit: number, status: '
                 homeGoals: f.goals.home, awayGoals: f.goals.away,
                 league: league.toUpperCase()
             };
-        } catch (err: any) { 
-            logger.warn('fetchApiFootballFixtures', `Failed to map fixture ${f?.fixture?.id}: ${err.message}`);
+        } catch (err: unknown) { 
+            logger.warn('fetchApiFootballFixtures', `Failed to map fixture ${f?.fixture?.id}: ${(err as Error).message}`);
             return null; 
         }
     }).filter(Boolean);
@@ -204,7 +202,7 @@ function mapOddsMatch(match: any, timestamp: string): HistoricalPrices {
 
 // --- Service Implementation ---
 
-export const isLiveCapable = () => !!cleanKey(process.env.API_FOOTBALL_KEY) && !!getOddsApiKey();
+const isLiveCapable = () => !!cleanKey(process.env.API_FOOTBALL_KEY) && !!getOddsApiKey();
 
 export async function getTeamStats(teamName: string, league: string) {
     if (!isLiveCapable()) return null;
@@ -240,8 +238,8 @@ export async function getTeamStats(teamName: string, league: string) {
                 cleanSheetRate: (Number(stats.clean_sheet.total) || 0) / stats.fixtures.played.total,
                 quality: 'goals-proxy' as const
             };
-        } catch (err: any) {
-            logger.error('getTeamStats', err, { teamName, league });
+        } catch (err: unknown) {
+            logger.error('getTeamStats', err instanceof Error ? err : new Error(String(err)), { teamName, league });
             return null;
         }
     }, TEAM_STATS_TTL);
@@ -251,8 +249,8 @@ export async function getLiveOdds(league: string) {
     if (!isLiveCapable()) return [];
     try {
         return await withCache(`live_odds_${league}`, () => fetchOddsApiLive(getLeagueConfig(league).oddsKey), LIVE_ODDS_TTL);
-    } catch (err: any) {
-        logger.error('getLiveOdds', err, { league });
+    } catch (err: unknown) {
+        logger.error('getLiveOdds', err instanceof Error ? err : new Error(String(err)), { league });
         return [];
     }
 }
@@ -267,8 +265,8 @@ export async function getUpcomingFixtures(league: string, limit = 10): Promise<F
                 kickoff: f.date, league: league.toUpperCase(), fixtureId: f.id
             }));
         }, FIXTURES_TTL);
-    } catch (err: any) {
-        logger.error('getUpcomingFixtures', err, { league });
+    } catch (err: unknown) {
+        logger.error('getUpcomingFixtures', err instanceof Error ? err : new Error(String(err)), { league });
         return [];
     }
 }
@@ -317,8 +315,8 @@ export async function getHistoricalFixtures(league: string, limit = 150, fetchOd
             }
             return result;
         });
-    } catch (err: any) {
-        logger.error('getHistoricalFixtures', err, { league });
+    } catch (err: unknown) {
+        logger.error('getHistoricalFixtures', err instanceof Error ? err : new Error(String(err)), { league });
         return [];
     }
 }

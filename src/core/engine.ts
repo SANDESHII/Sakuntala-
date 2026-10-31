@@ -1,5 +1,5 @@
 import { AnalysisResult, InternalTeamData, HistoricalMatch, BacktestSummary, BacktestMatch } from '../types';
-import { TEAM_STATS, LEAGUE_CONFIGS, BASE_GOALS, DEFAULT_RHO, HOME_ADVANTAGE_WEIGHT, AWAY_DEFENSE_WEIGHT, EDGE_THRESHOLD, DEFAULT_CLEAN_SHEET_RATE, DEFAULT_FORM, MODEL_CONFIG } from './constants';
+import { TEAM_STATS, LEAGUE_CONFIGS, BASE_GOALS, DEFAULT_RHO, HOME_ADVANTAGE_WEIGHT, AWAY_DEFENSE_WEIGHT, DEFAULT_CLEAN_SHEET_RATE, DEFAULT_FORM, MODEL_CONFIG } from './constants';
 import { DixonColes } from './math';
 import * as FreeDataService from '../services/freeDataService';
 import * as Calibration from './calibration';
@@ -20,7 +20,7 @@ async function resolveTeamData(
   fixtureCache?: Record<string, HistoricalMatch[]>
 ): Promise<{ data: InternalTeamData; isGeneric: boolean; dataSource: 'LIVE' | 'FALLBACK_STATIC' }> {
   if (asOfDate) {
-    const hist = await FeatureEngine.computeFeatures(teamName, leagueKey, asOfDate, fixtureCache?.[leagueKey]);
+    const hist = await FeatureEngine.computeFeatures(teamName, asOfDate, fixtureCache?.[leagueKey]);
     return { data: hist, isGeneric: hist.quality === 'low', dataSource: 'FALLBACK_STATIC' };
   }
   const live = await FreeDataService.getTeamStats(teamName, leagueKey);
@@ -55,9 +55,7 @@ function getBestOdds(matchOdds: any) {
  * @param homeTeam - Canonical name of the home team
  * @param awayTeam - Canonical name of the away team
  * @param league - League key (e.g., 'EPL')
- * @param fittedOverride - Optional pre-fitted parameters
  * @param historicalOddsOverride - Optional odds for backtesting
- * @param adaptiveThresholdContext - Context for edge threshold adjustment
  * @param asOfDate - Cutoff date for historical simulation
  * @param fixtureCache - Cache of fixtures for backtesting performance
  * @returns Comprehensive analysis including probabilities and betting verdict
@@ -66,7 +64,6 @@ export async function runPrediction(
   homeTeam: string,
   awayTeam: string,
   league: string,
-  fittedOverride: Calibration.FittedLeagueParams | null = null,
   historicalOddsOverride: any = null,
   asOfDate?: string,
   fixtureCache?: Record<string, HistoricalMatch[]>
@@ -79,7 +76,7 @@ export async function runPrediction(
     resolveTeamData(homeTeam, leagueKey, leagueConfig, asOfDate, fixtureCache),
     resolveTeamData(awayTeam, leagueKey, leagueConfig, asOfDate, fixtureCache),
     historicalOddsOverride ? Promise.resolve([]) : FreeDataService.getLiveOdds(leagueKey),
-    fittedOverride ? Promise.resolve(fittedOverride) : Calibration.fitFromAPI(leagueKey, asOfDate, fixtureCache?.[leagueKey])
+    Calibration.fitFromAPI(leagueKey, asOfDate, fixtureCache?.[leagueKey])
   ]);
 
   const mle = Calibration.predictGoals(fittedParams, homeTeam, awayTeam);
@@ -96,19 +93,17 @@ export async function runPrediction(
 
   const over25Edge = marketOddsOver25 > 1 ? probOver25 - (1 / marketOddsOver25) : -1;
   const under25Edge = marketOddsUnder25 > 1 ? probUnder25 - (1 / marketOddsUnder25) : -1;
-  const thresholdBase = MODEL_CONFIG.EDGE_THRESHOLD;
+  const threshold = MODEL_CONFIG.EDGE_THRESHOLD;
   const isLowConfidence = mle?.lowConfidence || false;
 
-  const pick = !isLowConfidence && over25Edge > under25Edge && over25Edge > thresholdBase
+  const pick = !isLowConfidence && over25Edge > under25Edge && over25Edge > threshold
     ? 'OVER_25'
-    : !isLowConfidence && under25Edge > thresholdBase
+    : !isLowConfidence && under25Edge > threshold
     ? 'UNDER_25'
     : 'NO_BET';
 
   const edge = pick === 'OVER_25' ? over25Edge : pick === 'UNDER_25' ? under25Edge : 0;
   const marketOdds = pick === 'OVER_25' ? marketOddsOver25 : pick === 'UNDER_25' ? marketOddsUnder25 : null;
-
-  const threshold = EDGE_THRESHOLD;
 
   const p = pick === 'OVER_25' ? probOver25 : pick === 'UNDER_25' ? probUnder25 : 0;
   const kelly = (marketOdds && edge > threshold) ? Math.min(0.05, ((p * marketOdds - 1) / (marketOdds - 1)) * MODEL_CONFIG.KELLY_FRACTION) : 0;
@@ -134,9 +129,9 @@ export async function runPrediction(
     isLowConfidence,
     scoreMatrix: scoreMatrix.slice(0, 6).map(r => r.slice(0, 6))
   };
-  } catch (err: any) {
-    logger.error('runPrediction', err, { homeTeam, awayTeam, league });
-    throw new Error(`[Engine] Prediction failed: ${err.message}`);
+  } catch (err: unknown) {
+    logger.error('runPrediction', err instanceof Error ? err : new Error(String(err)), { homeTeam, awayTeam, league });
+    throw new Error(`[Engine] Prediction failed: ${(err as Error).message}`);
   }
 }
 
@@ -161,8 +156,8 @@ export async function runBacktest(): Promise<BacktestSummary> {
       // Take a slice for evaluation (last 6 matches per league)
       const slice = sorted.slice(-6).map(m => ({ ...m, league: l }));
       evalPool.push(...slice);
-    } catch (e: any) {
-      logger.error('runBacktest_fetch', e, { league: l });
+    } catch (e: unknown) {
+      logger.error('runBacktest_fetch', e instanceof Error ? e : new Error(String(e)), { league: l });
     }
   }));
 
@@ -188,7 +183,6 @@ export async function runBacktest(): Promise<BacktestSummary> {
           match.home, 
           match.away, 
           match.league, 
-          null, 
           { takenPrices: match.takenPrices, closingPrices: match.closingPrices }, 
           match.date, 
           allFixtures
@@ -247,8 +241,8 @@ export async function runBacktest(): Promise<BacktestSummary> {
           takenOdds: prediction.marketOdds,
           closingOdds: closingPrice
         });
-      } catch (e: any) {
-        logger.warn('runBacktest_match', `Failed to process match ${match?.home} vs ${match?.away}: ${e.message}`);
+      } catch (e: unknown) {
+        logger.warn('runBacktest_match', `Failed to process match ${match?.home} vs ${match?.away}: ${(e as Error).message}`);
       }
     }));
   }

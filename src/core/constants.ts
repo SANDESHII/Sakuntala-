@@ -50,7 +50,6 @@ export const EDGE_THRESHOLD = 0.03;
 export const REG_LAMBDA = 0.5; // L2 penalty coefficient for shrinkage towards 1.0
 
 export const DEFAULT_CLEAN_SHEET_RATE = 0.25;
-export const DEFAULT_HOME_ADVANTAGE = 0.30;
 export const DEFAULT_FORM = [1, 1, 1, 1, 1];
 
 export const MODEL_CONFIG = {

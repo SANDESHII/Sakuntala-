@@ -43,7 +43,7 @@ const StatCard = memo(({ label, value, subValue, icon: Icon }: { label: string; 
     </div>
 ));
 
-const GoalDistributionChart = ({ distribution, predictionType }: { distribution: any[], predictionType: string }) => (
+const GoalDistributionChart = ({ distribution, predictionType }: { distribution: { goals: string, probability: number }[], predictionType: 'OVER_25' | 'UNDER_25' | 'NO_BET' }) => (
     <div className="bg-neutral-900/30 border border-neutral-800 rounded-[48px] p-12 lg:p-16 space-y-12 transition-all hover:bg-neutral-900/40">
         <div className="h-[240px] w-full flex items-end gap-2 px-4 pb-8">
             {distribution.map((item, index) => (

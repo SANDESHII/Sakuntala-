@@ -1,7 +1,7 @@
 import { resolveTeam, resolveById } from '../data/teamIds';
 import { FixtureMatch, HistoricalMatch, HistoricalPrices, DataSource } from '../types';
 import { inferSeason, getLeagueConfig } from '../data/utils';
-import { LEAGUE_CONFIGS, BASE_GOALS } from '../core/constants';
+import { LEAGUE_CONFIGS, BASE_GOALS, DECISION_LEAD_MS, CLOSE_LEAD_MS } from '../core/constants';
 import { logger } from './logger';
 
 // --- Infrastructure ---
@@ -297,12 +297,32 @@ export async function getUpcomingFixtures(league: string, limit = 10): Promise<F
     }
 }
 
-async function fetchOddsBatch(sportKey: string, date: string) {
-    return withCache(`odds_batch_${sportKey}_${date}`, async () => {
+export function assertDistinctSnapshots(
+    takenPrices: HistoricalMatch['takenPrices'] | null | undefined,
+    closingPrices: HistoricalMatch['closingPrices'] | null | undefined,
+    takenAt?: string,
+    closedAt?: string,
+    takenSnapshot?: unknown,
+    closeSnapshot?: unknown
+): void {
+    if (!closingPrices) return;
+    if (takenSnapshot !== undefined && closeSnapshot !== undefined && takenSnapshot === closeSnapshot) {
+        throw new Error('[CLV Sentinel] closingPrices cannot be derived from the same snapshot object as takenPrices.');
+    }
+    if (!takenAt || !closedAt || takenAt === closedAt) {
+        throw new Error(`[CLV Sentinel] closingPrices must come from a distinct timestamp (takenAt=${takenAt}, closedAt=${closedAt}).`);
+    }
+    if (takenPrices && closingPrices === takenPrices) {
+        throw new Error('[CLV Sentinel] closingPrices cannot reference the same object as takenPrices.');
+    }
+}
+
+async function fetchOddsBatch(sportKey: string, isoTimestamp: string) {
+    return withCache(`odds_batch_${sportKey}_${isoTimestamp}`, async () => {
         const apiKey = getOddsApiKey();
         if (!apiKey) throw new Error('[Service] Odds API Key missing.');
         const res = await fetchWithRetry<{ data?: any[] }>('the-odds-api', `https://api.the-odds-api.com/v4/historical/sports/${sportKey}/odds`, {
-            params: { apiKey, date, markets: 'totals' }
+            params: { apiKey, date: isoTimestamp, markets: 'totals' }
         });
         return res.data || [];
     }, HISTORICAL_TTL);
@@ -317,29 +337,93 @@ export async function getHistoricalFixtures(league: string, limit = 150, fetchOd
         if (!fetchOdds) return fixtures.map((f) => ({ ...f }));
 
         const sportKey = getLeagueConfig(league).oddsKey;
-        const dates = [...new Set(fixtures.map((f) => f.date.split('T')[0]))] as string[];
+        const oddsHealthy = await checkApiHealth('the-odds-api');
 
-        // Fetch odds for all dates at once (1 API call per date)
-        const allOdds = await Promise.all(dates.map(date => fetchOddsBatch(sportKey, date)));
-
-        return fixtures.map((f) => {
-            const dateStr = f.date.split('T')[0];
-            const dateOdds = allOdds[dates.indexOf(dateStr)];
-            const hIdent = resolveById('apiFootball', f.homeId);
-            const matchOdds = (dateOdds as any[])?.find((m: any) => m.home_team === hIdent.externalIds.theOddsApi);
-
-            const result: HistoricalMatch = { ...f, date: dateStr };
-            if (matchOdds) {
-                const mapped = mapOddsMatch(matchOdds, f.date);
-                result.takenPrices = { 
-                    over25: mapped.over25.bestPrice, 
-                    over25NoVig: mapped.over25.noVigPrice,
-                    under25: mapped.under25.bestPrice, 
-                    under25NoVig: mapped.under25.noVigPrice
-                };
-                result.closingPrices = { ...result.takenPrices }; // Approximation
-                result.takenAt = f.date;
+        const fixtureTimestamps = fixtures.map((f) => {
+            const kickoffMs = new Date(f.date).getTime();
+            if (Number.isNaN(kickoffMs)) {
+                return { f, decisionTs: null as string | null, closeTs: null as string | null };
             }
+            return {
+                f,
+                decisionTs: new Date(kickoffMs - DECISION_LEAD_MS).toISOString(),
+                closeTs: new Date(kickoffMs - CLOSE_LEAD_MS).toISOString()
+            };
+        });
+
+        const snapshotMap = new Map<string, any[] | null>();
+        if (oddsHealthy) {
+            const orderedTimestamps = [
+                ...new Set(fixtureTimestamps.map(t => t.decisionTs).filter((ts): ts is string => !!ts)),
+                ...new Set(fixtureTimestamps.map(t => t.closeTs).filter((ts): ts is string => !!ts))
+            ];
+
+            for (const ts of orderedTimestamps) {
+                if (snapshotMap.has(ts)) continue;
+                try {
+                    const data = await fetchOddsBatch(sportKey, ts);
+                    snapshotMap.set(ts, data);
+                } catch (err: unknown) {
+                    logger.warn('getHistoricalFixtures', `Historical odds snapshot unavailable for ${sportKey} at ${ts}: ${err instanceof Error ? err.message : String(err)}`);
+                    snapshotMap.set(ts, null);
+                }
+            }
+        } else {
+            logger.warn('getHistoricalFixtures', `The Odds API unhealthy for ${league}; returning fixtures with null closingPrices.`);
+        }
+
+        return fixtureTimestamps.map(({ f, decisionTs, closeTs }) => {
+            const dateStr = f.date.split('T')[0];
+            const hIdent = resolveById('apiFootball', f.homeId);
+            const oddsTeamName = hIdent.externalIds.theOddsApi;
+
+            const decisionSnapshot = decisionTs ? (snapshotMap.get(decisionTs) ?? null) : null;
+            const closeSnapshot = closeTs ? (snapshotMap.get(closeTs) ?? null) : null;
+
+            const decisionMatchOdds = Array.isArray(decisionSnapshot)
+                ? decisionSnapshot.find((m: any) => m.home_team === oddsTeamName)
+                : null;
+            const closeMatchOdds = Array.isArray(closeSnapshot)
+                ? closeSnapshot.find((m: any) => m.home_team === oddsTeamName)
+                : null;
+
+            const result: HistoricalMatch = { ...f, date: dateStr, closingPrices: null };
+
+            if (decisionMatchOdds && decisionTs) {
+                const mappedDecision = mapOddsMatch(decisionMatchOdds, decisionTs);
+                if (mappedDecision.over25.bestPrice > 1 || mappedDecision.under25.bestPrice > 1) {
+                    result.takenPrices = {
+                        over25: mappedDecision.over25.bestPrice,
+                        over25NoVig: mappedDecision.over25.noVigPrice,
+                        under25: mappedDecision.under25.bestPrice,
+                        under25NoVig: mappedDecision.under25.noVigPrice
+                    };
+                    result.takenAt = decisionTs;
+                }
+            }
+
+            if (closeMatchOdds && closeTs) {
+                const mappedClose = mapOddsMatch(closeMatchOdds, closeTs);
+                if (mappedClose.over25.bestPrice > 1 || mappedClose.under25.bestPrice > 1) {
+                    const closingPrices = {
+                        over25: mappedClose.over25.bestPrice,
+                        over25NoVig: mappedClose.over25.noVigPrice,
+                        under25: mappedClose.under25.bestPrice,
+                        under25NoVig: mappedClose.under25.noVigPrice
+                    };
+                    assertDistinctSnapshots(
+                        result.takenPrices,
+                        closingPrices,
+                        decisionTs ?? undefined,
+                        closeTs,
+                        decisionSnapshot,
+                        closeSnapshot
+                    );
+                    result.closingPrices = closingPrices;
+                    result.closedAt = closeTs;
+                }
+            }
+
             return result;
         });
     } catch (err: unknown) {

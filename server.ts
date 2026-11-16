@@ -129,7 +129,7 @@ async function startServer() {
       inFlightBacktest = null;
       logger.error('GET /api/backtest', error instanceof Error ? error : new Error(String(error)));
       res.status(500).json({
-        totalMatches: 0, totalPnl: 0, totalYield: 0, avgClv: 0, brierScore: 0,
+        totalMatches: 0, totalPnl: 0, totalYield: 0, avgClv: 0, clvCoverage: 0, avgClvNoVig: 0, brierScore: 0,
         over25Accuracy: 0, under25Accuracy: 0, edgeSegments: [],
         matches: [], error: (error as Error).message || 'Backtest failed'
       });

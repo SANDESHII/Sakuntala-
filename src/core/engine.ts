@@ -202,7 +202,7 @@ export async function runBacktest(): Promise<BacktestSummary> {
 
   let totalPnl = 0, totalStake = 0, totalMatches = 0;
   let over25Correct = 0, over25Total = 0, under25Correct = 0, under25Total = 0;
-  let brierSum = 0, clvSum = 0, clvCount = 0;
+  let brierSum = 0, clvSum = 0, clvCount = 0, clvNoVigSum = 0, clvNoVigCount = 0;
 
   const segments = [
     { segment: 'Low Edge (0-2%)', min: 0, max: 2, count: 0, hits: 0, avgEdge: 0, avgClv: 0, edgeSum: 0, clvSum: 0, clvCount: 0, hitRate: 0 },
@@ -236,12 +236,60 @@ export async function runBacktest(): Promise<BacktestSummary> {
 
         brierSum += Math.pow(prediction.rawProbability - (isOver25Correct ? 1 : 0), 2);
 
-        let clv = 0;
-        const closingPrice = prediction.predictionType === 'OVER_25' ? match.closingPrices?.over25 : match.closingPrices?.under25;
-        if (closingPrice && closingPrice > 1 && prediction.marketOdds && prediction.marketOdds > 1) {
-          clv = (prediction.marketOdds / closingPrice - 1) * 100;
-          clvSum += clv;
-          clvCount++;
+        let clv: number | null = null;
+        let clvNoVig: number | null = null;
+        let validClosingPrice: number | null = null;
+        const closingPrice =
+          prediction.predictionType === 'OVER_25'
+            ? match.closingPrices?.over25
+            : prediction.predictionType === 'UNDER_25'
+            ? match.closingPrices?.under25
+            : null;
+
+        if (match.closingPrices) {
+          try {
+            FreeDataService.assertDistinctSnapshots(match.takenPrices, match.closingPrices, match.takenAt, match.closedAt);
+
+            if (
+              prediction.predictionType !== 'NO_BET' &&
+              closingPrice &&
+              closingPrice > 1 &&
+              prediction.marketOdds &&
+              prediction.marketOdds > 1
+            ) {
+              validClosingPrice = closingPrice;
+              clv = (prediction.marketOdds / closingPrice - 1) * 100;
+              clvSum += clv;
+              clvCount++;
+            }
+
+            const takenNoVig =
+              prediction.predictionType === 'OVER_25'
+                ? match.takenPrices?.over25NoVig
+                : prediction.predictionType === 'UNDER_25'
+                ? match.takenPrices?.under25NoVig
+                : null;
+            const closingNoVig =
+              prediction.predictionType === 'OVER_25'
+                ? match.closingPrices?.over25NoVig
+                : prediction.predictionType === 'UNDER_25'
+                ? match.closingPrices?.under25NoVig
+                : null;
+
+            if (
+              prediction.predictionType !== 'NO_BET' &&
+              takenNoVig &&
+              takenNoVig > 1 &&
+              closingNoVig &&
+              closingNoVig > 1
+            ) {
+              clvNoVig = (takenNoVig / closingNoVig - 1) * 100;
+              clvNoVigSum += clvNoVig;
+              clvNoVigCount++;
+            }
+          } catch (err: unknown) {
+            logger.warn('runBacktest_clv', `Skipping invalid CLV snapshot for ${match.home} vs ${match.away}: ${(err as Error).message}`);
+          }
         }
 
         let pnl = 0;
@@ -261,7 +309,7 @@ export async function runBacktest(): Promise<BacktestSummary> {
         if (seg && prediction.predictionType !== 'NO_BET') {
           seg.count++;
           seg.edgeSum += absEdge;
-          if (clv !== 0) { seg.clvSum += clv; seg.clvCount++; }
+          if (clv !== null) { seg.clvSum += clv; seg.clvCount++; }
           const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
           if (isHit) seg.hits++;
         }
@@ -274,9 +322,10 @@ export async function runBacktest(): Promise<BacktestSummary> {
           isUnder25Correct,
           pnl,
           clv,
+          clvNoVig,
           stake: prediction.recommendedStake,
           takenOdds: prediction.marketOdds,
-          closingOdds: closingPrice
+          closingOdds: validClosingPrice
         });
       } catch (e: unknown) {
         logger.warn('runBacktest_match', `Failed to process match ${match?.home} vs ${match?.away}: ${(e as Error).message}`);
@@ -298,6 +347,8 @@ export async function runBacktest(): Promise<BacktestSummary> {
     totalPnl: Math.round(totalPnl * 100) / 100,
     totalYield: totalStake > 0 ? (totalPnl / totalStake) * 100 : 0,
     avgClv: clvCount > 0 ? clvSum / clvCount : 0,
+    clvCoverage: totalMatches > 0 ? (clvCount / totalMatches) * 100 : 0,
+    avgClvNoVig: clvNoVigCount > 0 ? clvNoVigSum / clvNoVigCount : 0,
     edgeSegments: segments,
     matches: results.slice(0, 20)
   };

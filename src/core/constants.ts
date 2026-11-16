@@ -79,3 +79,10 @@ export const SEASON_START_MONTH: Record<string, number> = {
   'EPL': 7, 'LA_LIGA': 7, 'BUNDESLIGA': 7, 'SERIE_A': 7, 'LIGUE_1': 7,
   'MLS': 2, 'A_LEAGUE': 9,
 };
+
+/**
+ * Historical Odds Snapshot Leads for CLV
+ */
+export const DECISION_LEAD_MS = 24 * 60 * 60 * 1000; // 24h before kickoff -> "taken" snapshot
+export const CLOSE_LEAD_MS = 5 * 60 * 1000;         // 5min before kickoff -> "closing" snapshot
+

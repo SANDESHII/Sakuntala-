@@ -40,7 +40,7 @@ export interface HistoricalMatch {
     under25?: number;
     over25NoVig?: number;
     under25NoVig?: number;
-  };
+  } | null;
   takenAt?: string;
   closedAt?: string;
 }
@@ -153,10 +153,11 @@ export interface BacktestMatch {
   isOver25Correct: boolean;
   isUnder25Correct: boolean;
   pnl: number;
-  clv: number;
+  clv: number | null;
+  clvNoVig?: number | null;
   stake: number;
   takenOdds: number | null;
-  closingOdds?: number;
+  closingOdds?: number | null;
 }
 
 export interface BacktestSummary {
@@ -167,6 +168,8 @@ export interface BacktestSummary {
   totalPnl: number;
   totalYield: number;
   avgClv: number;
+  clvCoverage: number;
+  avgClvNoVig: number;
   edgeSegments: {
     segment: string;
     min: number;

@@ -80,8 +80,9 @@ export async function runPrediction(
     ]);
 
     const mle = Calibration.predictGoals(fittedParams, homeTeam, awayTeam);
-    const lambdaHome = mle ? mle.lambdaHome : Math.max(MODEL_CONFIG.MIN_LAMBDA, Math.min(MODEL_CONFIG.MAX_LAMBDA, homeRes.data.attackStrength * awayRes.data.defenseStrength * leagueConfig.goalRate * BASE_GOALS * (1 + leagueConfig.homeAdvantage * HOME_ADVANTAGE_WEIGHT)));
-    const muAway = mle ? mle.muAway : Math.max(MODEL_CONFIG.MIN_MU, Math.min(MODEL_CONFIG.MAX_MU, awayRes.data.attackStrength * homeRes.data.defenseStrength * leagueConfig.goalRate * BASE_GOALS * (1 - leagueConfig.homeAdvantage * AWAY_DEFENSE_WEIGHT)));
+    const leagueBase = BASE_GOALS * leagueConfig.goalRate;
+    const lambdaHome = mle ? mle.lambdaHome : Math.max(MODEL_CONFIG.MIN_LAMBDA, Math.min(MODEL_CONFIG.MAX_LAMBDA, homeRes.data.attackStrength * awayRes.data.defenseStrength * leagueBase * (1 + leagueConfig.homeAdvantage * HOME_ADVANTAGE_WEIGHT)));
+    const muAway = mle ? mle.muAway : Math.max(MODEL_CONFIG.MIN_MU, Math.min(MODEL_CONFIG.MAX_MU, awayRes.data.attackStrength * homeRes.data.defenseStrength * leagueBase * (1 - leagueConfig.homeAdvantage * AWAY_DEFENSE_WEIGHT)));
     
     const scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, mle ? fittedParams.rho : DEFAULT_RHO);
     const probOver25 = DixonColes.calculateOverUnder(scoreMatrix, 2.5);

@@ -55,7 +55,7 @@ async function startServer() {
 
   app.post('/api/predict', apiKeyAuth, async (req: Request, res: Response) => {
     try {
-      const { homeTeam, awayTeam, league, asOfDate } = req.body;
+      const { homeTeam, awayTeam, league, asOfDate } = req.body || {};
       
       // Validation
       if (typeof homeTeam !== 'string' || typeof awayTeam !== 'string' || typeof league !== 'string') {
@@ -76,7 +76,7 @@ async function startServer() {
       const result = await runPrediction(homeTeam, awayTeam, leagueKey, null, asOfDate);
       res.json(result);
     } catch (error: unknown) {
-      const { homeTeam, awayTeam, league } = req.body;
+      const { homeTeam, awayTeam, league } = req.body || {};
       logger.error('POST /api/predict', error instanceof Error ? error : new Error(String(error)), { homeTeam, awayTeam, league });
       res.status(500).json({ error: (error as Error).message || 'Prediction failed' });
     }

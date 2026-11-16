@@ -69,8 +69,8 @@ function fitDixonColes(
 
     for (const { home, away, homeGoals, awayGoals, daysAgo } of matches) {
       const weight = Math.exp(-TIME_DECAY_PHI * daysAgo);
-      const homeExp = Math.max(atk[home] * def[away] * gamma, MODEL_CONFIG.PROBABILITY_FLOOR);
-      const awayExp = Math.max(atk[away] * def[home], MODEL_CONFIG.PROBABILITY_FLOOR);
+      const homeExp = Math.max(atk[home] * def[away] * gamma * BASE_GOALS, MODEL_CONFIG.PROBABILITY_FLOOR);
+      const awayExp = Math.max(atk[away] * def[home] * BASE_GOALS, MODEL_CONFIG.PROBABILITY_FLOOR);
 
       // Log-likelihood contribution
       currentLL += weight * (homeGoals * Math.log(homeExp) - homeExp + awayGoals * Math.log(awayExp) - awayExp);
@@ -95,12 +95,12 @@ function fitDixonColes(
       const gradHome = weight * (dL_home + dt_home);
       const gradAway = weight * (dL_away + dt_away);
 
-      gradientAttack[home] += gradHome * def[away] * gamma;
-      gradientDefense[away] += gradHome * atk[home] * gamma;
-      gradientAttack[away] += gradAway * def[home];
-      gradientDefense[home] += gradAway * atk[away];
+      gradientAttack[home] += gradHome * def[away] * gamma * BASE_GOALS;
+      gradientDefense[away] += gradHome * atk[home] * gamma * BASE_GOALS;
+      gradientAttack[away] += gradAway * def[home] * BASE_GOALS;
+      gradientDefense[home] += gradAway * atk[away] * BASE_GOALS;
 
-      gradientGamma += gradHome * atk[home] * def[away];
+      gradientGamma += gradHome * atk[home] * def[away] * BASE_GOALS;
 
       let dr = 0;
       if (homeGoals === 0 && awayGoals === 0)      dr = weight * ((-homeExp * awayExp) / (1 - homeExp * awayExp * safeRhoMatch));
@@ -172,7 +172,7 @@ export async function fitFromAPI(
     try {
       return await FreeDataService.getHistoricalFixtures(league, 300);
     } catch (err: unknown) {
-      logger.error('fitFromAPI_fetch', err, { league });
+      logger.warn('fitFromAPI_fetch', `Falling back without historical API fixtures for ${league}: ${err instanceof Error ? err.message : String(err)}`);
       return [];
     }
   })();

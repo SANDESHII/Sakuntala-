@@ -1,7 +1,7 @@
 import { resolveTeam, resolveById } from '../data/teamIds';
 import { FixtureMatch, HistoricalMatch, HistoricalPrices, DataSource } from '../types';
 import { inferSeason, getLeagueConfig } from '../data/utils';
-import { LEAGUE_CONFIGS } from '../core/constants';
+import { LEAGUE_CONFIGS, BASE_GOALS } from '../core/constants';
 import { logger } from './logger';
 
 // --- Infrastructure ---
@@ -21,25 +21,38 @@ export async function checkApiHealth(api: DataSource): Promise<boolean> {
     const cached = apiHealth.get(api);
     if (cached && Date.now() - cached.lastCheck < 60000) return cached.healthy;
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     try {
         if (api === 'api-football') {
             const { baseUrl, headers } = getApiFootballConfig();
-            const res = await fetch(`${baseUrl}/status`, { headers });
-            const isHealthy = res.status === 200;
+            const res = await fetch(`${baseUrl}/status`, { headers, signal: controller.signal });
+            if (!res.ok) {
+                apiHealth.set(api, { healthy: false, lastCheck: Date.now() });
+                return false;
+            }
+            const data = await res.json().catch(() => null) as { errors?: Record<string, unknown> | unknown[] } | null;
+            const hasErrors = !!(data?.errors && (Array.isArray(data.errors) ? data.errors.length > 0 : Object.keys(data.errors).length > 0));
+            const isHealthy = !hasErrors;
             apiHealth.set(api, { healthy: isHealthy, lastCheck: Date.now() });
             return isHealthy;
         } else if (api === 'the-odds-api') {
             const apiKey = getOddsApiKey();
-            if (!apiKey) return false;
-            const res = await fetch(`https://api.the-odds-api.com/v4/sports/?apiKey=${apiKey}`);
+            if (!apiKey) {
+                apiHealth.set(api, { healthy: false, lastCheck: Date.now() });
+                return false;
+            }
+            const res = await fetch(`https://api.the-odds-api.com/v4/sports/?apiKey=${apiKey}`, { signal: controller.signal });
             const isHealthy = res.status === 200;
             apiHealth.set(api, { healthy: isHealthy, lastCheck: Date.now() });
             return isHealthy;
         }
         return true;
-    } catch (e) {
+    } catch {
         apiHealth.set(api, { healthy: false, lastCheck: Date.now() });
         return false;
+    } finally {
+        clearTimeout(timeout);
     }
 }
 
@@ -82,7 +95,12 @@ async function fetchWithRetry<T>(source: DataSource, url: string, config: { para
         }
 
         const text = await res.text();
-        if (!res.ok) throw new Error(`[Network] ${res.status}: ${text.slice(0, 100)}`);
+        if (!res.ok) {
+            if (res.status === 401 || res.status === 403) {
+                apiHealth.set(source, { healthy: false, lastCheck: Date.now() });
+            }
+            throw new Error(`[Network] ${res.status}: ${text.slice(0, 100)}`);
+        }
         
         const data = JSON.parse(text);
         const q = quotas.get(source);
@@ -209,6 +227,7 @@ const isLiveCapable = () => !!cleanKey(process.env.API_FOOTBALL_KEY) && !!getOdd
 
 export async function getTeamStats(teamName: string, league: string) {
     if (!isLiveCapable()) return null;
+    if (!(await checkApiHealth('api-football'))) return null;
     return withCache(`stats_${teamName}_${league}`, async () => {
         try {
             const { baseUrl, headers } = getApiFootballConfig();
@@ -231,9 +250,11 @@ export async function getTeamStats(teamName: string, league: string) {
             const homeRate = Number(goalAvg.home) || avgScored;
             const awayRate = Number(goalAvg.away) || avgScored;
 
+            const leagueBase = BASE_GOALS * leagueConfig.goalRate;
+
             return {
-                attackStrength: avgScored / 1.35,
-                defenseStrength: avgConceded / 1.35,
+                attackStrength: avgScored / leagueBase,
+                defenseStrength: avgConceded / leagueBase,
                 avgGoalsScored: avgScored,
                 avgGoalsConceded: avgConceded,
                 homeAdvantageHeuristic: Math.max(0.15, Math.min(0.45, leagueConfig.homeAdvantage + ((homeRate - awayRate) * 0.1))),
@@ -242,7 +263,7 @@ export async function getTeamStats(teamName: string, league: string) {
                 quality: 'goals-proxy' as const
             };
         } catch (err: unknown) {
-            logger.error('getTeamStats', err instanceof Error ? err : new Error(String(err)), { teamName, league });
+            logger.warn('getTeamStats', `Falling back to static data for ${teamName} (${league}): ${err instanceof Error ? err.message : String(err)}`);
             return null;
         }
     }, TEAM_STATS_TTL);
@@ -250,16 +271,18 @@ export async function getTeamStats(teamName: string, league: string) {
 
 export async function getLiveOdds(league: string) {
     if (!isLiveCapable()) return [];
+    if (!(await checkApiHealth('the-odds-api'))) return [];
     try {
         return await withCache(`live_odds_${league}`, () => fetchOddsApiLive(getLeagueConfig(league).oddsKey), LIVE_ODDS_TTL);
     } catch (err: unknown) {
-        logger.error('getLiveOdds', err instanceof Error ? err : new Error(String(err)), { league });
+        logger.warn('getLiveOdds', `Live odds unavailable for ${league}: ${err instanceof Error ? err.message : String(err)}`);
         return [];
     }
 }
 
 export async function getUpcomingFixtures(league: string, limit = 10): Promise<FixtureMatch[]> {
     if (!isLiveCapable()) return [];
+    if (!(await checkApiHealth('api-football'))) return [];
     try {
         return await withCache(`fixtures_${league}_${limit}`, async () => {
             const fixtures = await fetchApiFootballFixtures(league, limit, 'NS');
@@ -269,7 +292,7 @@ export async function getUpcomingFixtures(league: string, limit = 10): Promise<F
             }));
         }, FIXTURES_TTL);
     } catch (err: unknown) {
-        logger.error('getUpcomingFixtures', err instanceof Error ? err : new Error(String(err)), { league });
+        logger.warn('getUpcomingFixtures', `Upcoming fixtures unavailable for ${league}: ${err instanceof Error ? err.message : String(err)}`);
         return [];
     }
 }
@@ -287,6 +310,7 @@ async function fetchOddsBatch(sportKey: string, date: string) {
 
 export async function getHistoricalFixtures(league: string, limit = 150, fetchOdds = true): Promise<HistoricalMatch[]> {
     if (!isLiveCapable()) return [];
+    if (!(await checkApiHealth('api-football'))) return [];
     
     try {
         const fixtures = await fetchApiFootballFixtures(league, limit, 'FT');
@@ -319,7 +343,7 @@ export async function getHistoricalFixtures(league: string, limit = 150, fetchOd
             return result;
         });
     } catch (err: unknown) {
-        logger.error('getHistoricalFixtures', err instanceof Error ? err : new Error(String(err)), { league });
+        logger.warn('getHistoricalFixtures', `Historical fixtures unavailable for ${league}: ${err instanceof Error ? err.message : String(err)}`);
         return [];
     }
 }

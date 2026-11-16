@@ -3,19 +3,12 @@
  *
  * This ONE module replaces all hand-tuned constants.
  * Feed it real match data → get statistically optimal attack/defense parameters.
- *
- * Usage:
- *   const fitted = await fitFromAPI('EPL');
- *   const goals = predictGoals(fitted, 'ARSENAL', 'CHELSEA');
- *   // → { lambdaHome: 1.87, muAway: 1.12 }
  */
 
 import * as FreeDataService from '../services/freeDataService';
 import { HistoricalMatch } from '../types';
 import { TIME_DECAY_PHI, DEFAULT_RHO, BASE_GOALS, REG_LAMBDA, MODEL_CONFIG } from './constants';
 import { logger } from '../services/logger';
-
-const HOME_ADVANTAGE_GAMMA = 1.25;
 
 interface FittedTeamParams {
   attack: number;   // α — attacking strength (1.0 = league average)
@@ -41,18 +34,13 @@ interface MatchData {
 /**
  * Fit attack/defense parameters via gradient ascent on
  * the Dixon-Coles log-likelihood with temporal weighting.
- * 
- * @param matches - Historical match data with goals and temporal information
- * @param iterations - Number of gradient ascent iterations
- * @param lr - Learning rate
- * @returns Fitted league and team parameters
  */
 function fitDixonColes(
   matches: MatchData[],
-  iterations = 500,
-  lr = 0.01
+  iterations = MODEL_CONFIG.DEFAULT_FIT_ITERATIONS,
+  lr = MODEL_CONFIG.DEFAULT_LEARNING_RATE
 ): FittedLeagueParams {
-  if (matches.length === 0) return { homeAdvantage: HOME_ADVANTAGE_GAMMA, rho: DEFAULT_RHO, teams: {} };
+  if (matches.length === 0) return { homeAdvantage: MODEL_CONFIG.HOME_ADVANTAGE_GAMMA, rho: DEFAULT_RHO, teams: {} };
 
   const teamSet = new Set<string>();
   const matchCounts: Record<string, number> = {};
@@ -68,7 +56,7 @@ function fitDixonColes(
   const atk: Record<string, number> = {};
   const def: Record<string, number> = {};
   for (const t of teams) { atk[t] = 1.0; def[t] = 1.0; }
-  let gamma = HOME_ADVANTAGE_GAMMA;  // home advantage
+  let gamma = MODEL_CONFIG.HOME_ADVANTAGE_GAMMA;  // home advantage
   let rho = DEFAULT_RHO;
 
   let prevLL = -Infinity;
@@ -81,8 +69,8 @@ function fitDixonColes(
 
     for (const { home, away, homeGoals, awayGoals, daysAgo } of matches) {
       const weight = Math.exp(-TIME_DECAY_PHI * daysAgo);
-      const homeExp = Math.max(atk[home] * def[away] * gamma, 1e-10);
-      const awayExp = Math.max(atk[away] * def[home], 1e-10);
+      const homeExp = Math.max(atk[home] * def[away] * gamma, MODEL_CONFIG.PROBABILITY_FLOOR);
+      const awayExp = Math.max(atk[away] * def[home], MODEL_CONFIG.PROBABILITY_FLOOR);
 
       // Log-likelihood contribution
       currentLL += weight * (homeGoals * Math.log(homeExp) - homeExp + awayGoals * Math.log(awayExp) - awayExp);
@@ -168,11 +156,6 @@ const FITTED_TTL = 6 * 60 * 60 * 1000; // 6 hours
 
 /**
  * Fit parameters from real historical data via API.
- * 
- * @param league - League identifier (e.g., 'EPL')
- * @param asOfDate - Optional cutoff date for walk-forward testing
- * @param historicalMatches - Optional pre-fetched historical matches
- * @returns Fitted league parameters
  */
 export async function fitFromAPI(
   league: string, 
@@ -189,17 +172,17 @@ export async function fitFromAPI(
     try {
       return await FreeDataService.getHistoricalFixtures(league, 300);
     } catch (err: unknown) {
-      logger.error('fitFromAPI_fetch', err instanceof Error ? err : new Error(String(err)), { league });
+      logger.error('fitFromAPI_fetch', err, { league });
       return [];
     }
   })();
-  if (raw.length < 20) return { homeAdvantage: HOME_ADVANTAGE_GAMMA, rho: DEFAULT_RHO, teams: {} };
+  if (raw.length < 20) return { homeAdvantage: MODEL_CONFIG.HOME_ADVANTAGE_GAMMA, rho: DEFAULT_RHO, teams: {} };
 
   const cutoff = asOfDate ? new Date(asOfDate).getTime() : Date.now();
   const filtered = raw.filter(m => new Date(m.date).getTime() < cutoff);
   
   if (filtered.length < 20) {
-     return { homeAdvantage: HOME_ADVANTAGE_GAMMA, rho: DEFAULT_RHO, teams: {} };
+     return { homeAdvantage: MODEL_CONFIG.HOME_ADVANTAGE_GAMMA, rho: DEFAULT_RHO, teams: {} };
   }
 
   const matches: MatchData[] = filtered.map(m => ({
@@ -210,7 +193,7 @@ export async function fitFromAPI(
     daysAgo: Math.max(0, (cutoff - new Date(m.date).getTime()) / (1000 * 60 * 60 * 24))
   }));
 
-  const params = fitDixonColes(matches, 500, 0.01);
+  const params = fitDixonColes(matches);
   if (isLive) fittedCache.set(league, { params, ts: Date.now() });
   return params;
 }
@@ -220,16 +203,6 @@ export async function fitFromAPI(
 
 /**
  * Compute expected goals (λ, μ) using fitted MLE parameters.
- * Returns null if either team isn't in the fitted data.
- * 
- * Specification:
- * lambda_home = alpha_home * beta_away * gamma (home advantage)
- * mu_away     = alpha_away * beta_home
- * 
- * @param fitted - Result of MLE fitting
- * @param homeTeam - Home team name
- * @param awayTeam - Away team name
- * @returns Predicted expected goals and confidence indicator
  */
 export function predictGoals(
   fitted: FittedLeagueParams,
@@ -243,9 +216,7 @@ export function predictGoals(
   const awayParams = fitted.teams[aKey];
   
   if (!homeParams || !awayParams) return null;
-
-  // MLE lambda/mu calculation
-  // Param semantics: attack/defense are multipliers on league average
+  
   let lambdaHome = homeParams.attack * awayParams.defense * fitted.homeAdvantage * BASE_GOALS;
   let muAway = awayParams.attack * homeParams.defense * BASE_GOALS;
 

@@ -7,7 +7,7 @@ import { logger } from './logger';
 // --- Infrastructure ---
 
 const quotas = new Map<string, { consumed: number; resetDate: string }>();
-const cache = new Map<string, { data: any, timestamp: number }>();
+const cache = new Map<string, { data: unknown, timestamp: number }>();
 
 const LIVE_ODDS_TTL = 5 * 60 * 1000; // 5 minutes
 const TEAM_STATS_TTL = 24 * 60 * 60 * 1000; // 24 hours
@@ -51,7 +51,7 @@ function checkQuota(source: DataSource) {
     quotas.set(source, q);
 }
 
-async function fetchWithRetry<T>(source: DataSource, url: string, config: any = {}, retries = 3): Promise<T> {
+async function fetchWithRetry<T>(source: DataSource, url: string, config: { params?: Record<string, string | number | boolean>, headers?: Record<string, string> } = {}, retries = 3): Promise<T> {
     checkQuota(source);
     let target = url;
     if (config.params) {
@@ -101,7 +101,7 @@ const promiseCache = new Map<string, Promise<any>>();
 
 async function withCache<T>(key: string, fetcher: () => Promise<T>, ttl: number = DEFAULT_TTL): Promise<T> {
     const entry = cache.get(key);
-    if (entry && Date.now() - entry.timestamp < ttl) return entry.data;
+    if (entry && Date.now() - entry.timestamp < ttl) return entry.data as T;
     
     if (promiseCache.has(key)) return promiseCache.get(key);
     
@@ -146,26 +146,29 @@ const getOddsApiKey = () => cleanKey(process.env.ODDS_API_KEY);
 async function fetchApiFootballFixtures(league: string, limit: number, status: 'NS' | 'FT' = 'NS') {
     const { baseUrl, headers } = getApiFootballConfig();
     const { apiId: leagueId } = getLeagueConfig(league);
-    const data = await fetchWithRetry<any>('api-football', `${baseUrl}/fixtures`, {
+    const data = await fetchWithRetry<{ response: any[] }>('api-football', `${baseUrl}/fixtures`, {
         headers, params: { league: leagueId, season: inferSeason(league), [status === 'NS' ? 'next' : 'last']: limit, status }
     });
 
-    return (data.response || []).map((f: any) => {
+    if (!data || !Array.isArray(data.response)) return [];
+
+    return data.response.map((f: any) => {
         try {
+            if (!f.teams?.home?.id || !f.teams?.away?.id || !f.fixture?.id) return null;
             return {
                 id: f.fixture.id, date: f.fixture.date,
                 home: resolveById('apiFootball', f.teams.home.id).id,
                 away: resolveById('apiFootball', f.teams.away.id).id,
                 homeId: f.teams.home.id, awayId: f.teams.away.id,
                 homeLogo: f.teams.home.logo, awayLogo: f.teams.away.logo,
-                homeGoals: f.goals.home, awayGoals: f.goals.away,
+                homeGoals: f.goals?.home, awayGoals: f.goals?.away,
                 league: league.toUpperCase()
             };
         } catch (err: unknown) { 
             logger.warn('fetchApiFootballFixtures', `Failed to map fixture ${f?.fixture?.id}: ${(err as Error).message}`);
             return null; 
         }
-    }).filter(Boolean);
+    }).filter((f): f is NonNullable<typeof f> => f !== null);
 }
 
 async function fetchOddsApiLive(sport: string) {
@@ -212,12 +215,12 @@ export async function getTeamStats(teamName: string, league: string) {
             const teamId = resolveTeam(teamName).externalIds.apiFootball;
             if (!teamId) return null;
 
-            const data = await fetchWithRetry<any>('api-football', `${baseUrl}/teams/statistics`, {
+            const data = await fetchWithRetry<{ response: any }>('api-football', `${baseUrl}/teams/statistics`, {
                 headers, params: { team: teamId, league: getLeagueConfig(league).apiId, season: inferSeason(league) }
             });
 
             const stats = data.response;
-            if (!stats?.fixtures?.played?.total) return null;
+            if (!stats || !stats.fixtures?.played?.total) return null;
 
             const goalAvg = stats.goals.for.average;
             const concedeAvg = stats.goals.against.average;
@@ -235,7 +238,7 @@ export async function getTeamStats(teamName: string, league: string) {
                 avgGoalsConceded: avgConceded,
                 homeAdvantageHeuristic: Math.max(0.15, Math.min(0.45, leagueConfig.homeAdvantage + ((homeRate - awayRate) * 0.1))),
                 form: [1, 1, 1, 1, 1],
-                cleanSheetRate: (Number(stats.clean_sheet.total) || 0) / stats.fixtures.played.total,
+                cleanSheetRate: (Number(stats.clean_sheet?.total) || 0) / stats.fixtures.played.total,
                 quality: 'goals-proxy' as const
             };
         } catch (err: unknown) {
@@ -260,7 +263,7 @@ export async function getUpcomingFixtures(league: string, limit = 10): Promise<F
     try {
         return await withCache(`fixtures_${league}_${limit}`, async () => {
             const fixtures = await fetchApiFootballFixtures(league, limit, 'NS');
-            return fixtures.map((f: any) => ({
+            return fixtures.map((f) => ({
                 homeTeam: f.home, awayTeam: f.away, homeLogo: f.homeLogo || null, awayLogo: f.awayLogo || null,
                 kickoff: f.date, league: league.toUpperCase(), fixtureId: f.id
             }));
@@ -275,7 +278,7 @@ async function fetchOddsBatch(sportKey: string, date: string) {
     return withCache(`odds_batch_${sportKey}_${date}`, async () => {
         const apiKey = getOddsApiKey();
         if (!apiKey) throw new Error('[Service] Odds API Key missing.');
-        const res = await fetchWithRetry<any>('the-odds-api', `https://api.the-odds-api.com/v4/historical/sports/${sportKey}/odds`, {
+        const res = await fetchWithRetry<{ data?: any[] }>('the-odds-api', `https://api.the-odds-api.com/v4/historical/sports/${sportKey}/odds`, {
             params: { apiKey, date, markets: 'totals' }
         });
         return res.data || [];
@@ -287,19 +290,19 @@ export async function getHistoricalFixtures(league: string, limit = 150, fetchOd
     
     try {
         const fixtures = await fetchApiFootballFixtures(league, limit, 'FT');
-        if (!fetchOdds) return fixtures.map((f: any) => ({ ...f }));
+        if (!fetchOdds) return fixtures.map((f) => ({ ...f }));
 
         const sportKey = getLeagueConfig(league).oddsKey;
-        const dates = [...new Set(fixtures.map((f: any) => f.date.split('T')[0]))] as string[];
+        const dates = [...new Set(fixtures.map((f) => f.date.split('T')[0]))] as string[];
 
         // Fetch odds for all dates at once (1 API call per date)
         const allOdds = await Promise.all(dates.map(date => fetchOddsBatch(sportKey, date)));
 
-        return fixtures.map((f: any) => {
+        return fixtures.map((f) => {
             const dateStr = f.date.split('T')[0];
             const dateOdds = allOdds[dates.indexOf(dateStr)];
             const hIdent = resolveById('apiFootball', f.homeId);
-            const matchOdds = dateOdds?.find((m: any) => m.home_team === hIdent.externalIds.theOddsApi);
+            const matchOdds = (dateOdds as any[])?.find((m: any) => m.home_team === hIdent.externalIds.theOddsApi);
 
             const result: HistoricalMatch = { ...f, date: dateStr };
             if (matchOdds) {

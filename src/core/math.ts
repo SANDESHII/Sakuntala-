@@ -14,10 +14,6 @@ export class DixonColes {
   /**
    * Poisson probability mass function (log-space for numerical stability)
    * P(X=k) = (λ^k × e^(-λ)) / k!
-   * 
-   * @param k - Discrete value (goals)
-   * @param lambda - Expected value (mean)
-   * @returns Probability of k occurring
    */
   static poisson(k: number, lambda: number): number {
     if (lambda <= 0) return k === 0 ? 1 : 0;
@@ -30,13 +26,6 @@ export class DixonColes {
    * Adjusts for the tendency of 0-0, 0-1, 1-0, 1-1 to occur more/less than Poisson predicts
    * 
    * CRITICAL: rho must satisfy specific constraints to ensure correction > 0.
-   * 
-   * @param homeGoals - Home team goals
-   * @param awayGoals - Away team goals
-   * @param lambdaHome - Home team expected goals
-   * @param muAway - Away team expected goals
-   * @param rho - Correlation parameter
-   * @returns Adjustment multiplier for the probability
    */
   static lowScoreCorrection(
     homeGoals: number,
@@ -67,10 +56,6 @@ export class DixonColes {
 
   /**
    * Generate full score probability matrix using Dixon-Coles model
-   * @param lambdaHome - Home team expected goals
-   * @param muAway - Away team expected goals
-   * @param rho - Correlation parameter (default: -0.13)
-   * @param epsilon - Target error threshold for tail truncation (default: 1e-8)
    */
   static calculateScoreMatrix(
     lambdaHome: number,
@@ -86,21 +71,18 @@ export class DixonColes {
       if (firstKey) this.matrixCache.delete(firstKey);
     }
 
-    // Dynamically calculate required goal limit to satisfy epsilon threshold
-    // P(X > k) < epsilon where X ~ Poisson(max(lambdaHome, muAway))
     const maxMean = Math.max(lambdaHome, muAway, 0.1);
     let k = Math.ceil(maxMean);
     let p = Math.exp(-maxMean);
     let sum = p;
     
-    // Iteratively find k such that the tail probability is negligible
     while (1 - sum > epsilon && k < 40) {
       k++;
       p *= maxMean / k;
       sum += p;
     }
     
-    const limit = Math.max(8, k); // Ensure a reasonable minimum matrix size
+    const limit = Math.max(8, k); 
 
     const matrix = Array.from({ length: limit + 1 }, (_, homeGoals) =>
       Array.from({ length: limit + 1 }, (_, awayGoals) => {
@@ -112,15 +94,12 @@ export class DixonColes {
     );
 
     // Normalize to ensure probabilities sum to 1 precisely
-    // This is still required due to the Dixon-Coles correction shifting the distribution
-    const total = matrix.reduce((sum, row) => sum + row.reduce((s, p) => s + p, 0), 0);
+    const total = matrix.reduce((s, row) => s + row.reduce((ss, p) => ss + p, 0), 0);
     return matrix.map(row => row.map(p => p / (total || 1)));
   }
 
   /**
    * Calculate probability of over/under a goal threshold
-   * @param scoreMatrix - Full score probability matrix
-   * @param threshold - Goal threshold (e.g., 1.5 for Over 1.5)
    */
   static calculateOverUnder(scoreMatrix: number[][], threshold: number): number {
     return scoreMatrix.reduce((sum, row, homeGoals) =>
@@ -128,4 +107,3 @@ export class DixonColes {
         s + (homeGoals + awayGoals > threshold ? prob : 0), 0), 0);
   }
 }
-

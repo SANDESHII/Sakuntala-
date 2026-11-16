@@ -1,11 +1,11 @@
 import 'dotenv/config';
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import compression from 'compression';
-
 import { runPrediction, runBacktest } from './src/core/engine';
 import { getUpcomingFixtures, checkApiHealth } from './src/services/freeDataService';
 import { LEAGUE_CONFIGS } from './src/core/constants';
 import { logger } from './src/services/logger';
+import { BacktestSummary } from './src/types';
 
 async function startServer() {
   const app = express();
@@ -14,12 +14,58 @@ async function startServer() {
   app.use(compression());
   app.use(express.json());
 
+  // --- AUTH & RATE LIMITING (Placeholder for Phase 5/11) ---
+  const apiKeyAuth = (req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.headers['x-api-key'];
+    const validKey = process.env.API_KEY;
+    if (validKey && authHeader !== validKey) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    next();
+  };
+
   // --- API ROUTES ---
-  app.post('/api/predict', async (req, res) => {
+
+  // Health check with ~60s cache
+  let lastHealthCheck: { data: any; ts: number } | null = null;
+  app.get('/api/health', async (_req: Request, res: Response) => {
+    try {
+      if (lastHealthCheck && Date.now() - lastHealthCheck.ts < 60000) {
+        return res.json(lastHealthCheck.data);
+      }
+
+      const [football, odds] = await Promise.all([
+        checkApiHealth('api-football'),
+        checkApiHealth('the-odds-api')
+      ]);
+      const healthData = {
+        status: football && odds ? 'OPERATIONAL' : 'DEGRADED',
+        services: {
+          apiFootball: football ? 'HEALTHY' : 'DOWN',
+          theOddsApi: odds ? 'HEALTHY' : 'DOWN'
+        },
+        timestamp: new Date().toISOString()
+      };
+      lastHealthCheck = { data: healthData, ts: Date.now() };
+      res.json(healthData);
+    } catch (error: unknown) {
+      res.status(500).json({ status: 'ERROR', message: (error as Error).message });
+    }
+  });
+
+  app.post('/api/predict', apiKeyAuth, async (req: Request, res: Response) => {
     try {
       const { homeTeam, awayTeam, league, asOfDate } = req.body;
-      if (!homeTeam || !awayTeam || !league) {
-        return res.status(400).json({ error: 'Required fields missing' });
+      
+      // Validation
+      if (typeof homeTeam !== 'string' || typeof awayTeam !== 'string' || typeof league !== 'string') {
+        return res.status(400).json({ error: 'Invalid input types' });
+      }
+
+      if (asOfDate) {
+        const date = new Date(asOfDate);
+        if (isNaN(date.getTime())) return res.status(400).json({ error: 'Invalid asOfDate format' });
+        if (date > new Date()) return res.status(400).json({ error: 'asOfDate cannot be in the future' });
       }
 
       const leagueKey = league.toUpperCase().replace(/ /g, '_');
@@ -27,7 +73,7 @@ async function startServer() {
         return res.status(400).json({ error: `Unsupported league: ${league}` });
       }
 
-      const result = await runPrediction(homeTeam, awayTeam, league, null, asOfDate);
+      const result = await runPrediction(homeTeam, awayTeam, leagueKey, null, asOfDate);
       res.json(result);
     } catch (error: unknown) {
       const { homeTeam, awayTeam, league } = req.body;
@@ -36,11 +82,17 @@ async function startServer() {
     }
   });
 
-  app.get('/api/fixtures', async (req, res) => {
+  app.get('/api/fixtures', async (req: Request, res: Response) => {
     try {
       const league = (req.query.league as string) || 'EPL';
-      const limit = Number(req.query.limit) || 10;
-      const fixtures = await getUpcomingFixtures(league, limit);
+      const limit = Math.min(Number(req.query.limit) || 10, 50);
+
+      const leagueKey = league.toUpperCase().replace(/ /g, '_');
+      if (!LEAGUE_CONFIGS[leagueKey] && leagueKey !== 'STANDARD') {
+        return res.status(400).json({ error: `Unsupported league: ${league}` });
+      }
+
+      const fixtures = await getUpcomingFixtures(leagueKey, limit);
       res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=3600');
       res.json(fixtures);
     } catch (error: unknown) {
@@ -49,41 +101,32 @@ async function startServer() {
     }
   });
 
-  app.get('/api/health', async (_req, res) => {
-    try {
-      const [football, odds] = await Promise.all([
-        checkApiHealth('api-football'),
-        checkApiHealth('the-odds-api')
-      ]);
-      res.json({
-        status: football && odds ? 'OPERATIONAL' : 'DEGRADED',
-        services: {
-          apiFootball: football ? 'HEALTHY' : 'DOWN',
-          theOddsApi: odds ? 'HEALTHY' : 'DOWN'
-        },
-        timestamp: new Date().toISOString()
-      });
-    } catch (error: unknown) {
-      res.status(500).json({ status: 'ERROR', message: (error as Error).message });
-    }
-  });
-
-  // Backtest Cache
-  let backtestCache: { result: any, ts: number } | null = null;
+  // Backtest Cache & Deduping
+  let backtestCache: { result: BacktestSummary; ts: number } | null = null;
+  let inFlightBacktest: Promise<BacktestSummary> | null = null;
   const BACKTEST_CACHE_TTL = 6 * 60 * 60 * 1000;
 
-  app.get('/api/backtest', async (_req, res) => {
+  app.get('/api/backtest', apiKeyAuth, async (_req: Request, res: Response) => {
     try {
       if (backtestCache && Date.now() - backtestCache.ts < BACKTEST_CACHE_TTL) {
         return res.json(backtestCache.result);
       }
 
-      const result = await runBacktest();
+      if (inFlightBacktest) {
+        const result = await inFlightBacktest;
+        return res.json(result);
+      }
+
+      inFlightBacktest = runBacktest();
+      const result = await inFlightBacktest;
+      inFlightBacktest = null;
+
       if (result && result.totalMatches > 0) {
         backtestCache = { result, ts: Date.now() };
       }
       res.json(result);
     } catch (error: unknown) {
+      inFlightBacktest = null;
       logger.error('GET /api/backtest', error instanceof Error ? error : new Error(String(error)));
       res.status(500).json({
         totalMatches: 0, totalPnl: 0, totalYield: 0, avgClv: 0, brierScore: 0,
@@ -99,7 +142,7 @@ async function startServer() {
 
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static('dist'));
-    app.get('/{*splat}', (_req, res) => {
+    app.get('/{*splat}', (_req: Request, res: Response) => {
       res.sendFile('dist/index.html', { root: '.' });
     });
   } else {
@@ -112,14 +155,7 @@ async function startServer() {
   }
 
   app.listen(port, () => {
-    console.log(`
-  🚀 Quantitative Football AI System Active
-  ──────────────────────────────
-  URL: http://localhost:${port}
-  ENV: ${process.env.NODE_ENV || 'development'}
-  DB:  Static Fallbacks Pre-loaded
-  ──────────────────────────────
-    `);
+    logger.info('Server', `🚀 Quantitative Football AI System Active | Port: ${port} | Env: ${process.env.NODE_ENV || 'development'}`);
   });
 }
 

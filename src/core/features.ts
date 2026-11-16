@@ -5,28 +5,25 @@ export class FeatureEngine {
   /**
    * Computes team features as of a specific historical date.
    * Uses only matches that occurred before that date for point-in-time evaluation.
-   * 
-   * @param teamName - Name of the team to compute features for
-   * @param asOfDate - Cutoff date for historical data
-   * @param history - Pool of historical matches
-   * @returns Internal team metrics for prediction
    */
   static async computeFeatures(
     teamName: string,
     asOfDate: string,
     history?: HistoricalMatch[]
   ): Promise<InternalTeamData> {
+    const fallback: InternalTeamData = {
+      attackStrength: 1.0,
+      defenseStrength: 1.0,
+      avgGoalsScored: BASE_GOALS,
+      avgGoalsConceded: BASE_GOALS,
+      homeAdvantageHeuristic: 0.3,
+      form: DEFAULT_FORM,
+      cleanSheetRate: DEFAULT_CLEAN_SHEET_RATE,
+      quality: 'low'
+    };
+
     if (!history || history.length === 0) {
-      return {
-        attackStrength: 1.0,
-        defenseStrength: 1.0,
-        avgGoalsScored: BASE_GOALS,
-        avgGoalsConceded: BASE_GOALS,
-        homeAdvantageHeuristic: 0.3,
-        form: DEFAULT_FORM,
-        cleanSheetRate: DEFAULT_CLEAN_SHEET_RATE,
-        quality: 'low'
-      };
+      return fallback;
     }
 
     const cutoff = new Date(asOfDate).getTime();
@@ -36,16 +33,7 @@ export class FeatureEngine {
     });
 
     if (relevant.length < 5) {
-      return {
-        attackStrength: 1.0,
-        defenseStrength: 1.0,
-        avgGoalsScored: BASE_GOALS,
-        avgGoalsConceded: BASE_GOALS,
-        homeAdvantageHeuristic: 0.3,
-        form: DEFAULT_FORM,
-        cleanSheetRate: DEFAULT_CLEAN_SHEET_RATE,
-        quality: 'low'
-      };
+      return fallback;
     }
 
     const last5 = relevant.slice(-5);
@@ -77,4 +65,3 @@ export class FeatureEngine {
     };
   }
 }
-

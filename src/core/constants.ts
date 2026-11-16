@@ -24,12 +24,12 @@ export const TEAM_STATS: Record<string, {
   'INTER': { attackStrength: 1.40, defenseStrength: 0.70, avgGoalsScored: 2.0, avgGoalsConceded: 0.8, homeAdvantageHeuristic: 0.35, form: [3,3,3,1,3], cleanSheetRate: 0.52 },
 };
 
-/**
- * Team aliases map canonical names to their common variants
- * Moved to teamIds.ts
- */
+export interface LeagueConfig {
+  goalRate: number;
+  homeAdvantage: number;
+}
 
-export const LEAGUE_CONFIGS: Record<string, any> = {
+export const LEAGUE_CONFIGS: Record<string, LeagueConfig> = {
   'EPL': { goalRate: 1.05, homeAdvantage: 0.30 },
   'LA_LIGA': { goalRate: 0.95, homeAdvantage: 0.32 },
   'BUNDESLIGA': { goalRate: 1.15, homeAdvantage: 0.28 },
@@ -60,6 +60,11 @@ export const MODEL_CONFIG = {
   MAX_MU: 3.5,
   MIN_MU: 0.2,
   KELLY_FRACTION: 0.35,
+  MAX_KELLY_STAKE: 0.05,
+  HOME_ADVANTAGE_GAMMA: 1.25,
+  DEFAULT_FIT_ITERATIONS: 500,
+  DEFAULT_LEARNING_RATE: 0.01,
+  PROBABILITY_FLOOR: 1e-10,
 };
 
 export const LEAGUE_MAP: Record<string, { apiId: number; oddsKey: string }> = {
@@ -74,4 +79,3 @@ export const SEASON_START_MONTH: Record<string, number> = {
   'EPL': 7, 'LA_LIGA': 7, 'BUNDESLIGA': 7, 'SERIE_A': 7, 'LIGUE_1': 7,
   'MLS': 2, 'A_LEAGUE': 9,
 };
-

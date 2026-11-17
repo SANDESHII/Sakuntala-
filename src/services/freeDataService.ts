@@ -198,25 +198,23 @@ async function fetchOddsApiLive(sport: string) {
 }
 
 function mapOddsMatch(match: any, timestamp: string): HistoricalPrices {
-    let best = { o25: 0, u25: 0 }, sum = { o25: 0, u25: 0 }, count = { o25: 0, u25: 0 };
+    let best = { o25: 0, u25: 0 };
 
     (match?.bookmakers || []).forEach((bm: any) => {
         const totals = bm.markets?.find((m: any) => m.key === 'totals');
         const o = totals?.outcomes?.find((oc: any) => oc.name === 'Over' && oc.point === 2.5);
         const u = totals?.outcomes?.find((oc: any) => oc.name === 'Under' && oc.point === 2.5);
-        if (o?.price > 1) { best.o25 = Math.max(best.o25, o.price); sum.o25 += o.price; count.o25++; }
-        if (u?.price > 1) { best.u25 = Math.max(best.u25, u.price); sum.u25 += u.price; count.u25++; }
+        if (o?.price > 1) best.o25 = Math.max(best.o25, o.price);
+        if (u?.price > 1) best.u25 = Math.max(best.u25, u.price);
     });
 
-    const fair = (b: number, s: number, c: number) => {
-        const consensus = c > 0 ? s / c : b;
-        if (b <= 1 || consensus <= 1) return b > 1 ? b * 0.97 : 0;
-        return 1 / ((1 / b) / ((1 / b) + (1 / consensus)));
-    };
+    const hasBothSides = best.o25 > 1 && best.u25 > 1;
+    const noVigOver = hasBothSides ? 1 + best.o25 / best.u25 : (best.o25 > 1 ? best.o25 * 0.97 : 0);
+    const noVigUnder = hasBothSides ? 1 + best.u25 / best.o25 : (best.u25 > 1 ? best.u25 * 0.97 : 0);
 
     return {
-        over25: { bestPrice: best.o25, noVigPrice: fair(best.o25, sum.o25, count.o25) },
-        under25: { bestPrice: best.u25, noVigPrice: fair(best.u25, sum.u25, count.u25) },
+        over25: { bestPrice: best.o25, noVigPrice: noVigOver },
+        under25: { bestPrice: best.u25, noVigPrice: noVigUnder },
         takenAt: timestamp
     };
 }

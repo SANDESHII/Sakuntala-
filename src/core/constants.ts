@@ -86,3 +86,23 @@ export const SEASON_START_MONTH: Record<string, number> = {
 export const DECISION_LEAD_MS = 24 * 60 * 60 * 1000; // 24h before kickoff -> "taken" snapshot
 export const CLOSE_LEAD_MS = 5 * 60 * 1000;         // 5min before kickoff -> "closing" snapshot
 
+/**
+ * Football-Data.co.uk Backtest Configuration
+ */
+export const BACKTEST_CONFIG = {
+  TRAIN_SEASONS: ['2122', '2223', '2324'] as readonly string[],
+  EVAL_SEASONS: ['2324', '2425'] as readonly string[],
+  LEAGUES: ['EPL', 'LA_LIGA', 'BUNDESLIGA', 'SERIE_A', 'LIGUE_1'] as readonly string[],
+  DIVISION_MAP: {
+    EPL: 'E0',
+    LA_LIGA: 'SP1',
+    BUNDESLIGA: 'D1',
+    SERIE_A: 'I1',
+    LIGUE_1: 'F1',
+  } as Record<string, string>,
+  CSV_BASE_URL: 'https://www.football-data.co.uk/mmz4281',
+  CSV_TIMEOUT_MS: 15000,
+  CSV_RETRIES: 2,
+};
+
+

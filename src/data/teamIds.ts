@@ -5,16 +5,35 @@ const TEAM_ALIASES: Record<string, string> = {
   'MANCHESTER CITY': 'MAN_CITY',
   'MAN CITY': 'MAN_CITY',
   'MANCHESTER UNITED': 'MAN_UTD',
+  'MAN UNITED': 'MAN_UTD',
   'MAN UTD': 'MAN_UTD',
+  'NOTTM FOREST': 'NOTTINGHAM_FOREST',
+  'NOTTINGHAM FOREST': 'NOTTINGHAM_FOREST',
+  'LEEDS UNITED': 'LEEDS',
+  'SHEFFIELD UTD': 'SHEFFIELD_UNITED',
+  'SHEFFIELD UNITED': 'SHEFFIELD_UNITED',
+  'WEST BROMWICH ALBION': 'WEST_BROM',
   'ATHLETIC CLUB': 'ATHLETIC_BILBAO',
   'ATHLETIC BILBAO': 'ATHLETIC_BILBAO',
+  'ATH BILBAO': 'ATHLETIC_BILBAO',
+  'ATH MADRID': 'ATLETICO',
+  'ATLETICO MADRID': 'ATLETICO',
+  'CELTA': 'CELTA_VIGO',
+  'SOCIEDAD': 'REAL_SOCIEDAD',
+  'VALLECANO': 'RAYO_VALLECANO',
+  'RAYO VALLECANO': 'RAYO_VALLECANO',
+  'ESPANOL': 'ESPANYOL',
   'SPURS': 'TOTTENHAM',
   'TOTTENHAM HOTSPUR': 'TOTTENHAM',
   'PSG': 'PSG',
   'PARIS SG': 'PSG',
   'PARIS SAINT GERMAIN': 'PSG',
+  'SAINT ETIENNE': 'ST_ETIENNE',
+  'SAINT-ETIENNE': 'ST_ETIENNE',
+  'CLERMONT FOOT': 'CLERMONT',
   'BRIGHTON & HOVE ALBION': 'BRIGHTON',
   'BRIGHTON AND HOVE ALBION': 'BRIGHTON',
+  'BRIGHTON HOVE ALBION': 'BRIGHTON',
   'WOLVERHAMPTON WANDERERS': 'WOLVES',
   'WEST HAM UNITED': 'WEST_HAM',
   'NEWCASTLE UNITED': 'NEWCASTLE',
@@ -26,6 +45,12 @@ const TEAM_ALIASES: Record<string, string> = {
   'RB LEIPZIG': 'RB_LEIPZIG',
   'BAYER LEVERKUSEN': 'LEVERKUSEN',
   'BORUSSIA MONCHENGLADBACH': 'GLADBACH',
+  'MGLADBACH': 'GLADBACH',
+  'MONCHENGLADBACH': 'GLADBACH',
+  'EIN FRANKFURT': 'FRANKFURT',
+  'EINTRACHT FRANKFURT': 'FRANKFURT',
+  'FC KOLN': 'KOLN',
+  '1 FC KOLN': 'KOLN',
   'AC MILAN': 'MILAN',
   'INTER MILAN': 'INTER',
   'AS ROMA': 'ROMA',
@@ -155,7 +180,12 @@ export function resolveById(source: 'apiFootball' | 'theOddsApi', id: string | n
   };
 }
 
+const resolveTeamCache = new Map<string, TeamIdentity>();
+
 export function resolveTeam(name: string): TeamIdentity {
+  const cached = resolveTeamCache.get(name);
+  if (cached) return cached;
+
   const normalized = name.toUpperCase()
     .trim()
     .replace(/[.&]/g, ' ') // replace dots and ampersands with space
@@ -164,33 +194,37 @@ export function resolveTeam(name: string): TeamIdentity {
     
   const underscoreName = normalized.replace(/ /g, '_');
   
+  let result: TeamIdentity;
   if (TEAM_STATS[underscoreName] || TEAM_IDS[underscoreName]) {
     const canonical = underscoreName;
-    return {
+    result = {
       id: canonical,
       name: canonical,
       league: 'ELITE',
       country: 'EUROPE',
       externalIds: TEAM_IDS[canonical] || {}
     };
-  }
-  
-  const aliasCanonical = TEAM_ALIASES[normalized];
-  if (aliasCanonical) {
-     return {
-      id: aliasCanonical,
-      name: aliasCanonical,
-      league: 'ELITE',
-      country: 'EUROPE',
-      externalIds: TEAM_IDS[aliasCanonical] || {}
-    };
+  } else {
+    const aliasCanonical = TEAM_ALIASES[normalized];
+    if (aliasCanonical) {
+      result = {
+        id: aliasCanonical,
+        name: aliasCanonical,
+        league: 'ELITE',
+        country: 'EUROPE',
+        externalIds: TEAM_IDS[aliasCanonical] || {}
+      };
+    } else {
+      result = {
+        id: underscoreName,
+        name: normalized,
+        league: 'UNKNOWN',
+        country: 'UNKNOWN',
+        externalIds: {}
+      };
+    }
   }
 
-  return {
-    id: underscoreName,
-    name: normalized,
-    league: 'UNKNOWN',
-    country: 'UNKNOWN',
-    externalIds: {}
-  };
+  resolveTeamCache.set(name, result);
+  return result;
 }

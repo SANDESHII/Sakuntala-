@@ -1,5 +1,6 @@
 import { InternalTeamData, HistoricalMatch } from '../types';
 import { BASE_GOALS, DEFAULT_CLEAN_SHEET_RATE, DEFAULT_FORM } from './constants';
+import { resolveTeam } from '../data/teamIds';
 
 export class FeatureEngine {
   /**
@@ -26,10 +27,11 @@ export class FeatureEngine {
       return fallback;
     }
 
+    const targetTeam = resolveTeam(teamName).id;
     const cutoff = new Date(asOfDate).getTime();
     const relevant = history.filter(m => {
       const matchTime = new Date(m.date).getTime();
-      return matchTime < cutoff && (m.home === teamName || m.away === teamName);
+      return matchTime < cutoff && (resolveTeam(m.home).id === targetTeam || resolveTeam(m.away).id === targetTeam);
     });
 
     if (relevant.length < 5) {
@@ -43,7 +45,7 @@ export class FeatureEngine {
     const form: number[] = [];
 
     last5.forEach(m => {
-      const isHome = m.home === teamName;
+      const isHome = resolveTeam(m.home).id === targetTeam;
       const s = isHome ? m.homeGoals : m.awayGoals;
       const c = isHome ? m.awayGoals : m.homeGoals;
       scored += s;

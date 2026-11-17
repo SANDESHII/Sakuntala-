@@ -8,10 +8,12 @@ import {
   AWAY_DEFENSE_WEIGHT, 
   DEFAULT_CLEAN_SHEET_RATE, 
   DEFAULT_FORM, 
-  MODEL_CONFIG 
+  MODEL_CONFIG,
+  BACKTEST_CONFIG 
 } from './constants';
 import { DixonColes } from './math';
 import * as FreeDataService from '../services/freeDataService';
+import { loadBacktestDataset, CsvHistoricalMatch } from '../services/footballDataCsv';
 import * as Calibration from './calibration';
 import { FeatureEngine } from './features';
 import { resolveTeam } from '../data/teamIds';
@@ -66,7 +68,8 @@ export async function runPrediction(
   league: string,
   historicalOddsOverride: { over25?: { bestPrice: number }; under25?: { bestPrice: number } } | null = null,
   asOfDate?: string,
-  fixtureCache?: Record<string, HistoricalMatch[]>
+  fixtureCache?: Record<string, HistoricalMatch[]>,
+  fittedParamsOverride?: Calibration.FittedLeagueParams
 ): Promise<AnalysisResult> {
   try {
     const leagueKey = league.toUpperCase().replace(/ /g, '_');
@@ -76,7 +79,9 @@ export async function runPrediction(
       resolveTeamData(homeTeam, leagueKey, leagueConfig, asOfDate, fixtureCache),
       resolveTeamData(awayTeam, leagueKey, leagueConfig, asOfDate, fixtureCache),
       historicalOddsOverride ? Promise.resolve([]) : FreeDataService.getLiveOdds(leagueKey),
-      Calibration.fitFromAPI(leagueKey, asOfDate, fixtureCache?.[leagueKey])
+      fittedParamsOverride
+        ? Promise.resolve(fittedParamsOverride)
+        : Calibration.fitFromAPI(leagueKey, asOfDate, fixtureCache?.[leagueKey])
     ]);
 
     const mle = Calibration.predictGoals(fittedParams, homeTeam, awayTeam);
@@ -179,30 +184,59 @@ export async function runPrediction(
   }
 }
 
-/**
- * Run backtest simulation across major leagues to verify model accuracy and profitability.
- */
-export async function runBacktest(): Promise<BacktestSummary> {
-  const leagues = ['EPL', 'LA_LIGA', 'BUNDESLIGA', 'SERIE_A', 'LIGUE_1'];
-  
-  const allFixtures: Record<string, HistoricalMatch[]> = {};
-  const evalPool: (HistoricalMatch & { league: string })[] = [];
-  
-  await Promise.all(leagues.map(async (l) => {
-    try {
-      const raw = await FreeDataService.getHistoricalFixtures(l, 300, true);
-      const sorted = raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      allFixtures[l] = sorted;
-      const slice = sorted.slice(-6).map(m => ({ ...m, league: l }));
-      evalPool.push(...slice);
-    } catch (e: unknown) {
-      logger.error('runBacktest_fetch', e instanceof Error ? e : new Error(String(e)), { league: l });
-    }
-  }));
+export interface BacktestOptions {
+  leagues?: readonly string[];
+  trainSeasons?: readonly string[];
+  evalSeasons?: readonly string[];
+  preloadedMatches?: Record<string, (HistoricalMatch & { season?: string })[]>;
+}
 
-  let totalPnl = 0, totalStake = 0, totalMatches = 0;
+function sampleStdDev(values: number[]): number {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((s, v) => s + v, 0) / values.length;
+  const variance = values.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / (values.length - 1);
+  return Math.sqrt(variance);
+}
+
+/**
+ * Run walk-forward backtest simulation on free football-data.co.uk CSVs.
+ */
+export async function runBacktest(options?: BacktestOptions): Promise<BacktestSummary> {
+  const leagues = [...(options?.leagues || BACKTEST_CONFIG.LEAGUES)];
+  const trainSeasons = [...(options?.trainSeasons || BACKTEST_CONFIG.TRAIN_SEASONS)];
+  const evalSeasons = [...(options?.evalSeasons || BACKTEST_CONFIG.EVAL_SEASONS)];
+  const allSeasons = [...new Set([...trainSeasons, ...evalSeasons])];
+
+  let allFixtures: Record<string, CsvHistoricalMatch[]> = {};
+  let matchesDownloaded = 0;
+
+  if (options?.preloadedMatches) {
+    for (const l of leagues) {
+      const rows = (options.preloadedMatches[l] || []).map((m) => ({
+        ...m,
+        home: resolveTeam(m.home).id,
+        away: resolveTeam(m.away).id,
+        season: m.season || evalSeasons[0] || '2425',
+      }));
+      rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      allFixtures[l] = rows;
+      matchesDownloaded += rows.length;
+    }
+  } else {
+    const dataset = await loadBacktestDataset(allSeasons, leagues);
+    allFixtures = dataset.matchesByLeague;
+    matchesDownloaded = dataset.matchesDownloaded;
+  }
+
+  let totalPnl = 0, totalStake = 0, totalMatches = 0, matchesEvaluated = 0;
   let over25Correct = 0, over25Total = 0, under25Correct = 0, under25Total = 0;
-  let brierSum = 0, clvSum = 0, clvCount = 0, clvNoVigSum = 0, clvNoVigCount = 0;
+  let brierSum = 0, marketBrierSum = 0, marketBrierCount = 0;
+  let clvSum = 0, clvCount = 0, clvNoVigSum = 0, clvNoVigCount = 0;
+  let mleFitted = 0, heuristicFallback = 0, d4Mismatches = 0;
+
+  const clvValues: number[] = [];
+  const betRois: number[] = [];
+  const betPnls: { ts: number; pnl: number }[] = [];
 
   const segments = [
     { segment: 'Low Edge (0-2%)', min: 0, max: 2, count: 0, hits: 0, avgEdge: 0, avgClv: 0, edgeSum: 0, clvSum: 0, clvCount: 0, hitRate: 0 },
@@ -212,144 +246,308 @@ export async function runBacktest(): Promise<BacktestSummary> {
   ];
 
   const results: BacktestMatch[] = [];
+  const matchdayFitCache = new Map<string, Calibration.FittedLeagueParams>();
 
-  const CHUNK_SIZE = 5;
-  for (let i = 0; i < evalPool.length; i += CHUNK_SIZE) {
-    const chunk = evalPool.slice(i, i + CHUNK_SIZE);
-    await Promise.all(chunk.map(async (match) => {
-      try {
-        const prediction = await runPrediction(
-          match.home, 
-          match.away, 
-          match.league, 
-          { 
-            over25: { bestPrice: match.takenPrices?.over25 || 0 }, 
-            under25: { bestPrice: match.takenPrices?.under25 || 0 } 
-          }, 
-          match.date, 
-          allFixtures
-        );
+  for (const league of leagues) {
+    const leagueHistory = allFixtures[league] || [];
+    const evalMatches = leagueHistory.filter((m) => evalSeasons.includes(m.season));
+    if (evalMatches.length === 0) continue;
 
-        const totalGoals = match.homeGoals + match.awayGoals;
-        const isOver25Correct = totalGoals > 2.5;
-        const isUnder25Correct = totalGoals < 2.5;
+    // Group evaluation matches chronologically by calendar matchday (YYYY-MM-DD)
+    const matchdays = new Map<string, CsvHistoricalMatch[]>();
+    for (const m of evalMatches) {
+      const dayKey = m.date.split('T')[0];
+      const bucket = matchdays.get(dayKey);
+      if (bucket) bucket.push(m);
+      else matchdays.set(dayKey, [m]);
+    }
 
-        brierSum += Math.pow(prediction.rawProbability - (isOver25Correct ? 1 : 0), 2);
+    // Track prior match count strictly before current matchday for D4 assertion
+    const priorCounts: Record<string, number> = {};
+    let histCursor = 0;
 
-        let clv: number | null = null;
-        let clvNoVig: number | null = null;
-        let validClosingPrice: number | null = null;
-        const closingPrice =
-          prediction.predictionType === 'OVER_25'
-            ? match.closingPrices?.over25
-            : prediction.predictionType === 'UNDER_25'
-            ? match.closingPrices?.under25
-            : null;
+    for (const [dayKey, dayMatches] of matchdays.entries()) {
+      const cutoffIso = `${dayKey}T00:00:00.000Z`;
+      const cutoffMs = new Date(cutoffIso).getTime();
 
-        if (match.closingPrices) {
-          try {
-            FreeDataService.assertDistinctSnapshots(match.takenPrices, match.closingPrices, match.takenAt, match.closedAt);
-
-            if (
-              prediction.predictionType !== 'NO_BET' &&
-              closingPrice &&
-              closingPrice > 1 &&
-              prediction.marketOdds &&
-              prediction.marketOdds > 1
-            ) {
-              validClosingPrice = closingPrice;
-              clv = (prediction.marketOdds / closingPrice - 1) * 100;
-              clvSum += clv;
-              clvCount++;
-            }
-
-            const takenNoVig =
-              prediction.predictionType === 'OVER_25'
-                ? match.takenPrices?.over25NoVig
-                : prediction.predictionType === 'UNDER_25'
-                ? match.takenPrices?.under25NoVig
-                : null;
-            const closingNoVig =
-              prediction.predictionType === 'OVER_25'
-                ? match.closingPrices?.over25NoVig
-                : prediction.predictionType === 'UNDER_25'
-                ? match.closingPrices?.under25NoVig
-                : null;
-
-            if (
-              prediction.predictionType !== 'NO_BET' &&
-              takenNoVig &&
-              takenNoVig > 1 &&
-              closingNoVig &&
-              closingNoVig > 1
-            ) {
-              clvNoVig = (takenNoVig / closingNoVig - 1) * 100;
-              clvNoVigSum += clvNoVig;
-              clvNoVigCount++;
-            }
-          } catch (err: unknown) {
-            logger.warn('runBacktest_clv', `Skipping invalid CLV snapshot for ${match.home} vs ${match.away}: ${(err as Error).message}`);
-          }
-        }
-
-        let pnl = 0;
-        if (prediction.predictionType !== 'NO_BET' && prediction.marketOdds) {
-          const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
-          pnl = isHit ? (prediction.recommendedStake * prediction.marketOdds - prediction.recommendedStake) : -prediction.recommendedStake;
-          totalPnl += pnl;
-          totalStake += prediction.recommendedStake;
-          totalMatches++;
-        }
-
-        if (prediction.predictionType === 'OVER_25') { over25Total++; if (isOver25Correct) over25Correct++; }
-        if (prediction.predictionType === 'UNDER_25') { under25Total++; if (isUnder25Correct) under25Correct++; }
-
-        const absEdge = Math.abs(prediction.edge || 0);
-        const seg = segments.find(s => absEdge >= s.min && absEdge < s.max);
-        if (seg && prediction.predictionType !== 'NO_BET') {
-          seg.count++;
-          seg.edgeSum += absEdge;
-          if (clv !== null) { seg.clvSum += clv; seg.clvCount++; }
-          const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
-          if (isHit) seg.hits++;
-        }
-
-        results.push({
-          match: { homeTeam: match.home, awayTeam: match.away, actualScore: [match.homeGoals, match.awayGoals], league: match.league, isReal: true },
-          prediction: { predictionType: prediction.predictionType, probability: prediction.probability, rawProbability: prediction.rawProbability },
-          marketEdge: prediction.edge ? prediction.edge / 100 : null,
-          isOver25Correct,
-          isUnder25Correct,
-          pnl,
-          clv,
-          clvNoVig,
-          stake: prediction.recommendedStake,
-          takenOdds: prediction.marketOdds,
-          closingOdds: validClosingPrice
-        });
-      } catch (e: unknown) {
-        logger.warn('runBacktest_match', `Failed to process match ${match?.home} vs ${match?.away}: ${(e as Error).message}`);
+      while (histCursor < leagueHistory.length && new Date(leagueHistory[histCursor].date).getTime() < cutoffMs) {
+        const hm = leagueHistory[histCursor];
+        priorCounts[hm.home] = (priorCounts[hm.home] || 0) + 1;
+        priorCounts[hm.away] = (priorCounts[hm.away] || 0) + 1;
+        histCursor++;
       }
-    }));
+
+      const priorHistory = leagueHistory.slice(0, histCursor);
+      const priorFixtureCache = { [league]: priorHistory };
+
+      const cacheKey = `${league}_${dayKey}`;
+      let fittedParams = matchdayFitCache.get(cacheKey);
+      if (!fittedParams) {
+        fittedParams = await Calibration.fitFromAPI(league, cutoffIso, priorHistory);
+        matchdayFitCache.set(cacheKey, fittedParams);
+      }
+
+      for (const match of dayMatches) {
+        try {
+          const prediction = await runPrediction(
+            match.home,
+            match.away,
+            league,
+            {
+              over25: { bestPrice: match.takenPrices?.over25 || 0 },
+              under25: { bestPrice: match.takenPrices?.under25 || 0 },
+            },
+            cutoffIso,
+            priorFixtureCache,
+            fittedParams
+          );
+
+          if (prediction.modelSource === 'MLE_FITTED') {
+            mleFitted++;
+          } else {
+            heuristicFallback++;
+            const hPrior = priorCounts[match.home] || 0;
+            const aPrior = priorCounts[match.away] || 0;
+            if (hPrior >= 6 && aPrior >= 6) {
+              d4Mismatches++;
+              logger.warn(
+                'runBacktest_D4_ASSERT',
+                `HEURISTIC_FALLBACK despite >=6 prior matches (${match.home}=${hPrior}, ${match.away}=${aPrior}) in ${league} on ${dayKey}`
+              );
+            }
+          }
+
+          const totalGoals = match.homeGoals + match.awayGoals;
+          const isOver25Correct = totalGoals > 2.5;
+          const isUnder25Correct = totalGoals < 2.5;
+
+          matchesEvaluated++;
+          brierSum += Math.pow(prediction.rawProbability - (isOver25Correct ? 1 : 0), 2);
+
+          // Market closing benchmark Brier (no-vig closing implied prob)
+          const closeOver = match.closingPrices?.over25;
+          const closeUnder = match.closingPrices?.under25;
+          if (closeOver && closeOver > 1 && closeUnder && closeUnder > 1) {
+            const pMarket = (1 / closeOver) / ((1 / closeOver) + (1 / closeUnder));
+            marketBrierSum += Math.pow(pMarket - (isOver25Correct ? 1 : 0), 2);
+            marketBrierCount++;
+          }
+
+          let clv: number | null = null;
+          let clvNoVig: number | null = null;
+          let validClosingPrice: number | null = null;
+          const closingPrice =
+            prediction.predictionType === 'OVER_25'
+              ? match.closingPrices?.over25
+              : prediction.predictionType === 'UNDER_25'
+              ? match.closingPrices?.under25
+              : null;
+
+          if (match.closingPrices) {
+            try {
+              FreeDataService.assertDistinctSnapshots(match.takenPrices, match.closingPrices, match.takenAt, match.closedAt);
+
+              if (
+                prediction.predictionType !== 'NO_BET' &&
+                closingPrice &&
+                closingPrice > 1 &&
+                prediction.marketOdds &&
+                prediction.marketOdds > 1
+              ) {
+                validClosingPrice = closingPrice;
+                clv = (prediction.marketOdds / closingPrice - 1) * 100;
+                clvSum += clv;
+                clvCount++;
+                clvValues.push(clv);
+              }
+
+              const takenNoVig =
+                prediction.predictionType === 'OVER_25'
+                  ? match.takenPrices?.over25NoVig
+                  : prediction.predictionType === 'UNDER_25'
+                  ? match.takenPrices?.under25NoVig
+                  : null;
+              const closingNoVig =
+                prediction.predictionType === 'OVER_25'
+                  ? match.closingPrices?.over25NoVig
+                  : prediction.predictionType === 'UNDER_25'
+                  ? match.closingPrices?.under25NoVig
+                  : null;
+
+              if (
+                prediction.predictionType !== 'NO_BET' &&
+                takenNoVig &&
+                takenNoVig > 1 &&
+                closingNoVig &&
+                closingNoVig > 1
+              ) {
+                clvNoVig = (takenNoVig / closingNoVig - 1) * 100;
+                clvNoVigSum += clvNoVig;
+                clvNoVigCount++;
+              }
+            } catch (err: unknown) {
+              logger.warn('runBacktest_clv', `Skipping invalid CLV snapshot for ${match.home} vs ${match.away}: ${(err as Error).message}`);
+            }
+          }
+
+          let pnl = 0;
+          if (prediction.predictionType !== 'NO_BET' && prediction.marketOdds && prediction.recommendedStake > 0) {
+            const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
+            pnl = isHit
+              ? prediction.recommendedStake * prediction.marketOdds - prediction.recommendedStake
+              : -prediction.recommendedStake;
+            totalPnl += pnl;
+            totalStake += prediction.recommendedStake;
+            totalMatches++;
+            betRois.push((pnl / prediction.recommendedStake) * 100);
+            betPnls.push({ ts: new Date(match.date).getTime(), pnl });
+          }
+
+          if (prediction.predictionType === 'OVER_25') { over25Total++; if (isOver25Correct) over25Correct++; }
+          if (prediction.predictionType === 'UNDER_25') { under25Total++; if (isUnder25Correct) under25Correct++; }
+
+          const absEdge = Math.abs(prediction.edge || 0);
+          const seg = segments.find((s) => absEdge >= s.min && absEdge < s.max);
+          if (seg && prediction.predictionType !== 'NO_BET') {
+            seg.count++;
+            seg.edgeSum += absEdge;
+            if (clv !== null) { seg.clvSum += clv; seg.clvCount++; }
+            const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
+            if (isHit) seg.hits++;
+          }
+
+          results.push({
+            match: {
+              homeTeam: match.home,
+              awayTeam: match.away,
+              actualScore: [match.homeGoals, match.awayGoals],
+              league,
+              isReal: true,
+            },
+            prediction: {
+              predictionType: prediction.predictionType,
+              probability: prediction.probability,
+              rawProbability: prediction.rawProbability,
+            },
+            modelSource: prediction.modelSource,
+            marketEdge: prediction.edge ? prediction.edge / 100 : null,
+            isOver25Correct,
+            isUnder25Correct,
+            pnl,
+            clv,
+            clvNoVig,
+            stake: prediction.recommendedStake,
+            takenOdds: prediction.marketOdds,
+            closingOdds: validClosingPrice,
+          });
+        } catch (e: unknown) {
+          logger.warn('runBacktest_match', `Failed to process match ${match?.home} vs ${match?.away}: ${(e as Error).message}`);
+        }
+      }
+    }
   }
 
-  segments.forEach(s => {
+  segments.forEach((s) => {
     s.hitRate = s.count > 0 ? s.hits / s.count : 0;
     s.avgEdge = s.count > 0 ? s.edgeSum / s.count : 0;
     s.avgClv = s.clvCount > 0 ? s.clvSum / s.clvCount : 0;
   });
 
+  const brierScore = matchesEvaluated > 0 ? brierSum / matchesEvaluated : 0;
+  const marketBrier = marketBrierCount > 0 ? marketBrierSum / marketBrierCount : null;
+  const brierVsMarket = marketBrier !== null ? brierScore - marketBrier : null;
+  const totalYield = totalStake > 0 ? (totalPnl / totalStake) * 100 : 0;
+  const avgClv = clvCount > 0 ? clvSum / clvCount : 0;
+
+  let clvStats: BacktestSummary['clvStats'] = null;
+  if (clvValues.length > 0) {
+    const clvStdErr = clvValues.length >= 2 ? sampleStdDev(clvValues) / Math.sqrt(clvValues.length) : 0;
+    clvStats = {
+      avg: avgClv,
+      stdErr: clvStdErr,
+      ci95Low: avgClv - 1.96 * clvStdErr,
+      ci95High: avgClv + 1.96 * clvStdErr,
+      n: clvValues.length,
+    };
+  }
+
+  const roiStdErr = betRois.length >= 2 ? sampleStdDev(betRois) / Math.sqrt(betRois.length) : 0;
+  const roi95CI = {
+    low: totalYield - 1.96 * roiStdErr,
+    high: totalYield + 1.96 * roiStdErr,
+    stdErr: roiStdErr,
+    nBets: betRois.length,
+  };
+
+  betPnls.sort((a, b) => a.ts - b.ts);
+  let cumPnl = 0, peakPnl = 0, maxDrawdown = 0;
+  for (const bp of betPnls) {
+    cumPnl += bp.pnl;
+    if (cumPnl > peakPnl) peakPnl = cumPnl;
+    const dd = peakPnl - cumPnl;
+    if (dd > maxDrawdown) maxDrawdown = dd;
+  }
+
+  const failingConditions: string[] = [];
+  if (matchesEvaluated < 100) failingConditions.push(`matchesEvaluated (${matchesEvaluated}) < 100`);
+  if (totalMatches < 30) failingConditions.push(`placedBets (${totalMatches}) < 30`);
+  if (brierVsMarket === null) failingConditions.push('marketBrier unavailable');
+  else if (brierVsMarket >= 0) failingConditions.push(`brierVsMarket (${brierVsMarket.toFixed(5)}) >= 0`);
+  if (clvCount === 0) failingConditions.push('no closing prices for CLV');
+  else if (avgClv <= 0) failingConditions.push(`avgClv (${avgClv.toFixed(2)}%) <= 0`);
+  if (roi95CI.low <= 0) failingConditions.push(`roi95CI.low (${roi95CI.low.toFixed(2)}%) <= 0`);
+
+  let verdictStatus: 'PROMISING' | 'NO_EDGE' | 'INCONCLUSIVE';
+  if (
+    brierVsMarket !== null &&
+    brierVsMarket < 0 &&
+    clvCount > 0 &&
+    avgClv > 0 &&
+    roi95CI.low > 0 &&
+    matchesEvaluated >= 100 &&
+    totalMatches >= 30
+  ) {
+    verdictStatus = 'PROMISING';
+  } else if (matchesEvaluated < 100 || totalMatches < 30 || brierVsMarket === null || clvCount === 0) {
+    verdictStatus = 'INCONCLUSIVE';
+  } else if (brierVsMarket < 0 || avgClv > 0) {
+    verdictStatus = 'INCONCLUSIVE';
+  } else {
+    verdictStatus = 'NO_EDGE';
+  }
+
   return {
     totalMatches,
-    brierScore: results.length > 0 ? brierSum / results.length : 0,
+    brierScore,
+    marketBrier,
+    brierVsMarket,
     over25Accuracy: over25Total > 0 ? (over25Correct / over25Total) * 100 : 0,
     under25Accuracy: under25Total > 0 ? (under25Correct / under25Total) * 100 : 0,
     totalPnl: Math.round(totalPnl * 100) / 100,
-    totalYield: totalStake > 0 ? (totalPnl / totalStake) * 100 : 0,
-    avgClv: clvCount > 0 ? clvSum / clvCount : 0,
+    totalYield,
+    avgClv,
     clvCoverage: totalMatches > 0 ? (clvCount / totalMatches) * 100 : 0,
     avgClvNoVig: clvNoVigCount > 0 ? clvNoVigSum / clvNoVigCount : 0,
+    clvStats,
+    roi95CI,
+    maxDrawdown: Math.round(maxDrawdown * 100) / 100,
+    modelBreakdown: {
+      mleFitted,
+      heuristicFallback,
+      d4Mismatches,
+    },
+    dataLineage: {
+      source: 'football-data.co.uk',
+      seasons: allSeasons,
+      leagues,
+      matchesDownloaded,
+      matchesEvaluated,
+    },
+    verdict: {
+      status: verdictStatus,
+      failingConditions,
+    },
     edgeSegments: segments,
-    matches: results.slice(0, 20)
+    matches: results.slice(0, 50),
   };
 }

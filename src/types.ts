@@ -26,6 +26,7 @@ export interface HistoricalMatch {
   awayGoals: number;
   date: string;
   league: string;
+  season?: string;
   daysAgo?: number;
   homeId?: number;
   awayId?: number;
@@ -149,6 +150,7 @@ export interface BacktestMatch {
     probability: number;
     rawProbability: number;
   };
+  modelSource?: 'MLE_FITTED' | 'HEURISTIC_FALLBACK';
   marketEdge: number | null;
   isOver25Correct: boolean;
   isUnder25Correct: boolean;
@@ -163,6 +165,8 @@ export interface BacktestMatch {
 export interface BacktestSummary {
   totalMatches: number;
   brierScore: number;
+  marketBrier: number | null;
+  brierVsMarket: number | null;
   over25Accuracy: number;
   under25Accuracy: number;
   totalPnl: number;
@@ -170,6 +174,36 @@ export interface BacktestSummary {
   avgClv: number;
   clvCoverage: number;
   avgClvNoVig: number;
+  clvStats: {
+    avg: number;
+    stdErr: number;
+    ci95Low: number;
+    ci95High: number;
+    n: number;
+  } | null;
+  roi95CI: {
+    low: number;
+    high: number;
+    stdErr: number;
+    nBets: number;
+  };
+  maxDrawdown: number;
+  modelBreakdown: {
+    mleFitted: number;
+    heuristicFallback: number;
+    d4Mismatches: number;
+  };
+  dataLineage: {
+    source: 'football-data.co.uk';
+    seasons: string[];
+    leagues: string[];
+    matchesDownloaded: number;
+    matchesEvaluated: number;
+  };
+  verdict: {
+    status: 'PROMISING' | 'NO_EDGE' | 'INCONCLUSIVE';
+    failingConditions: string[];
+  };
   edgeSegments: {
     segment: string;
     min: number;

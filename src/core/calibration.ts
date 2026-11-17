@@ -8,6 +8,7 @@
 import * as FreeDataService from '../services/freeDataService';
 import { HistoricalMatch } from '../types';
 import { TIME_DECAY_PHI, DEFAULT_RHO, BASE_GOALS, REG_LAMBDA, MODEL_CONFIG } from './constants';
+import { resolveTeam } from '../data/teamIds';
 import { logger } from '../services/logger';
 
 interface FittedTeamParams {
@@ -42,33 +43,62 @@ function fitDixonColes(
 ): FittedLeagueParams {
   if (matches.length === 0) return { homeAdvantage: MODEL_CONFIG.HOME_ADVANTAGE_GAMMA, rho: DEFAULT_RHO, teams: {} };
 
-  const teamSet = new Set<string>();
-  const matchCounts: Record<string, number> = {};
-  for (const m of matches) { 
-    teamSet.add(m.home); 
-    teamSet.add(m.away); 
-    matchCounts[m.home] = (matchCounts[m.home] || 0) + 1;
-    matchCounts[m.away] = (matchCounts[m.away] || 0) + 1;
-  }
-  const teams = Array.from(teamSet);
+  const teams: string[] = [];
+  const teamIdx = new Map<string, number>();
+  const matchCounts: number[] = [];
+  const idxOf = (t: string): number => {
+    let idx = teamIdx.get(t);
+    if (idx === undefined) {
+      idx = teams.length;
+      teams.push(t);
+      teamIdx.set(t, idx);
+      matchCounts.push(0);
+    }
+    return idx;
+  };
 
+  const n = matches.length;
+  const hIdx = new Int32Array(n);
+  const aIdx = new Int32Array(n);
+  const hgArr = new Int32Array(n);
+  const agArr = new Int32Array(n);
+  const wArr = new Float64Array(n);
+
+  for (let i = 0; i < n; i++) {
+    const m = matches[i];
+    const hi = idxOf(m.home);
+    const ai = idxOf(m.away);
+    hIdx[i] = hi;
+    aIdx[i] = ai;
+    hgArr[i] = m.homeGoals;
+    agArr[i] = m.awayGoals;
+    wArr[i] = Math.exp(-TIME_DECAY_PHI * m.daysAgo);
+    matchCounts[hi]++;
+    matchCounts[ai]++;
+  }
+
+  const numTeams = teams.length;
   // Init at 1.0 (league average)
-  const atk: Record<string, number> = {};
-  const def: Record<string, number> = {};
-  for (const t of teams) { atk[t] = 1.0; def[t] = 1.0; }
+  const atk = new Float64Array(numTeams).fill(1.0);
+  const def = new Float64Array(numTeams).fill(1.0);
+  const gradientAttack = new Float64Array(numTeams);
+  const gradientDefense = new Float64Array(numTeams);
   let gamma = MODEL_CONFIG.HOME_ADVANTAGE_GAMMA;  // home advantage
   let rho = DEFAULT_RHO;
 
   let prevLL = -Infinity;
   for (let iter = 0; iter < iterations; iter++) {
-    const gradientAttack: Record<string, number> = {};
-    const gradientDefense: Record<string, number> = {};
-    for (const t of teams) { gradientAttack[t] = 0; gradientDefense[t] = 0; }
+    gradientAttack.fill(0);
+    gradientDefense.fill(0);
     let gradientGamma = 0, gradientRho = 0;
     let currentLL = 0;
 
-    for (const { home, away, homeGoals, awayGoals, daysAgo } of matches) {
-      const weight = Math.exp(-TIME_DECAY_PHI * daysAgo);
+    for (let i = 0; i < n; i++) {
+      const home = hIdx[i];
+      const away = aIdx[i];
+      const homeGoals = hgArr[i];
+      const awayGoals = agArr[i];
+      const weight = wArr[i];
       const homeExp = Math.max(atk[home] * def[away] * gamma * BASE_GOALS, MODEL_CONFIG.PROBABILITY_FLOOR);
       const awayExp = Math.max(atk[away] * def[home] * BASE_GOALS, MODEL_CONFIG.PROBABILITY_FLOOR);
 
@@ -115,8 +145,7 @@ function fitDixonColes(
     prevLL = currentLL;
 
     // Update (gradient ascent)
-    const n = matches.length;
-    for (const t of teams) {
+    for (let t = 0; t < numTeams; t++) {
       const penaltyA = -2 * REG_LAMBDA * (atk[t] - 1);
       const penaltyD = -2 * REG_LAMBDA * (def[t] - 1);
 
@@ -124,8 +153,10 @@ function fitDixonColes(
       def[t] = Math.max(0.2, Math.min(3.0, def[t] + lr * (gradientDefense[t] + penaltyD) / n));
     }
 
-    const currentAvgA = teams.reduce((s, t) => s + atk[t], 0) / teams.length;
-    for (const t of teams) {
+    let sumA = 0;
+    for (let t = 0; t < numTeams; t++) sumA += atk[t];
+    const currentAvgA = sumA / numTeams;
+    for (let t = 0; t < numTeams; t++) {
       atk[t] /= currentAvgA;
       def[t] *= currentAvgA;
     }
@@ -136,10 +167,10 @@ function fitDixonColes(
   }
 
   const result: Record<string, FittedTeamParams> = {};
-  for (const t of teams) {
-    const count = matchCounts[t] || 0;
-    result[t] = { 
-      attack: atk[t], 
+  for (let t = 0; t < numTeams; t++) {
+    const count = matchCounts[t];
+    result[teams[t]] = {
+      attack: atk[t],
       defense: def[t],
       matchCount: count,
       lowConfidence: count < 6
@@ -186,8 +217,8 @@ export async function fitFromAPI(
   }
 
   const matches: MatchData[] = filtered.map(m => ({
-    home: m.home,
-    away: m.away,
+    home: resolveTeam(m.home).id,
+    away: resolveTeam(m.away).id,
     homeGoals: m.homeGoals || 0,
     awayGoals: m.awayGoals || 0,
     daysAgo: Math.max(0, (cutoff - new Date(m.date).getTime()) / (1000 * 60 * 60 * 24))
@@ -209,8 +240,8 @@ export function predictGoals(
   homeTeam: string,
   awayTeam: string
 ): { lambdaHome: number; muAway: number; lowConfidence: boolean } | null {
-  const hKey = homeTeam.toUpperCase();
-  const aKey = awayTeam.toUpperCase();
+  const hKey = resolveTeam(homeTeam).id;
+  const aKey = resolveTeam(awayTeam).id;
   
   const homeParams = fitted.teams[hKey];
   const awayParams = fitted.teams[aKey];

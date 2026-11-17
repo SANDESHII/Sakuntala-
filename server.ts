@@ -129,7 +129,12 @@ async function startServer() {
       inFlightBacktest = null;
       logger.error('GET /api/backtest', error instanceof Error ? error : new Error(String(error)));
       res.status(500).json({
-        totalMatches: 0, totalPnl: 0, totalYield: 0, avgClv: 0, clvCoverage: 0, avgClvNoVig: 0, brierScore: 0,
+        totalMatches: 0, totalPnl: 0, totalYield: 0, avgClv: 0, clvCoverage: 0, avgClvNoVig: 0,
+        brierScore: 0, marketBrier: null, brierVsMarket: null, clvStats: null,
+        roi95CI: { low: 0, high: 0, stdErr: 0, nBets: 0 }, maxDrawdown: 0,
+        modelBreakdown: { mleFitted: 0, heuristicFallback: 0, d4Mismatches: 0 },
+        dataLineage: { source: 'football-data.co.uk', seasons: [], leagues: [], matchesDownloaded: 0, matchesEvaluated: 0 },
+        verdict: { status: 'INCONCLUSIVE', failingConditions: ['Backtest failed'] },
         over25Accuracy: 0, under25Accuracy: 0, edgeSegments: [],
         matches: [], error: (error as Error).message || 'Backtest failed'
       });

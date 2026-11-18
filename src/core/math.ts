@@ -72,7 +72,7 @@ export class DixonColes {
     }
 
     const maxMean = Math.max(lambdaHome, muAway, 0.1);
-    let k = Math.ceil(maxMean);
+    let k = 0;
     let p = Math.exp(-maxMean);
     let sum = p;
     

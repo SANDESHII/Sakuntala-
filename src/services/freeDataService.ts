@@ -185,6 +185,7 @@ async function fetchApiFootballFixtures(league: string, limit: number, status: '
     .map((f: any) => {
       try {
         if (!f.teams?.home?.id || !f.teams?.away?.id || !f.fixture?.id) return null;
+        if (f.fixture?.status?.short && f.fixture.status.short !== status) return null;
         return {
           id: f.fixture.id,
           date: f.fixture.date,

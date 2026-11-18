@@ -9,27 +9,17 @@
 @layer base {
   html {
     font-size: 16px;
+    color-scheme: dark;
   }
-  
+
   body {
-    @apply bg-[#050505] text-neutral-300 font-sans selection:bg-emerald-500/20 antialiased overflow-x-hidden text-sm md:text-base;
+    @apply bg-[#0a0c10] text-slate-200 font-sans selection:bg-emerald-500/20 antialiased overflow-x-hidden text-sm md:text-base;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
-  
+
   h1, h2, h3, h4, h5, h6 {
-    @apply text-white tracking-tight;
+    @apply text-slate-50 tracking-tight;
   }
-}
-
-@keyframes scan {
-  from { transform: translateY(-100%); }
-  to { transform: translateY(100%); }
-}
-
-@keyframes loading {
-  0% { transform: translateX(-100%); }
-  50% { transform: translateX(0); }
-  100% { transform: translateX(100%); }
 }
 
 ::-webkit-scrollbar {
@@ -38,27 +28,44 @@
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-[#050505];
+  @apply bg-[#0a0c10];
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-neutral-900 rounded-full hover:bg-neutral-800 transition-colors;
+  @apply bg-slate-800 rounded-full hover:bg-slate-700 transition-colors;
 }
 
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(20px); filter: blur(10px); }
-  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes fadeInSoft {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .page-transition {
-  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: fadeInSoft 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 button, a {
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: color 0.15s cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 0.15s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.15s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-button:hover {
-  transform: translateY(-2px) scale(1.02);
-  filter: brightness(1.1);
+@media (prefers-reduced-motion: reduce) {
+  .page-transition {
+    animation: none;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -1,23 +1,18 @@
 # Quantitative Football AI
 
-Professional-grade football analytical terminal utilizing Dixon-Coles Poisson modeling and Maximum Likelihood Estimation (MLE) for Over/Under 2.5 market prediction.
+Dixon-Coles bivariate Poisson model with Maximum Likelihood Estimation (MLE), fractional Kelly staking, Closing Line Value (CLV) tracking, and walk-forward historical backtesting on Over/Under 2.5 goals.
 
-## Technical Core
-- **Statistical Engine**: Dixon-Coles model with low-score correction and temporal decay (phi=0.0065).
-- **Optimization**: Gradient ascent MLE parameter fitting for team-specific attack and defense strengths.
-- **Execution**: Kelly Criterion stake optimization (0.35 fraction) based on calculated model edge vs. market prices.
-- **Grounding**: Integrated historical backtesting module to verify model yield and Brier score accuracy.
-
-## Data Sources
-- **Fixtures & Stats**: api-football.com (v3)
-- **Live & Historical Odds**: the-odds-api.com (v4)
+## Quantitative Core
+- **Score Model**: Dixon-Coles bivariate Poisson with low-score correlation (`rho`) and time-decay weighted gradient ascent MLE (`phi = 0.0065`, L2 shrinkage `REG_LAMBDA = 0.5`).
+- **Staking**: Fractional Kelly Criterion (`0.35` fraction, `5%` max stake, `3.0%` minimum edge threshold).
+- **Walk-Forward Backtest**: Chronological matchday refits strictly prior to kickoff across `football-data.co.uk` CSVs (`2122`–`2425` across EPL, La Liga, Bundesliga, Serie A, Ligue 1), benchmarked against no-vig closing market Brier score, closing CLV, and 95% confidence intervals.
 
 ## API Endpoints
-- `GET /api/fixtures?league=EPL` - Fetch upcoming league schedule.
-- `POST /api/predict` - Run full statistical analysis for a match.
-- `GET /api/backtest` - Execute historical performance audit across elite leagues.
+- `GET /api/health` — Live data provider health check.
+- `GET /api/fixtures?league=EPL` — Upcoming fixtures schedule.
+- `POST /api/predict` — Match prediction (`homeTeam`, `awayTeam`, `league`, optional `asOfDate`).
+- `GET /api/backtest` — Walk-forward historical backtest summary.
 
-## Configuration
-The following environment variables are required for live data integration:
-- `API_FOOTBALL_KEY`: API key from api-football.com
-- `ODDS_API_KEY`: API key from the-odds-api.com
+## Environment Variables
+- `API_FOOTBALL_KEY`: API key for live fixtures, match results, and team stats.
+- `ODDS_API_KEY`: API key for live Over/Under 2.5 bookmaker odds.

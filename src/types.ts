@@ -1,18 +1,10 @@
 export type DataSource = 'api-football' | 'the-odds-api';
 
-export interface HistoricalPrices {
-  over25: { bestPrice: number; noVigPrice: number };
-  under25: { bestPrice: number; noVigPrice: number };
-  takenAt: string;
-  closedAt?: string;
-}
-
 export interface TeamIdentity {
   id: string;
   name: string;
   league: string;
   country: string;
-  aliases?: string[];
   externalIds: {
     apiFootball?: number;
     theOddsApi?: string;
@@ -27,7 +19,6 @@ export interface HistoricalMatch {
   date: string;
   league: string;
   season?: string;
-  daysAgo?: number;
   homeId?: number;
   awayId?: number;
   takenPrices?: {
@@ -49,29 +40,15 @@ export interface HistoricalMatch {
 export interface InternalTeamData {
   attackStrength: number;  // Multiplier on league average (1.0 = average)
   defenseStrength: number; // Multiplier on league average (1.0 = average)
-  avgGoalsScored: number;
-  avgGoalsConceded: number;
-  homeAdvantageHeuristic: number;
-  form: number[];
-  cleanSheetRate: number;
-  matchCount?: number;
-  quality?: 'high' | 'medium' | 'low' | 'goals-proxy';
 }
 
 export interface MatchContext {
   league: string;
-  homeSeasonGoals: number;
-  awaySeasonGoals: number;
-  homeSeasonGoalsAgainst: number;
-  awaySeasonGoalsAgainst: number;
-  homeAttackRating: number;
-  awayAttackRating: number;
   date: string;
   marketOdds: {
     pinnacleOver25: number | null;
     pinnacleUnder25: number | null;
     source?: string;
-    sourceName?: string;
   };
 }
 
@@ -82,29 +59,8 @@ export interface GoalDistribution {
 
 export interface AnalysisResult {
   probability: number;
-  summary: string;
-  homeStats: {
-    name: string;
-    goalsScored: number;
-    goalsConceded: number;
-    avgGoalsScored: number;
-    avgGoalsConceded: number;
-    defensiveRatingHeuristic: number;
-    form: number[];
-    cleanSheets: number;
-    homeAwayBias: number;
-  };
-  awayStats: {
-    name: string;
-    goalsScored: number;
-    goalsConceded: number;
-    avgGoalsScored: number;
-    avgGoalsConceded: number;
-    defensiveRatingHeuristic: number;
-    form: number[];
-    cleanSheets: number;
-    homeAwayBias: number;
-  };
+  homeStats: { name: string };
+  awayStats: { name: string };
   homeExpectedGoals: number;
   awayExpectedGoals: number;
   predictionType: 'OVER_25' | 'UNDER_25' | 'NO_BET';
@@ -124,8 +80,6 @@ export interface AnalysisResult {
   goalDistribution?: GoalDistribution[];
   scoreMatrix?: number[][];
 }
-
-// --- Supporting Types ---
 
 export interface FixtureMatch {
   homeTeam: string;
@@ -216,8 +170,4 @@ export interface BacktestSummary {
   }[];
   matches: BacktestMatch[];
   error?: string;
-}
-
-export interface BacktestError extends BacktestSummary {
-  error: string;
 }

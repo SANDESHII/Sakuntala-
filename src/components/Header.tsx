@@ -1,37 +1,50 @@
-import { FC, useState, useEffect } from 'react';
+import { FC } from 'react';
 
-export const Header: FC = () => {
-    const [healthStatus, setHealthStatus] = useState<'OPERATIONAL' | 'DEGRADED' | 'ERROR'>('OPERATIONAL');
+interface HeaderProps {
+  activeTab: 'terminal' | 'backtest';
+  onSelectTab: (tab: 'terminal' | 'backtest') => void;
+}
 
-    useEffect(() => {
-        const check = async () => {
-            try {
-                const res = await fetch('/api/health');
-                const data = await res.json();
-                setHealthStatus(data.status);
-            } catch {
-                setHealthStatus('ERROR');
-            }
-        };
-        check();
-        const interval = setInterval(check, 60000);
-        return () => clearInterval(interval);
-    }, []);
+export const Header: FC<HeaderProps> = ({ activeTab, onSelectTab }) => {
+  return (
+    <header className="sticky top-0 left-0 right-0 h-16 border-b border-slate-800/80 bg-[#0a0c10]/90 backdrop-blur-md z-40">
+      <div className="max-w-6xl mx-auto h-full px-6 flex items-center justify-between gap-8">
+        <a
+          href="#top"
+          onClick={(e) => {
+            e.preventDefault();
+            onSelectTab('terminal');
+          }}
+          className="text-base font-bold tracking-tight text-slate-50 whitespace-nowrap shrink-0"
+        >
+          Alpha Terminal
+        </a>
 
-    return (
-        <header className="fixed top-0 left-0 right-0 h-20 border-b border-neutral-900 bg-black/50 backdrop-blur-xl z-50">
-            <div className="max-w-7xl mx-auto h-full px-6 flex items-center">
-                <div className="flex items-center gap-4">
-                    <span className="text-sm font-black text-white uppercase tracking-[0.4em]">Alpha Terminal</span>
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900/50 rounded-full border border-neutral-800">
-                        <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
-                            healthStatus === 'OPERATIONAL' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 
-                            healthStatus === 'DEGRADED' ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'
-                        }`} />
-                        <span className="text-[8px] font-black text-neutral-500 uppercase tracking-widest">{healthStatus}</span>
-                    </div>
-                </div>
-            </div>
-        </header>
-    );
+        <nav className="flex items-center gap-6" aria-label="Primary navigation">
+          <button
+            type="button"
+            onClick={() => onSelectTab('terminal')}
+            className={`py-2 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 cursor-pointer ${
+              activeTab === 'terminal'
+                ? 'text-slate-50 border-emerald-500'
+                : 'text-slate-400 border-transparent hover:text-slate-200'
+            }`}
+          >
+            Match Analysis
+          </button>
+          <button
+            type="button"
+            onClick={() => onSelectTab('backtest')}
+            className={`py-2 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 cursor-pointer ${
+              activeTab === 'backtest'
+                ? 'text-slate-50 border-emerald-500'
+                : 'text-slate-400 border-transparent hover:text-slate-200'
+            }`}
+          >
+            Historical Audit
+          </button>
+        </nav>
+      </div>
+    </header>
+  );
 };

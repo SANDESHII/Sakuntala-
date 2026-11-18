@@ -1,6 +1,0 @@
-Unused devDependencies
-* depcheck
-* jscpd
-* knip
-* madge
-* tailwindcss

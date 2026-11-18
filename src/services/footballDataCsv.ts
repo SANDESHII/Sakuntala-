@@ -13,6 +13,21 @@ export function clearCsvCache(): void {
   csvCache.clear();
 }
 
+export function assertDistinctSnapshots(
+  takenPrices: HistoricalMatch['takenPrices'] | null | undefined,
+  closingPrices: HistoricalMatch['closingPrices'] | null | undefined,
+  takenAt?: string,
+  closedAt?: string
+): void {
+  if (!closingPrices) return;
+  if (!takenAt || !closedAt || takenAt === closedAt) {
+    throw new Error(`[CLV Sentinel] closingPrices must come from a distinct timestamp (takenAt=${takenAt}, closedAt=${closedAt}).`);
+  }
+  if (takenPrices && closingPrices === takenPrices) {
+    throw new Error('[CLV Sentinel] closingPrices cannot reference the same object as takenPrices.');
+  }
+}
+
 const OPENING_OVER_COLS = ['Max>2.5', 'P>2.5', 'B365>2.5', 'Avg>2.5'] as const;
 const OPENING_UNDER_COLS = ['Max<2.5', 'P<2.5', 'B365<2.5', 'Avg<2.5'] as const;
 const CLOSING_OVER_COLS = ['MaxC>2.5', 'PSC>2.5', 'PC>2.5', 'B365C>2.5', 'AvgC>2.5'] as const;

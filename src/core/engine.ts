@@ -1,46 +1,42 @@
 import { AnalysisResult, InternalTeamData, HistoricalMatch, BacktestSummary, BacktestMatch } from '../types';
-import { 
-  TEAM_STATS, 
-  LEAGUE_CONFIGS, 
-  BASE_GOALS, 
-  DEFAULT_RHO, 
-  HOME_ADVANTAGE_WEIGHT, 
-  AWAY_DEFENSE_WEIGHT, 
-  DEFAULT_CLEAN_SHEET_RATE, 
-  DEFAULT_FORM, 
+import {
+  TEAM_STATS,
+  LEAGUE_CONFIGS,
+  BASE_GOALS,
+  DEFAULT_RHO,
+  HOME_ADVANTAGE_WEIGHT,
+  AWAY_DEFENSE_WEIGHT,
   MODEL_CONFIG,
-  BACKTEST_CONFIG 
+  BACKTEST_CONFIG,
 } from './constants';
 import { DixonColes } from './math';
 import * as FreeDataService from '../services/freeDataService';
-import { loadBacktestDataset, CsvHistoricalMatch } from '../services/footballDataCsv';
+import { loadBacktestDataset, CsvHistoricalMatch, assertDistinctSnapshots } from '../services/footballDataCsv';
 import * as Calibration from './calibration';
-import { FeatureEngine } from './features';
 import { resolveTeam } from '../data/teamIds';
 import { logger } from '../services/logger';
 
 /**
- * Resolve team data using historical, live, static, or fallback paths.
+ * Resolve fallback attack/defense strength multipliers.
  */
 async function resolveTeamData(
-  teamName: string, 
-  leagueKey: string, 
-  leagueConfig: { goalRate: number; homeAdvantage: number },
-  asOfDate?: string,
-  fixtureCache?: Record<string, HistoricalMatch[]>
+  teamName: string,
+  leagueKey: string,
+  asOfDate?: string
 ): Promise<{ data: InternalTeamData; isGeneric: boolean; dataSource: 'LIVE' | 'FALLBACK_STATIC' }> {
   if (asOfDate) {
-    const hist = await FeatureEngine.computeFeatures(teamName, asOfDate, fixtureCache?.[leagueKey]);
-    return { data: hist, isGeneric: hist.quality === 'low', dataSource: 'FALLBACK_STATIC' };
+    return {
+      data: { attackStrength: 1.0, defenseStrength: 1.0 },
+      isGeneric: true,
+      dataSource: 'FALLBACK_STATIC',
+    };
   }
   const live = await FreeDataService.getTeamStats(teamName, leagueKey);
   const staticData = TEAM_STATS[resolveTeam(teamName).id];
-  return { 
-    data: live || staticData || { 
-      attackStrength: 1.0, defenseStrength: 1.0, avgGoalsScored: BASE_GOALS, avgGoalsConceded: BASE_GOALS,
-      homeAdvantageHeuristic: leagueConfig.homeAdvantage, form: DEFAULT_FORM, cleanSheetRate: DEFAULT_CLEAN_SHEET_RATE 
-    }, 
-    isGeneric: !live && !staticData, dataSource: live ? 'LIVE' : 'FALLBACK_STATIC' 
+  return {
+    data: live || staticData || { attackStrength: 1.0, defenseStrength: 1.0 },
+    isGeneric: !live && !staticData,
+    dataSource: live ? 'LIVE' : 'FALLBACK_STATIC',
   };
 }
 
@@ -76,82 +72,99 @@ export async function runPrediction(
     const leagueConfig = LEAGUE_CONFIGS[leagueKey] || LEAGUE_CONFIGS['STANDARD'];
 
     const [homeRes, awayRes, liveOdds, fittedParams] = await Promise.all([
-      resolveTeamData(homeTeam, leagueKey, leagueConfig, asOfDate, fixtureCache),
-      resolveTeamData(awayTeam, leagueKey, leagueConfig, asOfDate, fixtureCache),
+      fittedParamsOverride
+        ? Promise.resolve({ data: { attackStrength: 1.0, defenseStrength: 1.0 }, isGeneric: true, dataSource: 'FALLBACK_STATIC' as const })
+        : resolveTeamData(homeTeam, leagueKey, asOfDate),
+      fittedParamsOverride
+        ? Promise.resolve({ data: { attackStrength: 1.0, defenseStrength: 1.0 }, isGeneric: true, dataSource: 'FALLBACK_STATIC' as const })
+        : resolveTeamData(awayTeam, leagueKey, asOfDate),
       historicalOddsOverride ? Promise.resolve([]) : FreeDataService.getLiveOdds(leagueKey),
       fittedParamsOverride
         ? Promise.resolve(fittedParamsOverride)
-        : Calibration.fitFromAPI(leagueKey, asOfDate, fixtureCache?.[leagueKey])
+        : Calibration.fitFromAPI(leagueKey, asOfDate, fixtureCache?.[leagueKey]),
     ]);
 
     const mle = Calibration.predictGoals(fittedParams, homeTeam, awayTeam);
     const leagueBase = BASE_GOALS * leagueConfig.goalRate;
-    const lambdaHome = mle ? mle.lambdaHome : Math.max(MODEL_CONFIG.MIN_LAMBDA, Math.min(MODEL_CONFIG.MAX_LAMBDA, homeRes.data.attackStrength * awayRes.data.defenseStrength * leagueBase * (1 + leagueConfig.homeAdvantage * HOME_ADVANTAGE_WEIGHT)));
-    const muAway = mle ? mle.muAway : Math.max(MODEL_CONFIG.MIN_MU, Math.min(MODEL_CONFIG.MAX_MU, awayRes.data.attackStrength * homeRes.data.defenseStrength * leagueBase * (1 - leagueConfig.homeAdvantage * AWAY_DEFENSE_WEIGHT)));
-    
+    const lambdaHome = mle
+      ? mle.lambdaHome
+      : Math.max(
+          MODEL_CONFIG.MIN_LAMBDA,
+          Math.min(
+            MODEL_CONFIG.MAX_LAMBDA,
+            homeRes.data.attackStrength * awayRes.data.defenseStrength * leagueBase * (1 + leagueConfig.homeAdvantage * HOME_ADVANTAGE_WEIGHT)
+          )
+        );
+    const muAway = mle
+      ? mle.muAway
+      : Math.max(
+          MODEL_CONFIG.MIN_MU,
+          Math.min(
+            MODEL_CONFIG.MAX_MU,
+            awayRes.data.attackStrength * homeRes.data.defenseStrength * leagueBase * (1 - leagueConfig.homeAdvantage * AWAY_DEFENSE_WEIGHT)
+          )
+        );
+
     const scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, mle ? fittedParams.rho : DEFAULT_RHO);
     const probOver25 = DixonColes.calculateOverUnder(scoreMatrix, 2.5);
     const probUnder25 = 1 - probOver25;
 
-    // Use historical odds if provided, otherwise find in live odds feed
     let marketOddsOver25 = 0;
     let marketOddsUnder25 = 0;
+    let marketSourceName: string | undefined;
 
     if (historicalOddsOverride) {
       marketOddsOver25 = historicalOddsOverride.over25?.bestPrice || 0;
       marketOddsUnder25 = historicalOddsOverride.under25?.bestPrice || 0;
+      marketSourceName = 'Historical Feed';
     } else {
       const liveMatchOdds = liveOdds.find((o: any) => resolveTeam(o.home_team).id === resolveTeam(homeTeam).id);
       const best = getBestOdds(liveMatchOdds);
       marketOddsOver25 = best.o25;
       marketOddsUnder25 = best.u25;
+      if (marketOddsOver25 > 1 || marketOddsUnder25 > 1) {
+        marketSourceName = liveMatchOdds?.bookmakers?.[0]?.title || 'The Odds API';
+      }
     }
 
-    const over25Edge = marketOddsOver25 > 1 ? probOver25 - (1 / marketOddsOver25) : -1;
-    const under25Edge = marketOddsUnder25 > 1 ? probUnder25 - (1 / marketOddsUnder25) : -1;
+    const over25Edge = marketOddsOver25 > 1 ? probOver25 - 1 / marketOddsOver25 : -1;
+    const under25Edge = marketOddsUnder25 > 1 ? probUnder25 - 1 / marketOddsUnder25 : -1;
     const threshold = MODEL_CONFIG.EDGE_THRESHOLD;
     const isLowConfidence = mle?.lowConfidence || false;
 
-    const pick = !isLowConfidence && over25Edge > under25Edge && over25Edge > threshold
-      ? 'OVER_25'
-      : !isLowConfidence && under25Edge > threshold
-      ? 'UNDER_25'
-      : 'NO_BET';
+    const pick =
+      !isLowConfidence && over25Edge > under25Edge && over25Edge > threshold
+        ? 'OVER_25'
+        : !isLowConfidence && under25Edge > threshold
+        ? 'UNDER_25'
+        : 'NO_BET';
 
     const edge = pick === 'OVER_25' ? over25Edge : pick === 'UNDER_25' ? under25Edge : 0;
     const marketOdds = pick === 'OVER_25' ? marketOddsOver25 : pick === 'UNDER_25' ? marketOddsUnder25 : null;
 
     const p = pick === 'OVER_25' ? probOver25 : pick === 'UNDER_25' ? probUnder25 : 0;
-    const kelly = (marketOdds && edge > threshold) 
-      ? Math.min(MODEL_CONFIG.MAX_KELLY_STAKE, ((p * marketOdds - 1) / (marketOdds - 1)) * MODEL_CONFIG.KELLY_FRACTION) 
-      : 0;
+    const kelly =
+      marketOdds && edge > threshold
+        ? Math.min(MODEL_CONFIG.MAX_KELLY_STAKE, ((p * marketOdds - 1) / (marketOdds - 1)) * MODEL_CONFIG.KELLY_FRACTION)
+        : 0;
+
+    const goalBuckets = [0, 0, 0, 0, 0, 0];
+    for (let h = 0; h < scoreMatrix.length; h++) {
+      for (let a = 0; a < scoreMatrix[h].length; a++) {
+        const idx = Math.min(5, h + a);
+        goalBuckets[idx] += scoreMatrix[h][a] || 0;
+      }
+    }
+    const goalDistribution = goalBuckets.map((prob, idx) => ({
+      goals: idx === 5 ? '5+' : String(idx),
+      probability: Math.round(prob * 1000) / 10,
+    }));
 
     return {
       probability: Math.round(p * 100),
       rawProbability: probOver25,
-      summary: `Analysis of ${homeTeam} vs ${awayTeam} completed.`,
-      homeStats: { 
-        name: homeTeam.toUpperCase(), 
-        goalsScored: homeRes.data.avgGoalsScored, 
-        goalsConceded: homeRes.data.avgGoalsConceded, 
-        avgGoalsScored: homeRes.data.avgGoalsScored, 
-        avgGoalsConceded: homeRes.data.avgGoalsConceded, 
-        defensiveRatingHeuristic: homeRes.data.cleanSheetRate, 
-        form: homeRes.data.form, 
-        cleanSheets: Math.round(homeRes.data.cleanSheetRate * 20), 
-        homeAwayBias: homeRes.data.homeAdvantageHeuristic 
-      },
-      awayStats: { 
-        name: awayTeam.toUpperCase(), 
-        goalsScored: awayRes.data.avgGoalsScored, 
-        goalsConceded: awayRes.data.avgGoalsConceded, 
-        avgGoalsScored: awayRes.data.avgGoalsScored, 
-        avgGoalsConceded: awayRes.data.avgGoalsConceded, 
-        defensiveRatingHeuristic: awayRes.data.cleanSheetRate, 
-        form: awayRes.data.form, 
-        cleanSheets: Math.round(awayRes.data.cleanSheetRate * 20), 
-        homeAwayBias: awayRes.data.homeAdvantageHeuristic 
-      },
+      homeStats: { name: homeTeam.toUpperCase() },
+      awayStats: { name: awayTeam.toUpperCase() },
       homeExpectedGoals: lambdaHome,
       awayExpectedGoals: muAway,
       predictionType: pick,
@@ -161,22 +174,21 @@ export async function runPrediction(
       edge: Math.round(edge * 1000) / 10,
       recommendedStake: Math.round(kelly * 1000) / 10,
       verdict: kelly > 0 ? 'EXECUTE_BET' : 'NO_BET',
-      context: { 
-        league: leagueKey, 
-        homeSeasonGoals: homeRes.data.avgGoalsScored * 20, 
-        awaySeasonGoals: awayRes.data.avgGoalsScored * 20, 
-        homeSeasonGoalsAgainst: homeRes.data.avgGoalsConceded * 20, 
-        awaySeasonGoalsAgainst: awayRes.data.avgGoalsConceded * 20, 
-        homeAttackRating: 0, 
-        awayAttackRating: 0, 
-        date: asOfDate || '', 
-        marketOdds: { pinnacleOver25: marketOddsOver25, pinnacleUnder25: marketOddsUnder25 } 
+      context: {
+        league: leagueKey,
+        date: asOfDate || '',
+        marketOdds: {
+          pinnacleOver25: marketOddsOver25,
+          pinnacleUnder25: marketOddsUnder25,
+          source: marketSourceName,
+        },
       },
       dataSource: homeRes.dataSource,
       modelSource: mle ? 'MLE_FITTED' : 'HEURISTIC_FALLBACK',
       isLowConfidence,
       degraded: homeRes.isGeneric || awayRes.isGeneric || !mle,
-      scoreMatrix: scoreMatrix.slice(0, 6).map(r => r.slice(0, 6))
+      goalDistribution,
+      scoreMatrix: scoreMatrix.slice(0, 6).map((r) => r.slice(0, 6)),
     };
   } catch (err: unknown) {
     logger.error('runPrediction', err instanceof Error ? err : new Error(String(err)), { homeTeam, awayTeam, league });
@@ -253,7 +265,6 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
     const evalMatches = leagueHistory.filter((m) => evalSeasons.includes(m.season));
     if (evalMatches.length === 0) continue;
 
-    // Group evaluation matches chronologically by calendar matchday (YYYY-MM-DD)
     const matchdays = new Map<string, CsvHistoricalMatch[]>();
     for (const m of evalMatches) {
       const dayKey = m.date.split('T')[0];
@@ -262,7 +273,6 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
       else matchdays.set(dayKey, [m]);
     }
 
-    // Track prior match count strictly before current matchday for D4 assertion
     const priorCounts: Record<string, number> = {};
     let histCursor = 0;
 
@@ -324,11 +334,10 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
           matchesEvaluated++;
           brierSum += Math.pow(prediction.rawProbability - (isOver25Correct ? 1 : 0), 2);
 
-          // Market closing benchmark Brier (no-vig closing implied prob)
           const closeOver = match.closingPrices?.over25;
           const closeUnder = match.closingPrices?.under25;
           if (closeOver && closeOver > 1 && closeUnder && closeUnder > 1) {
-            const pMarket = (1 / closeOver) / ((1 / closeOver) + (1 / closeUnder));
+            const pMarket = 1 / closeOver / (1 / closeOver + 1 / closeUnder);
             marketBrierSum += Math.pow(pMarket - (isOver25Correct ? 1 : 0), 2);
             marketBrierCount++;
           }
@@ -345,7 +354,7 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
 
           if (match.closingPrices) {
             try {
-              FreeDataService.assertDistinctSnapshots(match.takenPrices, match.closingPrices, match.takenAt, match.closedAt);
+              assertDistinctSnapshots(match.takenPrices, match.closingPrices, match.takenAt, match.closedAt);
 
               if (
                 prediction.predictionType !== 'NO_BET' &&

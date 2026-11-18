@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response } from 'express';
 import compression from 'compression';
 import { runPrediction, runBacktest } from './src/core/engine';
 import { getUpcomingFixtures, checkApiHealth } from './src/services/freeDataService';
@@ -14,20 +14,7 @@ async function startServer() {
   app.use(compression());
   app.use(express.json());
 
-  // --- AUTH & RATE LIMITING (Placeholder for Phase 5/11) ---
-  const apiKeyAuth = (req: Request, res: Response, next: NextFunction) => {
-    const authHeader = req.headers['x-api-key'];
-    const validKey = process.env.API_KEY;
-    if (validKey && authHeader !== validKey) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    next();
-  };
-
-  // --- API ROUTES ---
-
-  // Health check with ~60s cache
-  let lastHealthCheck: { data: any; ts: number } | null = null;
+  let lastHealthCheck: { data: Record<string, unknown>; ts: number } | null = null;
   app.get('/api/health', async (_req: Request, res: Response) => {
     try {
       if (lastHealthCheck && Date.now() - lastHealthCheck.ts < 60000) {
@@ -36,15 +23,15 @@ async function startServer() {
 
       const [football, odds] = await Promise.all([
         checkApiHealth('api-football'),
-        checkApiHealth('the-odds-api')
+        checkApiHealth('the-odds-api'),
       ]);
       const healthData = {
         status: football && odds ? 'OPERATIONAL' : 'DEGRADED',
         services: {
           apiFootball: football ? 'HEALTHY' : 'DOWN',
-          theOddsApi: odds ? 'HEALTHY' : 'DOWN'
+          theOddsApi: odds ? 'HEALTHY' : 'DOWN',
         },
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
       lastHealthCheck = { data: healthData, ts: Date.now() };
       res.json(healthData);
@@ -53,11 +40,10 @@ async function startServer() {
     }
   });
 
-  app.post('/api/predict', apiKeyAuth, async (req: Request, res: Response) => {
+  app.post('/api/predict', async (req: Request, res: Response) => {
     try {
       const { homeTeam, awayTeam, league, asOfDate } = req.body || {};
-      
-      // Validation
+
       if (typeof homeTeam !== 'string' || typeof awayTeam !== 'string' || typeof league !== 'string') {
         return res.status(400).json({ error: 'Invalid input types' });
       }
@@ -101,14 +87,14 @@ async function startServer() {
     }
   });
 
-  // Backtest Cache & Deduping
   let backtestCache: { result: BacktestSummary; ts: number } | null = null;
   let inFlightBacktest: Promise<BacktestSummary> | null = null;
   const BACKTEST_CACHE_TTL = 6 * 60 * 60 * 1000;
 
-  app.get('/api/backtest', apiKeyAuth, async (_req: Request, res: Response) => {
+  app.get('/api/backtest', async (req: Request, res: Response) => {
     try {
-      if (backtestCache && Date.now() - backtestCache.ts < BACKTEST_CACHE_TTL) {
+      const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+      if (!forceRefresh && backtestCache && Date.now() - backtestCache.ts < BACKTEST_CACHE_TTL) {
         return res.json(backtestCache.result);
       }
 
@@ -129,21 +115,29 @@ async function startServer() {
       inFlightBacktest = null;
       logger.error('GET /api/backtest', error instanceof Error ? error : new Error(String(error)));
       res.status(500).json({
-        totalMatches: 0, totalPnl: 0, totalYield: 0, avgClv: 0, clvCoverage: 0, avgClvNoVig: 0,
-        brierScore: 0, marketBrier: null, brierVsMarket: null, clvStats: null,
-        roi95CI: { low: 0, high: 0, stdErr: 0, nBets: 0 }, maxDrawdown: 0,
+        totalMatches: 0,
+        totalPnl: 0,
+        totalYield: 0,
+        avgClv: 0,
+        clvCoverage: 0,
+        avgClvNoVig: 0,
+        brierScore: 0,
+        marketBrier: null,
+        brierVsMarket: null,
+        clvStats: null,
+        roi95CI: { low: 0, high: 0, stdErr: 0, nBets: 0 },
+        maxDrawdown: 0,
         modelBreakdown: { mleFitted: 0, heuristicFallback: 0, d4Mismatches: 0 },
         dataLineage: { source: 'football-data.co.uk', seasons: [], leagues: [], matchesDownloaded: 0, matchesEvaluated: 0 },
         verdict: { status: 'INCONCLUSIVE', failingConditions: ['Backtest failed'] },
-        over25Accuracy: 0, under25Accuracy: 0, edgeSegments: [],
-        matches: [], error: (error as Error).message || 'Backtest failed'
+        over25Accuracy: 0,
+        under25Accuracy: 0,
+        edgeSegments: [],
+        matches: [],
+        error: (error as Error).message || 'Backtest failed',
       });
     }
   });
-
-  // ======================
-  // Frontend Serving
-  // ======================
 
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static('dist'));
@@ -160,7 +154,7 @@ async function startServer() {
   }
 
   app.listen(port, () => {
-    logger.info('Server', `🚀 Quantitative Football AI System Active | Port: ${port} | Env: ${process.env.NODE_ENV || 'development'}`);
+    logger.info('Server', `Quantitative Football AI active on port ${port} (${process.env.NODE_ENV || 'development'})`);
   });
 }
 

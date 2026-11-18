@@ -1,31 +1,40 @@
-import { useState, useEffect, FC, useRef, lazy, Suspense } from 'react';
-import { AlertCircle, LayoutDashboard, History } from 'lucide-react';
+import { useState, useEffect, FC, useRef, lazy, Suspense, useCallback } from 'react';
+import { AlertCircle } from 'lucide-react';
 import { AnalysisResult, BacktestSummary } from './types';
 import { Header } from './components/Header';
-import { LoadingOverlay } from './components/LoadingOverlay';
 import { AnalysisForm } from './components/AnalysisForm';
 import { ResultGrid } from './components/ResultDisplay';
-import { GroundingLog } from './components/GroundingLog';
 
-const BacktestDisplay = lazy(() => import('./components/BacktestDisplay').then(m => ({ default: m.BacktestDisplay })));
+const BacktestDisplay = lazy(() =>
+  import('./components/BacktestDisplay').then((m) => ({ default: m.BacktestDisplay }))
+);
 
 export const App: FC = () => {
-  const [inputs, setInputs] = useState({ home: '', away: '', league: 'EPL', kickoff: '' });
+  const [inputs, setInputs] = useState({
+    home: '',
+    away: '',
+    league: 'EPL',
+    kickoff: '',
+  });
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const [activeTab, setActiveTab] = useState<'terminal' | 'backtest'>('terminal');
   const [backtestSummary, setBacktestSummary] = useState<BacktestSummary | null>(null);
+  const [loadingBacktest, setLoadingBacktest] = useState(false);
+  const [backtestError, setBacktestError] = useState<string | null>(null);
+
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const handleAnalyze = async () => {
-    if (loadingAnalysis || !inputs.home || !inputs.away) return;
-    
+  const handleAnalyze = useCallback(async () => {
+    if (loadingAnalysis || !inputs.home.trim() || !inputs.away.trim()) return;
+
     if (abortControllerRef.current) abortControllerRef.current.abort();
     abortControllerRef.current = new AbortController();
-    
-    setError(null); 
-    setLoadingAnalysis(true); 
+
+    setError(null);
+    setLoadingAnalysis(true);
 
     try {
       const response = await fetch('/api/predict', {
@@ -35,43 +44,57 @@ export const App: FC = () => {
         body: JSON.stringify({
           homeTeam: inputs.home.toUpperCase().trim(),
           awayTeam: inputs.away.toUpperCase().trim(),
-          league: inputs.league
-        })
+          league: inputs.league,
+        }),
       });
-      
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'ANALYSIS FAILED');
-      }
-      
-      const result = await response.json();
-      setAnalysis({ ...result, kickoff: inputs.kickoff });
-    } catch (err: any) { 
-      if (err.name === 'AbortError') return;
-      setError(err.message || 'ANALYSIS FAILED'); 
-    } finally { 
-      setLoadingAnalysis(false); 
-    }
-  };
 
-  const loadBacktest = async (isManual = false) => {
-    if (!isManual && backtestSummary) return;
-    
-    try {
-      const response = await fetch('/api/backtest');
-      if (!response.ok) throw new Error('BACKTEST FAILED');
-      
-      const summary = await response.json();
-      setBacktestSummary(summary);
-      
-      if (summary && summary.totalMatches > 0) {
-        const today = new Date().toISOString().split('T')[0];
-        sessionStorage.setItem(`alpha_terminal_backtest_${today}`, JSON.stringify({ summary, ts: Date.now() }));
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Analysis failed');
       }
-    } catch (err: any) {
-      setError(err.message || 'BACKTEST MODULE FAILED TO LOAD');
+
+      const result: AnalysisResult = await response.json();
+      setAnalysis({ ...result, kickoff: inputs.kickoff });
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      setError(err instanceof Error ? err.message : 'Analysis failed');
+    } finally {
+      setLoadingAnalysis(false);
     }
-  };
+  }, [inputs, loadingAnalysis]);
+
+  const loadBacktest = useCallback(async (forceRefresh = false) => {
+    if (!forceRefresh && backtestSummary) return;
+
+    setLoadingBacktest(true);
+    setBacktestError(null);
+    try {
+      const response = await fetch(forceRefresh ? '/api/backtest?refresh=1' : '/api/backtest');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Backtest request failed');
+      }
+
+      const summary: BacktestSummary = await response.json();
+      setBacktestSummary(summary);
+
+      if (summary && summary.dataLineage?.matchesEvaluated > 0) {
+        const today = new Date().toISOString().split('T')[0];
+        try {
+          sessionStorage.setItem(
+            `alpha_terminal_backtest_${today}`,
+            JSON.stringify({ summary, ts: Date.now() })
+          );
+        } catch {
+          // Ignore storage quota errors
+        }
+      }
+    } catch (err: unknown) {
+      setBacktestError(err instanceof Error ? err.message : 'Historical audit failed to load');
+    } finally {
+      setLoadingBacktest(false);
+    }
+  }, [backtestSummary]);
 
   useEffect(() => {
     return () => {
@@ -80,124 +103,136 @@ export const App: FC = () => {
   }, []);
 
   useEffect(() => {
-    const loadCachedBacktest = async () => {
-      const today = new Date().toISOString().split('T')[0];
-      const cached = sessionStorage.getItem(`alpha_terminal_backtest_${today}`);
-      if (cached) {
-        const { summary, ts } = JSON.parse(cached);
-        if (Date.now() - ts < 12 * 60 * 60 * 1000) {
-          setBacktestSummary(summary);
-        }
+    const today = new Date().toISOString().split('T')[0];
+    const cached = sessionStorage.getItem(`alpha_terminal_backtest_${today}`);
+    if (!cached) return;
+    try {
+      const { summary, ts } = JSON.parse(cached);
+      if (
+        summary &&
+        'marketBrier' in summary &&
+        'verdict' in summary &&
+        Date.now() - ts < 12 * 60 * 60 * 1000
+      ) {
+        setBacktestSummary(summary);
       }
-    };
-    loadCachedBacktest();
+    } catch {
+      sessionStorage.removeItem(`alpha_terminal_backtest_${today}`);
+    }
   }, []);
 
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') handleAnalyze();
-      if ((e.metaKey || e.ctrlKey) && e.key === 'b') setActiveTab('backtest');
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [inputs, loadingAnalysis, activeTab]);
-
-  useEffect(() => {
-    if (activeTab === 'backtest' && !backtestSummary) {
+    if (activeTab === 'backtest' && !backtestSummary && !loadingBacktest && !backtestError) {
       loadBacktest();
     }
-  }, [activeTab, backtestSummary]);
+  }, [activeTab, backtestSummary, loadingBacktest, backtestError, loadBacktest]);
 
   return (
-    <div className="min-h-screen bg-[#050505] text-neutral-400 font-sans antialiased selection:bg-emerald-500/20 relative">
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(16,185,129,0.02)_0%,transparent_50%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(18,18,18,0.1)_1px,transparent_1px),linear-gradient(90deg,rgba(18,18,18,0.1)_1px,transparent_1px)] bg-[size:40px_40px]" />
-        <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(5,5,5,0.4)_50%,transparent_100%)] animate-[scan_8s_linear_infinite]" />
-      </div>
+    <div id="top" className="min-h-screen bg-[#0a0c10] text-slate-200 font-sans antialiased flex flex-col">
+      <Header activeTab={activeTab} onSelectTab={setActiveTab} />
 
-      <div className="relative z-10">
-        <Header />
-        <LoadingOverlay loading={loadingAnalysis} />
-        <main className="max-w-7xl mx-auto px-6 pt-32 pb-24 space-y-12 min-h-[calc(100vh-80px)]">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8 mb-24">
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.4em]">Dixon-Coles Statistical Engine</span>
-              </div>
-              <h2 className="text-6xl md:text-8xl font-black tracking-tighter text-white leading-none uppercase">
-                Terminal<span className="text-emerald-500">_</span>
-              </h2>
-            </div>
-            <nav className="flex items-center p-1.5 bg-neutral-900/50 border border-neutral-800/50 backdrop-blur-md rounded-2xl w-full md:w-auto overflow-x-auto no-scrollbar">
-              {[
-                { id: 'terminal', label: 'Analysis', icon: LayoutDashboard },
-                { id: 'backtest', label: 'Historical Audit', icon: History }
-              ].map(tab => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id as 'terminal' | 'backtest')}
-                  className={`flex items-center justify-center gap-3 px-8 py-4 min-h-[44px] flex-1 md:flex-none rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab.id ? 'bg-white text-black shadow-2xl scale-105' : 'text-neutral-500 hover:text-neutral-300'}`}>
-                  <tab.icon className="w-4 h-4" />{tab.label}
-                </button>
-              ))}
-            </nav>
+      <main className="flex-1 w-full max-w-6xl mx-auto px-6 py-10 space-y-10">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-6 border-b border-slate-800/80">
+          <div className="space-y-1.5">
+            <p className="text-xs text-slate-400">
+              Dixon-Coles MLE · Over/Under 2.5 Goals
+            </p>
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-50 tracking-tight">
+              {activeTab === 'terminal' ? 'Match Analysis' : 'Historical Audit'}
+            </h1>
           </div>
 
-          <div className="transition-all duration-300 page-transition" key={activeTab}>
-            {activeTab === 'terminal' ? (
-              <div className="space-y-16">
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
-                  <div className="lg:col-span-7 space-y-12">
-                    <AnalysisForm
-                      home={inputs.home} setHome={(v) => setInputs(prev => ({ ...prev, home: v }))}
-                      away={inputs.away} setAway={(v) => setInputs(prev => ({ ...prev, away: v }))}
-                      league={inputs.league} setLeague={(v) => setInputs(prev => ({ ...prev, league: v }))}
-                      kickoff={inputs.kickoff} setKickoff={(v) => setInputs(prev => ({ ...prev, kickoff: v }))}
-                      onAnalyze={handleAnalyze} loading={loadingAnalysis} />
-                    {error && (
-                      <div className="p-5 bg-red-500/5 border border-red-500/20 rounded-2xl flex items-start gap-4 text-red-400">
-                        <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                        <div className="flex-1 space-y-1">
-                          <p className="text-sm font-bold uppercase tracking-wide">Error</p>
-                          <p className="text-xs font-medium opacity-80 leading-relaxed">{error}</p>
-                        </div>
-                        <button onClick={() => setError(null)} className="text-[10px] font-black uppercase hover:text-white transition-colors ml-auto">Dismiss</button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="lg:col-span-5">
-                    {!analysis && !loadingAnalysis && (
-                      <div className="p-12 text-center space-y-4 border-2 border-dashed border-neutral-900 rounded-[40px]">
-                        <LayoutDashboard className="w-12 h-12 text-neutral-800 mx-auto" />
-                        <p className="text-xs font-bold text-neutral-600 uppercase tracking-[0.2em]">Ready for input feed</p>
-                      </div>
-                    )}
-                  </div>
+          <div className="flex items-center p-1 bg-slate-900 border border-slate-800 rounded-xl w-fit">
+            <button
+              type="button"
+              onClick={() => setActiveTab('terminal')}
+              className={`px-4 py-1.5 min-h-[36px] rounded-lg text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer ${
+                activeTab === 'terminal'
+                  ? 'bg-slate-800 text-slate-50'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Analysis
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('backtest')}
+              className={`px-4 py-1.5 min-h-[36px] rounded-lg text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer ${
+                activeTab === 'backtest'
+                  ? 'bg-slate-800 text-slate-50'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Historical Audit
+            </button>
+          </div>
+        </div>
+
+        {activeTab === 'terminal' ? (
+          <div className="space-y-10">
+            <AnalysisForm
+              home={inputs.home}
+              setHome={(v) => setInputs((prev) => ({ ...prev, home: v }))}
+              away={inputs.away}
+              setAway={(v) => setInputs((prev) => ({ ...prev, away: v }))}
+              league={inputs.league}
+              setLeague={(v) => setInputs((prev) => ({ ...prev, league: v }))}
+              kickoff={inputs.kickoff}
+              setKickoff={(v) => setInputs((prev) => ({ ...prev, kickoff: v }))}
+              onAnalyze={handleAnalyze}
+              loading={loadingAnalysis}
+            />
+
+            {error && (
+              <div className="max-w-5xl mx-auto p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-3 text-red-300">
+                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-red-400" />
+                <div className="flex-1 space-y-0.5">
+                  <p className="text-sm font-semibold text-red-200">Prediction Error</p>
+                  <p className="text-xs text-red-300/80">{error}</p>
                 </div>
-                {analysis && (
-                  <div className="space-y-24 transition-all duration-300">
-                    <div className="page-transition">
-                      <ResultGrid analysis={analysis} />
-                    </div>
-                    <div className="page-transition delay-300">
-                      <GroundingLog analysis={analysis} />
-                    </div>
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setError(null)}
+                  className="text-xs font-medium text-red-300 hover:text-white cursor-pointer"
+                >
+                  Dismiss
+                </button>
               </div>
-            ) : (
-              <Suspense fallback={<div className="p-24 text-center"><p className="text-[10px] font-black text-neutral-600 uppercase tracking-widest animate-pulse">Loading Audit Module...</p></div>}>
-                {backtestSummary ? <BacktestDisplay summary={backtestSummary} /> : (
-                  <div className="p-24 text-center"><p className="text-[10px] font-black text-neutral-600 uppercase tracking-widest animate-pulse">Initializing historical audit...</p></div>
-                )}
-              </Suspense>
             )}
+
+            {loadingAnalysis && (
+              <div className="max-w-5xl mx-auto space-y-4" aria-busy="true" aria-label="Calculating match probabilities">
+                <div className="h-32 rounded-2xl bg-slate-900/50 border border-slate-800 animate-pulse" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="h-24 rounded-xl bg-slate-900/50 border border-slate-800 animate-pulse" />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!loadingAnalysis && analysis && <ResultGrid analysis={analysis} />}
           </div>
-        </main>
-        <footer className="max-w-7xl mx-auto px-6 py-24 border-t border-neutral-900 text-[10px] text-neutral-600 font-black tracking-[0.2em] uppercase text-center md:text-left">
-          &copy; {new Date().getFullYear()} ALPHA TERMINAL
-        </footer>
-      </div>
+        ) : (
+          <Suspense
+            fallback={
+              <div className="h-48 rounded-2xl bg-slate-900/50 border border-slate-800 animate-pulse" />
+            }
+          >
+            <BacktestDisplay
+              summary={backtestSummary}
+              loading={loadingBacktest}
+              error={backtestError}
+              onRefresh={() => loadBacktest(true)}
+            />
+          </Suspense>
+        )}
+      </main>
+
+      <footer className="w-full max-w-6xl mx-auto px-6 py-6 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+        <span>&copy; {new Date().getFullYear()} Alpha Terminal</span>
+        <span>Dixon-Coles Poisson · Over/Under 2.5</span>
+      </footer>
     </div>
   );
 };

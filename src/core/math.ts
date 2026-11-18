@@ -95,7 +95,9 @@ export class DixonColes {
 
     // Normalize to ensure probabilities sum to 1 precisely
     const total = matrix.reduce((s, row) => s + row.reduce((ss, p) => ss + p, 0), 0);
-    return matrix.map(row => row.map(p => p / (total || 1)));
+    const result = matrix.map(row => row.map(p => p / (total || 1)));
+    this.matrixCache.set(cacheKey, result);
+    return result;
   }
 
   /**

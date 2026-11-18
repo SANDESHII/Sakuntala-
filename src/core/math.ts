@@ -16,6 +16,7 @@ export class DixonColes {
    * P(X=k) = (λ^k × e^(-λ)) / k!
    */
   static poisson(k: number, lambda: number): number {
+    if (!Number.isInteger(k)) return 0;
     if (lambda <= 0) return k === 0 ? 1 : 0;
     if (k < 0 || k >= 41) return 0; // matching precomputed log factorial length
     return Math.exp(k * Math.log(lambda) - lambda - LOG_FACTORIAL[k]);
@@ -84,12 +85,22 @@ export class DixonColes {
     
     const limit = Math.max(8, k); 
 
+    const homeVec = new Array<number>(limit + 1);
+    homeVec[0] = lambdaHome <= 0 ? 1 : Math.exp(-lambdaHome);
+    for (let i = 1; i <= limit; i++) {
+      homeVec[i] = lambdaHome <= 0 ? 0 : (homeVec[i - 1] * lambdaHome) / i;
+    }
+
+    const awayVec = new Array<number>(limit + 1);
+    awayVec[0] = muAway <= 0 ? 1 : Math.exp(-muAway);
+    for (let j = 1; j <= limit; j++) {
+      awayVec[j] = muAway <= 0 ? 0 : (awayVec[j - 1] * muAway) / j;
+    }
+
     const matrix = Array.from({ length: limit + 1 }, (_, homeGoals) =>
       Array.from({ length: limit + 1 }, (_, awayGoals) => {
-        const probHome = this.poisson(homeGoals, lambdaHome);
-        const probAway = this.poisson(awayGoals, muAway);
         const correction = this.lowScoreCorrection(homeGoals, awayGoals, lambdaHome, muAway, rho);
-        return probHome * probAway * correction;
+        return homeVec[homeGoals] * awayVec[awayGoals] * correction;
       })
     );
 

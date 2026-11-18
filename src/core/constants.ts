@@ -37,7 +37,8 @@ export const LEAGUE_CONFIGS: Record<string, LeagueConfig> = {
 /**
  * Model Math Constants
  */
-export const TIME_DECAY_PHI = 0.0065;
+export const TIME_DECAY_PHI = 0.0065 / 3.5; // 0.001857/day — Dixon & Coles (1997)
+// published xi = 0.0065 in HALF-WEEK units (3.5 days), not per day.
 export const BASE_GOALS = 1.35;
 export const DEFAULT_RHO = -0.13;
 export const HOME_ADVANTAGE_WEIGHT = 0.5;

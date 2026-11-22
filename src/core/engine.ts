@@ -267,7 +267,7 @@ export async function getLeagueRatings(league: string): Promise<LeagueRatingsRes
   };
 }
 
-interface BacktestOptions {
+export interface BacktestOptions {
   leagues?: readonly string[];
   trainSeasons?: readonly string[];
   evalSeasons?: readonly string[];

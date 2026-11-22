@@ -40,7 +40,7 @@ export interface InternalTeamData {
   defenseStrength: number; // Multiplier on league average (1.0 = average)
 }
 
-interface MatchContext {
+export interface MatchContext {
   league: string;
   marketOdds: {
     pinnacleOver25: number | null;
@@ -48,7 +48,7 @@ interface MatchContext {
   };
 }
 
-interface GoalDistribution {
+export interface GoalDistribution {
   goals: string;
   probability: number;
 }

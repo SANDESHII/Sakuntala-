@@ -65,7 +65,7 @@ export const TEAM_STATS: Record<string, {
   'RENNES': { attackStrength: 1.08, defenseStrength: 0.98 },
 };
 
-interface LeagueConfig {
+export interface LeagueConfig {
   goalRate: number;
   homeAdvantage: number;
 }

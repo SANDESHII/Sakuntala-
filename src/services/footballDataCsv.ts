@@ -110,7 +110,7 @@ function pickFirstValidPrice(
 /**
  * Parse a football-data.co.uk CSV text by header name into canonical HistoricalMatch rows.
  */
-function parseFootballDataCsv(
+export function parseFootballDataCsv(
   csvText: string,
   league: string,
   season: string
@@ -235,7 +235,7 @@ async function fetchCsvWithRetry(
   throw new Error(`[CSV Download Failed] ${url}: ${lastError?.message || 'Unknown error'}`);
 }
 
-async function fetchLeagueSeasonCsv(league: string, season: string): Promise<CsvHistoricalMatch[]> {
+export async function fetchLeagueSeasonCsv(league: string, season: string): Promise<CsvHistoricalMatch[]> {
   const leagueKey = league.toUpperCase().replace(/ /g, '_');
   const division = BACKTEST_CONFIG.DIVISION_MAP[leagueKey];
   if (!division) {

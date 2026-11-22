@@ -1,7 +1,0 @@
-{
-  "name": "Quantitative Football AI",
-  "description": "Professional-grade football analytical terminal utilizing Dixon-Coles modeling and MLE parameter fitting.",
-  "capabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}

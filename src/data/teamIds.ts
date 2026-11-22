@@ -1,5 +1,5 @@
 import { TEAM_STATS } from '../core/constants';
-import { TeamIdentity } from '../types';
+import { TeamIdentity, TeamOption } from '../types';
 
 const TEAM_ALIASES: Record<string, string> = {
   'MANCHESTER CITY': 'MAN_CITY',
@@ -55,129 +55,173 @@ const TEAM_ALIASES: Record<string, string> = {
   'INTER MILAN': 'INTER',
   'AS ROMA': 'ROMA',
   'HELLAS VERONA': 'VERONA',
+  'ASTON VILLA': 'ASTON_VILLA',
+  'CRYSTAL PALACE': 'CRYSTAL_PALACE',
+  'LAS PALMAS': 'LAS_PALMAS',
+  'UNION BERLIN': 'UNION_BERLIN',
+  'LE HAVRE': 'LE_HAVRE',
 };
 
-const TEAM_IDS: Record<string, { apiFootball: number; theOddsApi: string }> = {
-  'ARSENAL': { apiFootball: 42, theOddsApi: 'Arsenal' },
-  'MAN_CITY': { apiFootball: 50, theOddsApi: 'Manchester City' },
-  'LIVERPOOL': { apiFootball: 40, theOddsApi: 'Liverpool' },
-  'CHELSEA': { apiFootball: 49, theOddsApi: 'Chelsea' },
-  'TOTTENHAM': { apiFootball: 47, theOddsApi: 'Tottenham Hotspur' },
-  'MAN_UTD': { apiFootball: 33, theOddsApi: 'Manchester United' },
-  'NEWCASTLE': { apiFootball: 34, theOddsApi: 'Newcastle United' },
-  'ASTON_VILLA': { apiFootball: 66, theOddsApi: 'Aston Villa' },
-  'BRIGHTON': { apiFootball: 51, theOddsApi: 'Brighton and Hove Albion' },
-  'WEST_HAM': { apiFootball: 48, theOddsApi: 'West Ham United' },
-  'BRENTFORD': { apiFootball: 55, theOddsApi: 'Brentford' },
-  'CRYSTAL_PALACE': { apiFootball: 52, theOddsApi: 'Crystal Palace' },
-  'EVERTON': { apiFootball: 45, theOddsApi: 'Everton' },
-  'FULHAM': { apiFootball: 36, theOddsApi: 'Fulham' },
-  'WOLVES': { apiFootball: 38, theOddsApi: 'Wolverhampton Wanderers' },
-  'BOURNEMOUTH': { apiFootball: 35, theOddsApi: 'AFC Bournemouth' },
-  'NOTTINGHAM_FOREST': { apiFootball: 65, theOddsApi: 'Nottingham Forest' },
-  'REAL_MADRID': { apiFootball: 541, theOddsApi: 'Real Madrid' },
-  'BARCELONA': { apiFootball: 529, theOddsApi: 'Barcelona' },
-  'ATLETICO': { apiFootball: 530, theOddsApi: 'Atletico Madrid' },
-  'SEVILLA': { apiFootball: 536, theOddsApi: 'Sevilla' },
-  'REAL_SOCIEDAD': { apiFootball: 548, theOddsApi: 'Real Sociedad' },
-  'VILLARREAL': { apiFootball: 533, theOddsApi: 'Villarreal' },
-  'ATHLETIC_BILBAO': { apiFootball: 531, theOddsApi: 'Athletic Bilbao' },
-  'BETIS': { apiFootball: 543, theOddsApi: 'Real Betis' },
-  'VALENCIA': { apiFootball: 532, theOddsApi: 'Valencia' },
-  'GETAFE': { apiFootball: 546, theOddsApi: 'Getafe' },
-  'CELTA_VIGO': { apiFootball: 538, theOddsApi: 'Celta Vigo' },
-  'GIRONA': { apiFootball: 547, theOddsApi: 'Girona' },
-  'OSASUNA': { apiFootball: 542, theOddsApi: 'Osasuna' },
-  'LAS_PALMAS': { apiFootball: 537, theOddsApi: 'Las Palmas' },
-  'MALLORCA': { apiFootball: 545, theOddsApi: 'Mallorca' },
-  'ALAVES': { apiFootball: 544, theOddsApi: 'Alaves' },
-  'CADIZ': { apiFootball: 534, theOddsApi: 'Cadiz' },
-  'GRANADA': { apiFootball: 535, theOddsApi: 'Granada' },
-  'ALMERIA': { apiFootball: 540, theOddsApi: 'Almeris' },
-  'BAYERN': { apiFootball: 157, theOddsApi: 'Bayern Munich' },
-  'DORTMUND': { apiFootball: 165, theOddsApi: 'Borussia Dortmund' },
-  'LEVERKUSEN': { apiFootball: 168, theOddsApi: 'Bayer Leverkusen' },
-  'RB_LEIPZIG': { apiFootball: 173, theOddsApi: 'RB Leipzig' },
-  'STUTTGART': { apiFootball: 172, theOddsApi: 'VfB Stuttgart' },
-  'FRANKFURT': { apiFootball: 169, theOddsApi: 'Eintracht Frankfurt' },
-  'WOLFSBURG': { apiFootball: 161, theOddsApi: 'VfL Wolfsburg' },
-  'GLADBACH': { apiFootball: 163, theOddsApi: 'Borussia Monchengladbach' },
-  'FREIBURG': { apiFootball: 160, theOddsApi: 'SC Freiburg' },
-  'HOFFENHEIM': { apiFootball: 167, theOddsApi: 'TSG 1899 Hoffenheim' },
-  'UNION_BERLIN': { apiFootball: 182, theOddsApi: 'Union Berlin' },
-  'BOCHUM': { apiFootball: 176, theOddsApi: 'VfL Bochum' },
-  'AUGSBURG': { apiFootball: 170, theOddsApi: 'FC Augsburg' },
-  'MAINZ': { apiFootball: 164, theOddsApi: 'FSV Mainz 05' },
-  'INTER': { apiFootball: 505, theOddsApi: 'Inter Milan' },
-  'MILAN': { apiFootball: 489, theOddsApi: 'AC Milan' },
-  'JUVENTUS': { apiFootball: 496, theOddsApi: 'Juventus' },
-  'NAPOLI': { apiFootball: 492, theOddsApi: 'Napoli' },
-  'ROMA': { apiFootball: 497, theOddsApi: 'AS Roma' },
-  'LAZIO': { apiFootball: 487, theOddsApi: 'Lazio' },
-  'ATALANTA': { apiFootball: 499, theOddsApi: 'Atalanta' },
-  'FIORENTINA': { apiFootball: 502, theOddsApi: 'Fiorentina' },
-  'BOLOGNA': { apiFootball: 500, theOddsApi: 'Bologna' },
-  'TORINO': { apiFootball: 503, theOddsApi: 'Torino' },
-  'MONZA': { apiFootball: 1579, theOddsApi: 'Monza' },
-  'UDINESE': { apiFootball: 494, theOddsApi: 'Udinese' },
-  'SASSUOLO': { apiFootball: 488, theOddsApi: 'Sassuolo' },
-  'EMPOLI': { apiFootball: 511, theOddsApi: 'Empoli' },
-  'CAGLIARI': { apiFootball: 490, theOddsApi: 'Cagliari' },
-  'GENOA': { apiFootball: 495, theOddsApi: 'Genoa' },
-  'VERONA': { apiFootball: 504, theOddsApi: 'Hellas Verona' },
-  'LECCE': { apiFootball: 867, theOddsApi: 'Lecce' },
-  'SALERNITANA': { apiFootball: 514, theOddsApi: 'Salernitana' },
-  'FROSINONE': { apiFootball: 512, theOddsApi: 'Frosinone' },
-  'PSG': { apiFootball: 85, theOddsApi: 'Paris Saint Germain' },
-  'MARSEILLE': { apiFootball: 81, theOddsApi: 'Olympique Marseille' },
-  'MONACO': { apiFootball: 91, theOddsApi: 'Monaco' },
-  'LYON': { apiFootball: 80, theOddsApi: 'Olympique Lyonnais' },
-  'LILLE': { apiFootball: 79, theOddsApi: 'Lille' },
-  'RENNES': { apiFootball: 94, theOddsApi: 'Stade Rennais' },
-  'NICE': { apiFootball: 84, theOddsApi: 'Nice' },
-  'LENS': { apiFootball: 116, theOddsApi: 'Lens' },
-  'STRASBOURG': { apiFootball: 95, theOddsApi: 'Strasbourg' },
-  'TOULOUSE': { apiFootball: 96, theOddsApi: 'Toulouse' },
-  'MONTPELLIER': { apiFootball: 82, theOddsApi: 'Montpellier' },
-  'NANTES': { apiFootball: 83, theOddsApi: 'Nantes' },
-  'REIMS': { apiFootball: 93, theOddsApi: 'Stade de Reims' },
-  'BREST': { apiFootball: 106, theOddsApi: 'Stade Brestois 29' },
-  'LORIENT': { apiFootball: 97, theOddsApi: 'Lorient' },
-  'CLERMONT': { apiFootball: 115, theOddsApi: 'Clermont Foot' },
-  'METZ': { apiFootball: 112, theOddsApi: 'Metz' },
-  'LE_HAVRE': { apiFootball: 111, theOddsApi: 'Le Havre' },
+export const LEAGUE_TEAMS: Record<string, string[]> = {
+  EPL: [
+    'ARSENAL', 'ASTON_VILLA', 'BOURNEMOUTH', 'BRENTFORD', 'BRIGHTON',
+    'CHELSEA', 'CRYSTAL_PALACE', 'EVERTON', 'FULHAM', 'LIVERPOOL',
+    'MAN_CITY', 'MAN_UTD', 'NEWCASTLE', 'NOTTINGHAM_FOREST', 'TOTTENHAM',
+    'WEST_HAM', 'WOLVES',
+  ],
+  LA_LIGA: [
+    'ALAVES', 'ATHLETIC_BILBAO', 'ATLETICO', 'BARCELONA', 'BETIS',
+    'CELTA_VIGO', 'ESPANYOL', 'GETAFE', 'GIRONA', 'LAS_PALMAS',
+    'MALLORCA', 'OSASUNA', 'RAYO_VALLECANO', 'REAL_MADRID', 'REAL_SOCIEDAD',
+    'SEVILLA', 'VALENCIA', 'VILLARREAL',
+  ],
+  BUNDESLIGA: [
+    'AUGSBURG', 'BAYERN', 'BOCHUM', 'DORTMUND', 'FRANKFURT',
+    'FREIBURG', 'GLADBACH', 'HOFFENHEIM', 'KOLN', 'LEVERKUSEN',
+    'MAINZ', 'RB_LEIPZIG', 'STUTTGART', 'UNION_BERLIN', 'WOLFSBURG',
+  ],
+  SERIE_A: [
+    'ATALANTA', 'BOLOGNA', 'CAGLIARI', 'EMPOLI', 'FIORENTINA',
+    'GENOA', 'INTER', 'JUVENTUS', 'LAZIO', 'LECCE',
+    'MILAN', 'MONZA', 'NAPOLI', 'ROMA', 'SASSUOLO',
+    'TORINO', 'UDINESE', 'VERONA',
+  ],
+  LIGUE_1: [
+    'BREST', 'CLERMONT', 'LE_HAVRE', 'LENS', 'LILLE',
+    'LORIENT', 'LYON', 'MARSEILLE', 'METZ', 'MONACO',
+    'MONTPELLIER', 'NANTES', 'NICE', 'PSG', 'REIMS',
+    'RENNES', 'STRASBOURG', 'TOULOUSE',
+  ],
 };
 
-const idMaps = {
-  apiFootball: new Map<number, string>(),
-  theOddsApi: new Map<string, string>()
+const TEAM_API_FOOTBALL_IDS: Record<string, number> = {
+  'ARSENAL': 42,
+  'MAN_CITY': 50,
+  'LIVERPOOL': 40,
+  'CHELSEA': 49,
+  'TOTTENHAM': 47,
+  'MAN_UTD': 33,
+  'NEWCASTLE': 34,
+  'ASTON_VILLA': 66,
+  'BRIGHTON': 51,
+  'WEST_HAM': 48,
+  'BRENTFORD': 55,
+  'CRYSTAL_PALACE': 52,
+  'EVERTON': 45,
+  'FULHAM': 36,
+  'WOLVES': 38,
+  'BOURNEMOUTH': 35,
+  'NOTTINGHAM_FOREST': 65,
+  'REAL_MADRID': 541,
+  'BARCELONA': 529,
+  'ATLETICO': 530,
+  'SEVILLA': 536,
+  'REAL_SOCIEDAD': 548,
+  'VILLARREAL': 533,
+  'ATHLETIC_BILBAO': 531,
+  'BETIS': 543,
+  'VALENCIA': 532,
+  'GETAFE': 546,
+  'CELTA_VIGO': 538,
+  'GIRONA': 547,
+  'OSASUNA': 542,
+  'LAS_PALMAS': 537,
+  'MALLORCA': 545,
+  'ALAVES': 544,
+  'CADIZ': 534,
+  'GRANADA': 535,
+  'ALMERIA': 540,
+  'BAYERN': 157,
+  'DORTMUND': 165,
+  'LEVERKUSEN': 168,
+  'RB_LEIPZIG': 173,
+  'STUTTGART': 172,
+  'FRANKFURT': 169,
+  'WOLFSBURG': 161,
+  'GLADBACH': 163,
+  'FREIBURG': 160,
+  'HOFFENHEIM': 167,
+  'UNION_BERLIN': 182,
+  'BOCHUM': 176,
+  'AUGSBURG': 170,
+  'MAINZ': 164,
+  'INTER': 505,
+  'MILAN': 489,
+  'JUVENTUS': 496,
+  'NAPOLI': 492,
+  'ROMA': 497,
+  'LAZIO': 487,
+  'ATALANTA': 499,
+  'FIORENTINA': 502,
+  'BOLOGNA': 500,
+  'TORINO': 503,
+  'MONZA': 1579,
+  'UDINESE': 494,
+  'SASSUOLO': 488,
+  'EMPOLI': 511,
+  'CAGLIARI': 490,
+  'GENOA': 495,
+  'VERONA': 504,
+  'LECCE': 867,
+  'SALERNITANA': 514,
+  'FROSINONE': 512,
+  'PSG': 85,
+  'MARSEILLE': 81,
+  'MONACO': 91,
+  'LYON': 80,
+  'LILLE': 79,
+  'RENNES': 94,
+  'NICE': 84,
+  'LENS': 116,
+  'STRASBOURG': 95,
+  'TOULOUSE': 96,
+  'MONTPELLIER': 82,
+  'NANTES': 83,
+  'REIMS': 93,
+  'BREST': 106,
+  'LORIENT': 97,
+  'CLERMONT': 115,
+  'METZ': 112,
+  'LE_HAVRE': 111,
 };
 
-// Initialize reverse maps
-Object.entries(TEAM_IDS).forEach(([name, ids]) => {
-  idMaps.apiFootball.set(ids.apiFootball, name);
-  idMaps.theOddsApi.set(ids.theOddsApi, name);
-});
+const DISPLAY_OVERRIDES: Record<string, string> = {
+  PSG: 'Paris Saint-Germain',
+  RB_LEIPZIG: 'RB Leipzig',
+  MAN_CITY: 'Man City',
+  MAN_UTD: 'Man Utd',
+  ST_ETIENNE: 'Saint-Etienne',
+};
 
-export function resolveById(source: 'apiFootball' | 'theOddsApi', id: string | number): TeamIdentity {
-  let canonicalId: string | undefined;
-  if (source === 'apiFootball') canonicalId = idMaps.apiFootball.get(id as number);
-  if (source === 'theOddsApi') canonicalId = idMaps.theOddsApi.get(id as string);
+export function formatTeamName(canonicalId: string): string {
+  const upper = canonicalId.toUpperCase().trim();
+  if (DISPLAY_OVERRIDES[upper]) return DISPLAY_OVERRIDES[upper];
+  return upper
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+    .join(' ');
+}
 
-  if (!canonicalId) {
-    return { id: String(id), name: String(id), league: 'UNKNOWN', country: 'UNKNOWN', externalIds: {} };
-  }
-  
-  return {
-    id: canonicalId,
-    name: canonicalId,
-    league: 'ELITE',
-    country: 'EUROPE',
-    externalIds: {
-      apiFootball: TEAM_IDS[canonicalId].apiFootball,
-      theOddsApi: TEAM_IDS[canonicalId].theOddsApi
-    }
-  };
+export function getTeamsForLeague(league: string): TeamOption[] {
+  const leagueKey = league.toUpperCase().replace(/ /g, '_');
+  const ids = LEAGUE_TEAMS[leagueKey] || [];
+  return ids.map((id) => ({
+    id,
+    displayName: formatTeamName(id),
+    league: leagueKey,
+  }));
+}
+
+const apiFootballReverseMap = new Map<number, string>();
+for (const [canonicalId, apiFootballId] of Object.entries(TEAM_API_FOOTBALL_IDS)) {
+  apiFootballReverseMap.set(apiFootballId, canonicalId);
+}
+
+export function resolveByApiFootballId(id: number): TeamIdentity {
+  const canonicalId = apiFootballReverseMap.get(id);
+  if (!canonicalId) return { id: String(id) };
+  return { id: canonicalId, apiFootballId: id };
 }
 
 const resolveTeamCache = new Map<string, TeamIdentity>();
@@ -188,41 +232,20 @@ export function resolveTeam(name: string): TeamIdentity {
 
   const normalized = name.toUpperCase()
     .trim()
-    .replace(/[.&]/g, ' ') // replace dots and ampersands with space
-    .replace(/[']/g, '')    // remove single quotes
-    .replace(/\s+/g, ' '); // collapse multiple spaces
-    
+    .replace(/[.&]/g, ' ')
+    .replace(/[']/g, '')
+    .replace(/\s+/g, ' ');
+
   const underscoreName = normalized.replace(/ /g, '_');
-  
+
   let result: TeamIdentity;
-  if (TEAM_STATS[underscoreName] || TEAM_IDS[underscoreName]) {
-    const canonical = underscoreName;
-    result = {
-      id: canonical,
-      name: canonical,
-      league: 'ELITE',
-      country: 'EUROPE',
-      externalIds: TEAM_IDS[canonical] || {}
-    };
+  if (TEAM_STATS[underscoreName] || TEAM_API_FOOTBALL_IDS[underscoreName]) {
+    result = { id: underscoreName, apiFootballId: TEAM_API_FOOTBALL_IDS[underscoreName] };
   } else {
     const aliasCanonical = TEAM_ALIASES[normalized];
-    if (aliasCanonical) {
-      result = {
-        id: aliasCanonical,
-        name: aliasCanonical,
-        league: 'ELITE',
-        country: 'EUROPE',
-        externalIds: TEAM_IDS[aliasCanonical] || {}
-      };
-    } else {
-      result = {
-        id: underscoreName,
-        name: normalized,
-        league: 'UNKNOWN',
-        country: 'UNKNOWN',
-        externalIds: {}
-      };
-    }
+    result = aliasCanonical
+      ? { id: aliasCanonical, apiFootballId: TEAM_API_FOOTBALL_IDS[aliasCanonical] }
+      : { id: underscoreName };
   }
 
   resolveTeamCache.set(name, result);

@@ -1,9 +1,10 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import compression from 'compression';
-import { runPrediction, runBacktest } from './src/core/engine';
+import { runPrediction, runBacktest, getLeagueRatings } from './src/core/engine';
 import { getUpcomingFixtures, checkApiHealth } from './src/services/freeDataService';
-import { LEAGUE_CONFIGS } from './src/core/constants';
+import { LEAGUE_CONFIGS, BACKTEST_CONFIG } from './src/core/constants';
+import { getTeamsForLeague } from './src/data/teamIds';
 import { logger } from './src/services/logger';
 import { BacktestSummary } from './src/types';
 
@@ -52,12 +53,43 @@ async function startServer() {
     }
   });
 
+  app.get('/api/teams', (req: Request, res: Response) => {
+    const league = ((req.query.league as string) || 'EPL').toUpperCase().replace(/ /g, '_');
+    if (!LEAGUE_CONFIGS[league] && league !== 'STANDARD') {
+      return res.status(400).json({ error: `Unsupported league: ${league}` });
+    }
+    return res.json({ league, teams: getTeamsForLeague(league) });
+  });
+
+  app.get('/api/ratings', async (req: Request, res: Response) => {
+    try {
+      const league = ((req.query.league as string) || 'EPL').toUpperCase().replace(/ /g, '_');
+      if (!LEAGUE_CONFIGS[league]) {
+        return res.status(400).json({ error: `Unsupported league: ${league}` });
+      }
+      const ratings = await getLeagueRatings(league);
+      res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=3600');
+      res.json(ratings);
+    } catch (error: unknown) {
+      logger.error('GET /api/ratings', error instanceof Error ? error : new Error(String(error)));
+      res.status(500).json({ error: (error as Error).message || 'Failed to compute league ratings' });
+    }
+  });
+
   app.post('/api/predict', async (req: Request, res: Response) => {
     try {
       const { homeTeam, awayTeam, league, asOfDate } = req.body || {};
 
       if (typeof homeTeam !== 'string' || typeof awayTeam !== 'string' || typeof league !== 'string') {
         return res.status(400).json({ error: 'Invalid input types' });
+      }
+
+      if (!homeTeam.trim() || !awayTeam.trim()) {
+        return res.status(400).json({ error: 'Home and away teams are required' });
+      }
+
+      if (homeTeam.trim().toUpperCase() === awayTeam.trim().toUpperCase()) {
+        return res.status(400).json({ error: 'Home and away teams must be different' });
       }
 
       if (asOfDate) {
@@ -99,32 +131,43 @@ async function startServer() {
     }
   });
 
-  let backtestCache: { result: BacktestSummary; ts: number } | null = null;
-  let inFlightBacktest: Promise<BacktestSummary> | null = null;
+  const backtestCache = new Map<string, { result: BacktestSummary; ts: number }>();
+  const inFlightBacktest = new Map<string, Promise<BacktestSummary>>();
   const BACKTEST_CACHE_TTL = 6 * 60 * 60 * 1000;
 
   app.get('/api/backtest', async (req: Request, res: Response) => {
     try {
       const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
-      if (!forceRefresh && backtestCache && Date.now() - backtestCache.ts < BACKTEST_CACHE_TTL) {
-        return res.json(backtestCache.result);
+      const leaguesParam = typeof req.query.leagues === 'string' && req.query.leagues.trim()
+        ? req.query.leagues
+            .split(',')
+            .map((l) => l.trim().toUpperCase())
+            .filter((l) => BACKTEST_CONFIG.LEAGUES.includes(l))
+        : [...BACKTEST_CONFIG.LEAGUES];
+
+      const selectedLeagues = leaguesParam.length > 0 ? leaguesParam : [...BACKTEST_CONFIG.LEAGUES];
+      const cacheKey = [...selectedLeagues].sort().join(',');
+
+      const cached = backtestCache.get(cacheKey);
+      if (!forceRefresh && cached && Date.now() - cached.ts < BACKTEST_CACHE_TTL) {
+        return res.json(cached.result);
       }
 
-      if (inFlightBacktest) {
-        const result = await inFlightBacktest;
-        return res.json(result);
+      let pending = inFlightBacktest.get(cacheKey);
+      if (!pending) {
+        pending = runBacktest({ leagues: selectedLeagues });
+        inFlightBacktest.set(cacheKey, pending);
       }
 
-      inFlightBacktest = runBacktest();
-      const result = await inFlightBacktest;
-      inFlightBacktest = null;
+      const result = await pending;
+      inFlightBacktest.delete(cacheKey);
 
       if (result && result.totalMatches > 0) {
-        backtestCache = { result, ts: Date.now() };
+        backtestCache.set(cacheKey, { result, ts: Date.now() });
       }
       res.json(result);
     } catch (error: unknown) {
-      inFlightBacktest = null;
+      inFlightBacktest.clear();
       logger.error('GET /api/backtest', error instanceof Error ? error : new Error(String(error)));
       res.status(500).json({
         totalMatches: 0,
@@ -145,6 +188,8 @@ async function startServer() {
         over25Accuracy: 0,
         under25Accuracy: 0,
         edgeSegments: [],
+        leagueBreakdown: [],
+        equityCurve: [],
         matches: [],
         error: (error as Error).message || 'Backtest failed',
       });

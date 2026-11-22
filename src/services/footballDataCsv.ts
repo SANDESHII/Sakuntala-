@@ -7,11 +7,8 @@ export interface CsvHistoricalMatch extends HistoricalMatch {
   season: string;
 }
 
-const csvCache = new Map<string, CsvHistoricalMatch[]>();
-
-export function clearCsvCache(): void {
-  csvCache.clear();
-}
+const csvCache = new Map<string, { rows: CsvHistoricalMatch[]; ts: number }>();
+const CSV_TTL = 6 * 60 * 60 * 1000; // 6 hours
 
 export function assertDistinctSnapshots(
   takenPrices: HistoricalMatch['takenPrices'] | null | undefined,
@@ -113,7 +110,7 @@ function pickFirstValidPrice(
 /**
  * Parse a football-data.co.uk CSV text by header name into canonical HistoricalMatch rows.
  */
-export function parseFootballDataCsv(
+function parseFootballDataCsv(
   csvText: string,
   league: string,
   season: string
@@ -230,7 +227,7 @@ async function fetchCsvWithRetry(
       lastError = err instanceof Error ? err : new Error(String(err));
       if (attempt < retries) {
         logger.warn('footballDataCsv', `Retry ${attempt + 1}/${retries} for ${url}: ${lastError.message}`);
-        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
       }
     }
   }
@@ -238,7 +235,7 @@ async function fetchCsvWithRetry(
   throw new Error(`[CSV Download Failed] ${url}: ${lastError?.message || 'Unknown error'}`);
 }
 
-export async function fetchLeagueSeasonCsv(league: string, season: string): Promise<CsvHistoricalMatch[]> {
+async function fetchLeagueSeasonCsv(league: string, season: string): Promise<CsvHistoricalMatch[]> {
   const leagueKey = league.toUpperCase().replace(/ /g, '_');
   const division = BACKTEST_CONFIG.DIVISION_MAP[leagueKey];
   if (!division) {
@@ -247,7 +244,7 @@ export async function fetchLeagueSeasonCsv(league: string, season: string): Prom
 
   const cacheKey = `${season}_${division}`;
   const cached = csvCache.get(cacheKey);
-  if (cached) return cached;
+  if (cached && Date.now() - cached.ts < CSV_TTL) return cached.rows;
 
   const url = `${BACKTEST_CONFIG.CSV_BASE_URL}/${season}/${division}.csv`;
   const csvText = await fetchCsvWithRetry(url);
@@ -257,8 +254,32 @@ export async function fetchLeagueSeasonCsv(league: string, season: string): Prom
     throw new Error(`[CSV Parse Error] Zero completed matches parsed from ${url}`);
   }
 
-  csvCache.set(cacheKey, parsed);
+  csvCache.set(cacheKey, { rows: parsed, ts: Date.now() });
   return parsed;
+}
+
+/**
+ * Load recent historical match CSVs for a single league (2324, 2425, 2526) for MLE fitting.
+ * Gracefully degrades if any individual season is unavailable.
+ */
+export async function loadRecentLeagueCsvMatches(league: string): Promise<CsvHistoricalMatch[]> {
+  const leagueKey = league.toUpperCase().replace(/ /g, '_');
+  if (!BACKTEST_CONFIG.DIVISION_MAP[leagueKey]) return [];
+
+  const candidateSeasons = ['2324', '2425', '2526'];
+  const settled = await Promise.allSettled(
+    candidateSeasons.map((s) => fetchLeagueSeasonCsv(leagueKey, s))
+  );
+
+  const combined: CsvHistoricalMatch[] = [];
+  for (const res of settled) {
+    if (res.status === 'fulfilled') {
+      combined.push(...res.value);
+    }
+  }
+
+  combined.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  return combined;
 }
 
 export async function loadBacktestDataset(

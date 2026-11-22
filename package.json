@@ -10,7 +10,9 @@
     "dev": "tsx server.ts",
     "start": "NODE_ENV=production tsx server.ts",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:backtest": "tsx scripts/verify_backtest.ts",
+    "verify:xg": "tsx scripts/verify_xg_scale.ts"
   },
   "dependencies": {
     "compression": "^1.8.2",

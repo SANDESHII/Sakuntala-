@@ -1,4 +1,14 @@
-import { AnalysisResult, InternalTeamData, HistoricalMatch, BacktestSummary, BacktestMatch } from '../types';
+import {
+  AnalysisResult,
+  InternalTeamData,
+  HistoricalMatch,
+  BacktestSummary,
+  BacktestMatch,
+  LeagueRatingsResponse,
+  TeamRatingRow,
+  LeagueBacktestStats,
+  EquityCurvePoint,
+} from '../types';
 import {
   TEAM_STATS,
   LEAGUE_CONFIGS,
@@ -13,7 +23,7 @@ import { DixonColes } from './math';
 import * as FreeDataService from '../services/freeDataService';
 import { loadBacktestDataset, CsvHistoricalMatch, assertDistinctSnapshots } from '../services/footballDataCsv';
 import * as Calibration from './calibration';
-import { resolveTeam } from '../data/teamIds';
+import { resolveTeam, formatTeamName, LEAGUE_TEAMS } from '../data/teamIds';
 import { logger } from '../services/logger';
 
 /**
@@ -23,11 +33,10 @@ async function resolveTeamData(
   teamName: string,
   leagueKey: string,
   asOfDate?: string
-): Promise<{ data: InternalTeamData; isGeneric: boolean; dataSource: 'LIVE' | 'FALLBACK_STATIC' }> {
+): Promise<{ data: InternalTeamData; dataSource: 'LIVE' | 'FALLBACK_STATIC' }> {
   if (asOfDate) {
     return {
       data: { attackStrength: 1.0, defenseStrength: 1.0 },
-      isGeneric: true,
       dataSource: 'FALLBACK_STATIC',
     };
   }
@@ -35,7 +44,6 @@ async function resolveTeamData(
   const staticData = TEAM_STATS[resolveTeam(teamName).id];
   return {
     data: live || staticData || { attackStrength: 1.0, defenseStrength: 1.0 },
-    isGeneric: !live && !staticData,
     dataSource: live ? 'LIVE' : 'FALLBACK_STATIC',
   };
 }
@@ -44,7 +52,8 @@ async function resolveTeamData(
  * Extract best market odds for Over/Under 2.5.
  */
 function getBestOdds(matchOdds: any) {
-  let o25 = 0, u25 = 0;
+  let o25 = 0;
+  let u25 = 0;
   matchOdds?.bookmakers?.forEach((bm: any) => {
     const market = bm.markets.find((m: any) => m.key === 'totals');
     const o = market?.outcomes.find((oc: any) => oc.name === 'Over' && oc.point === 2.5);
@@ -70,13 +79,15 @@ export async function runPrediction(
   try {
     const leagueKey = league.toUpperCase().replace(/ /g, '_');
     const leagueConfig = LEAGUE_CONFIGS[leagueKey] || LEAGUE_CONFIGS['STANDARD'];
+    const resolvedHome = resolveTeam(homeTeam);
+    const resolvedAway = resolveTeam(awayTeam);
 
     const [homeRes, awayRes, liveOdds, fittedParams] = await Promise.all([
       fittedParamsOverride
-        ? Promise.resolve({ data: { attackStrength: 1.0, defenseStrength: 1.0 }, isGeneric: true, dataSource: 'FALLBACK_STATIC' as const })
+        ? Promise.resolve({ data: { attackStrength: 1.0, defenseStrength: 1.0 }, dataSource: 'FALLBACK_STATIC' as const })
         : resolveTeamData(homeTeam, leagueKey, asOfDate),
       fittedParamsOverride
-        ? Promise.resolve({ data: { attackStrength: 1.0, defenseStrength: 1.0 }, isGeneric: true, dataSource: 'FALLBACK_STATIC' as const })
+        ? Promise.resolve({ data: { attackStrength: 1.0, defenseStrength: 1.0 }, dataSource: 'FALLBACK_STATIC' as const })
         : resolveTeamData(awayTeam, leagueKey, asOfDate),
       historicalOddsOverride ? Promise.resolve([]) : FreeDataService.getLiveOdds(leagueKey),
       fittedParamsOverride
@@ -92,7 +103,10 @@ export async function runPrediction(
           MODEL_CONFIG.MIN_LAMBDA,
           Math.min(
             MODEL_CONFIG.MAX_LAMBDA,
-            homeRes.data.attackStrength * awayRes.data.defenseStrength * leagueBase * (1 + leagueConfig.homeAdvantage * HOME_ADVANTAGE_WEIGHT)
+            homeRes.data.attackStrength *
+              awayRes.data.defenseStrength *
+              leagueBase *
+              (1 + leagueConfig.homeAdvantage * HOME_ADVANTAGE_WEIGHT)
           )
         );
     const muAway = mle
@@ -101,30 +115,31 @@ export async function runPrediction(
           MODEL_CONFIG.MIN_MU,
           Math.min(
             MODEL_CONFIG.MAX_MU,
-            awayRes.data.attackStrength * homeRes.data.defenseStrength * leagueBase * (1 - leagueConfig.homeAdvantage * AWAY_DEFENSE_WEIGHT)
+            awayRes.data.attackStrength *
+              homeRes.data.defenseStrength *
+              leagueBase *
+              (1 - leagueConfig.homeAdvantage * AWAY_DEFENSE_WEIGHT)
           )
         );
 
-    const scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, mle ? fittedParams.rho : DEFAULT_RHO);
-    const probOver25 = DixonColes.calculateOverUnder(scoreMatrix, 2.5);
-    const probUnder25 = 1 - probOver25;
+    const activeRho = mle ? fittedParams.rho : DEFAULT_RHO;
+    const scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, activeRho);
+    const markets = DixonColes.calculateDerivedMarkets(scoreMatrix);
+    const topScorelines = DixonColes.getTopScorelines(scoreMatrix, 6);
+    const probOver25 = markets.over25;
+    const probUnder25 = markets.under25;
 
     let marketOddsOver25 = 0;
     let marketOddsUnder25 = 0;
-    let marketSourceName: string | undefined;
 
     if (historicalOddsOverride) {
       marketOddsOver25 = historicalOddsOverride.over25?.bestPrice || 0;
       marketOddsUnder25 = historicalOddsOverride.under25?.bestPrice || 0;
-      marketSourceName = 'Historical Feed';
     } else {
-      const liveMatchOdds = liveOdds.find((o: any) => resolveTeam(o.home_team).id === resolveTeam(homeTeam).id);
+      const liveMatchOdds = liveOdds.find((o: any) => resolveTeam(o.home_team).id === resolvedHome.id);
       const best = getBestOdds(liveMatchOdds);
       marketOddsOver25 = best.o25;
       marketOddsUnder25 = best.u25;
-      if (marketOddsOver25 > 1 || marketOddsUnder25 > 1) {
-        marketSourceName = liveMatchOdds?.bookmakers?.[0]?.title || 'The Odds API';
-      }
     }
 
     const over25Edge = marketOddsOver25 > 1 ? probOver25 - 1 / marketOddsOver25 : -1;
@@ -161,14 +176,12 @@ export async function runPrediction(
     }));
 
     return {
-      probability: Math.round(p * 100),
       rawProbability: probOver25,
-      homeStats: { name: homeTeam.toUpperCase() },
-      awayStats: { name: awayTeam.toUpperCase() },
+      homeStats: { name: resolvedHome.id, displayName: formatTeamName(resolvedHome.id) },
+      awayStats: { name: resolvedAway.id, displayName: formatTeamName(resolvedAway.id) },
       homeExpectedGoals: lambdaHome,
       awayExpectedGoals: muAway,
       predictionType: pick,
-      predictionLabel: pick === 'NO_BET' ? 'NO EDGE' : pick,
       marketOdds,
       marketImpliedProb: marketOdds ? 1 / marketOdds : null,
       edge: Math.round(edge * 1000) / 10,
@@ -176,19 +189,29 @@ export async function runPrediction(
       verdict: kelly > 0 ? 'EXECUTE_BET' : 'NO_BET',
       context: {
         league: leagueKey,
-        date: asOfDate || '',
         marketOdds: {
-          pinnacleOver25: marketOddsOver25,
-          pinnacleUnder25: marketOddsUnder25,
-          source: marketSourceName,
+          pinnacleOver25: marketOddsOver25 > 1 ? marketOddsOver25 : null,
+          pinnacleUnder25: marketOddsUnder25 > 1 ? marketOddsUnder25 : null,
         },
       },
       dataSource: homeRes.dataSource,
       modelSource: mle ? 'MLE_FITTED' : 'HEURISTIC_FALLBACK',
       isLowConfidence,
-      degraded: homeRes.isGeneric || awayRes.isGeneric || !mle,
       goalDistribution,
       scoreMatrix: scoreMatrix.slice(0, 6).map((r) => r.slice(0, 6)),
+      markets,
+      topScorelines,
+      diagnostics: {
+        rho: activeRho,
+        homeAdvantage: mle ? fittedParams.homeAdvantage : 1 + leagueConfig.homeAdvantage * HOME_ADVANTAGE_WEIGHT,
+        homeAttack: mle ? mle.homeParams.attack : homeRes.data.attackStrength,
+        homeDefense: mle ? mle.homeParams.defense : homeRes.data.defenseStrength,
+        awayAttack: mle ? mle.awayParams.attack : awayRes.data.attackStrength,
+        awayDefense: mle ? mle.awayParams.defense : awayRes.data.defenseStrength,
+        homeSampleMatches: mle ? mle.homeParams.matchCount : 0,
+        awaySampleMatches: mle ? mle.awayParams.matchCount : 0,
+        dataProvider: mle ? (fittedParams.dataProvider || 'FOOTBALL_DATA_CSV') : 'STATIC_PRIOR',
+      },
     };
   } catch (err: unknown) {
     logger.error('runPrediction', err instanceof Error ? err : new Error(String(err)), { homeTeam, awayTeam, league });
@@ -196,7 +219,55 @@ export async function runPrediction(
   }
 }
 
-export interface BacktestOptions {
+/**
+ * Return fitted Dixon-Coles attack/defense power ratings for all teams in a league.
+ */
+export async function getLeagueRatings(league: string): Promise<LeagueRatingsResponse> {
+  const leagueKey = league.toUpperCase().replace(/ /g, '_');
+  const fitted = await Calibration.fitFromAPI(leagueKey);
+  const fittedEntries = Object.entries(fitted.teams);
+
+  let teams: TeamRatingRow[] = [];
+
+  if (fittedEntries.length > 0) {
+    teams = fittedEntries.map(([id, p]) => ({
+      id,
+      displayName: formatTeamName(id),
+      attack: p.attack,
+      defense: p.defense,
+      netRating: p.attack / Math.max(p.defense, 0.2),
+      matchCount: p.matchCount,
+      lowConfidence: p.lowConfidence,
+    }));
+  } else {
+    const knownIds = LEAGUE_TEAMS[leagueKey] || [];
+    teams = knownIds.map((id) => {
+      const prior = TEAM_STATS[id] || { attackStrength: 1.0, defenseStrength: 1.0 };
+      return {
+        id,
+        displayName: formatTeamName(id),
+        attack: prior.attackStrength,
+        defense: prior.defenseStrength,
+        netRating: prior.attackStrength / Math.max(prior.defenseStrength, 0.2),
+        matchCount: 0,
+        lowConfidence: true,
+      };
+    });
+  }
+
+  teams.sort((a, b) => b.netRating - a.netRating);
+
+  return {
+    league: leagueKey,
+    rho: fitted.rho,
+    homeAdvantage: fitted.homeAdvantage,
+    matchesUsed: fitted.matchesUsed || 0,
+    dataProvider: fitted.dataProvider || 'STATIC_PRIOR',
+    teams,
+  };
+}
+
+interface BacktestOptions {
   leagues?: readonly string[];
   trainSeasons?: readonly string[];
   evalSeasons?: readonly string[];
@@ -240,15 +311,28 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
     matchesDownloaded = dataset.matchesDownloaded;
   }
 
-  let totalPnl = 0, totalStake = 0, totalMatches = 0, matchesEvaluated = 0;
-  let over25Correct = 0, over25Total = 0, under25Correct = 0, under25Total = 0;
-  let brierSum = 0, marketBrierSum = 0, marketBrierCount = 0;
-  let clvSum = 0, clvCount = 0, clvNoVigSum = 0, clvNoVigCount = 0;
-  let mleFitted = 0, heuristicFallback = 0, d4Mismatches = 0;
+  let totalPnl = 0;
+  let totalStake = 0;
+  let totalMatches = 0;
+  let matchesEvaluated = 0;
+  let over25Correct = 0;
+  let over25Total = 0;
+  let under25Correct = 0;
+  let under25Total = 0;
+  let brierSum = 0;
+  let marketBrierSum = 0;
+  let marketBrierCount = 0;
+  let clvSum = 0;
+  let clvCount = 0;
+  let clvNoVigSum = 0;
+  let clvNoVigCount = 0;
+  let mleFitted = 0;
+  let heuristicFallback = 0;
+  let d4Mismatches = 0;
 
   const clvValues: number[] = [];
   const betRois: number[] = [];
-  const betPnls: { ts: number; pnl: number }[] = [];
+  const betPnls: { ts: number; date: string; pnl: number }[] = [];
 
   const segments = [
     { segment: 'Low Edge (0-2%)', min: 0, max: 2, count: 0, hits: 0, avgEdge: 0, avgClv: 0, edgeSum: 0, clvSum: 0, clvCount: 0, hitRate: 0 },
@@ -257,6 +341,11 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
     { segment: 'Elite Edge (8%+)', min: 8, max: 100, count: 0, hits: 0, avgEdge: 0, avgClv: 0, edgeSum: 0, clvSum: 0, clvCount: 0, hitRate: 0 },
   ];
 
+  const leagueAccum = new Map<
+    string,
+    { evaluated: number; bets: number; pnl: number; stake: number; clvSum: number; clvCount: number; brierSum: number }
+  >();
+
   const results: BacktestMatch[] = [];
   const matchdayFitCache = new Map<string, Calibration.FittedLeagueParams>();
 
@@ -264,6 +353,11 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
     const leagueHistory = allFixtures[league] || [];
     const evalMatches = leagueHistory.filter((m) => evalSeasons.includes(m.season));
     if (evalMatches.length === 0) continue;
+
+    if (!leagueAccum.has(league)) {
+      leagueAccum.set(league, { evaluated: 0, bets: 0, pnl: 0, stake: 0, clvSum: 0, clvCount: 0, brierSum: 0 });
+    }
+    const lStats = leagueAccum.get(league)!;
 
     const matchdays = new Map<string, CsvHistoricalMatch[]>();
     for (const m of evalMatches) {
@@ -331,8 +425,11 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
           const isOver25Correct = totalGoals > 2.5;
           const isUnder25Correct = totalGoals < 2.5;
 
+          const brierVal = Math.pow(prediction.rawProbability - (isOver25Correct ? 1 : 0), 2);
           matchesEvaluated++;
-          brierSum += Math.pow(prediction.rawProbability - (isOver25Correct ? 1 : 0), 2);
+          brierSum += brierVal;
+          lStats.evaluated++;
+          lStats.brierSum += brierVal;
 
           const closeOver = match.closingPrices?.over25;
           const closeUnder = match.closingPrices?.under25;
@@ -368,6 +465,8 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
                 clvSum += clv;
                 clvCount++;
                 clvValues.push(clv);
+                lStats.clvSum += clv;
+                lStats.clvCount++;
               }
 
               const takenNoVig =
@@ -408,34 +507,45 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
             totalPnl += pnl;
             totalStake += prediction.recommendedStake;
             totalMatches++;
+            lStats.bets++;
+            lStats.pnl += pnl;
+            lStats.stake += prediction.recommendedStake;
             betRois.push((pnl / prediction.recommendedStake) * 100);
-            betPnls.push({ ts: new Date(match.date).getTime(), pnl });
+            betPnls.push({ ts: new Date(match.date).getTime(), date: dayKey, pnl });
           }
 
-          if (prediction.predictionType === 'OVER_25') { over25Total++; if (isOver25Correct) over25Correct++; }
-          if (prediction.predictionType === 'UNDER_25') { under25Total++; if (isUnder25Correct) under25Correct++; }
+          if (prediction.predictionType === 'OVER_25') {
+            over25Total++;
+            if (isOver25Correct) over25Correct++;
+          }
+          if (prediction.predictionType === 'UNDER_25') {
+            under25Total++;
+            if (isUnder25Correct) under25Correct++;
+          }
 
           const absEdge = Math.abs(prediction.edge || 0);
           const seg = segments.find((s) => absEdge >= s.min && absEdge < s.max);
           if (seg && prediction.predictionType !== 'NO_BET') {
             seg.count++;
             seg.edgeSum += absEdge;
-            if (clv !== null) { seg.clvSum += clv; seg.clvCount++; }
+            if (clv !== null) {
+              seg.clvSum += clv;
+              seg.clvCount++;
+            }
             const isHit = prediction.predictionType === 'OVER_25' ? isOver25Correct : isUnder25Correct;
             if (isHit) seg.hits++;
           }
 
           results.push({
+            date: dayKey,
             match: {
               homeTeam: match.home,
               awayTeam: match.away,
               actualScore: [match.homeGoals, match.awayGoals],
               league,
-              isReal: true,
             },
             prediction: {
               predictionType: prediction.predictionType,
-              probability: prediction.probability,
               rawProbability: prediction.rawProbability,
             },
             modelSource: prediction.modelSource,
@@ -461,6 +571,16 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
     s.avgEdge = s.count > 0 ? s.edgeSum / s.count : 0;
     s.avgClv = s.clvCount > 0 ? s.clvSum / s.clvCount : 0;
   });
+
+  const leagueBreakdown: LeagueBacktestStats[] = Array.from(leagueAccum.entries()).map(([league, s]) => ({
+    league,
+    evaluated: s.evaluated,
+    bets: s.bets,
+    pnl: Math.round(s.pnl * 100) / 100,
+    yieldPct: s.stake > 0 ? (s.pnl / s.stake) * 100 : 0,
+    avgClv: s.clvCount > 0 ? s.clvSum / s.clvCount : 0,
+    brier: s.evaluated > 0 ? s.brierSum / s.evaluated : 0,
+  }));
 
   const brierScore = matchesEvaluated > 0 ? brierSum / matchesEvaluated : 0;
   const marketBrier = marketBrierCount > 0 ? marketBrierSum / marketBrierCount : null;
@@ -489,12 +609,34 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
   };
 
   betPnls.sort((a, b) => a.ts - b.ts);
-  let cumPnl = 0, peakPnl = 0, maxDrawdown = 0;
-  for (const bp of betPnls) {
+  let cumPnl = 0;
+  let peakPnl = 0;
+  let maxDrawdown = 0;
+  const rawEquityCurve: EquityCurvePoint[] = [];
+
+  for (let i = 0; i < betPnls.length; i++) {
+    const bp = betPnls[i];
     cumPnl += bp.pnl;
     if (cumPnl > peakPnl) peakPnl = cumPnl;
     const dd = peakPnl - cumPnl;
     if (dd > maxDrawdown) maxDrawdown = dd;
+    rawEquityCurve.push({
+      index: i + 1,
+      date: bp.date,
+      cumPnl: Math.round(cumPnl * 100) / 100,
+      drawdown: Math.round(dd * 100) / 100,
+    });
+  }
+
+  // Downsample equity curve cleanly to max ~120 points if huge while preserving endpoints
+  let equityCurve = rawEquityCurve;
+  if (rawEquityCurve.length > 120) {
+    const step = (rawEquityCurve.length - 1) / 119;
+    const sampled: EquityCurvePoint[] = [];
+    for (let i = 0; i < 120; i++) {
+      sampled.push(rawEquityCurve[Math.round(i * step)]);
+    }
+    equityCurve = sampled;
   }
 
   const failingConditions: string[] = [];
@@ -524,6 +666,11 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
   } else {
     verdictStatus = 'NO_EDGE';
   }
+
+  // Sort results newest-first and cap at 200 rows for payload crispness
+  const recentMatches = [...results]
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+    .slice(0, 200);
 
   return {
     totalMatches,
@@ -557,6 +704,8 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
       failingConditions,
     },
     edgeSegments: segments,
-    matches: results.slice(0, 50),
+    leagueBreakdown,
+    equityCurve,
+    matches: recentMatches,
   };
 }

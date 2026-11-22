@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
@@ -9,16 +10,16 @@
 @layer base {
   html {
     font-size: 16px;
-    color-scheme: dark;
+    color-scheme: light dark;
   }
 
   body {
-    @apply bg-[#0a0c10] text-slate-200 font-sans selection:bg-emerald-500/20 antialiased overflow-x-hidden text-sm md:text-base;
+    @apply bg-slate-50 dark:bg-[#0a0c10] text-slate-900 dark:text-slate-200 font-sans selection:bg-emerald-500/20 antialiased overflow-x-hidden text-sm md:text-base;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply text-slate-50 tracking-tight;
+    @apply text-slate-950 dark:text-slate-50 tracking-tight;
   }
 }
 
@@ -28,11 +29,11 @@
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-[#0a0c10];
+  @apply bg-slate-100 dark:bg-[#0a0c10];
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-800 rounded-full hover:bg-slate-700 transition-colors;
+  @apply bg-slate-300 dark:bg-slate-800 rounded-full hover:bg-slate-400 dark:hover:bg-slate-700 transition-colors;
 }
 
 .tabular-nums {

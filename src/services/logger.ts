@@ -11,10 +11,5 @@ export const logger = {
   },
   info: (context: string, message: string) => {
     console.info(`[AlphaTerminal] INFO  | ${context}: ${message}`);
-  },
-  debug: (context: string, message: string) => {
-    if (process.env.NODE_ENV !== 'production') {
-      console.debug(`[AlphaTerminal] DEBUG | ${context}: ${message}`);
-    }
   }
 };

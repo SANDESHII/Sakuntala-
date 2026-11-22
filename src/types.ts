@@ -2,13 +2,13 @@ export type DataSource = 'api-football' | 'the-odds-api';
 
 export interface TeamIdentity {
   id: string;
-  name: string;
+  apiFootballId?: number;
+}
+
+export interface TeamOption {
+  id: string;
+  displayName: string;
   league: string;
-  country: string;
-  externalIds: {
-    apiFootball?: number;
-    theOddsApi?: string;
-  };
 }
 
 export interface HistoricalMatch {
@@ -19,8 +19,6 @@ export interface HistoricalMatch {
   date: string;
   league: string;
   season?: string;
-  homeId?: number;
-  awayId?: number;
   takenPrices?: {
     over25?: number;
     under25?: number;
@@ -42,29 +40,57 @@ export interface InternalTeamData {
   defenseStrength: number; // Multiplier on league average (1.0 = average)
 }
 
-export interface MatchContext {
+interface MatchContext {
   league: string;
-  date: string;
   marketOdds: {
     pinnacleOver25: number | null;
     pinnacleUnder25: number | null;
-    source?: string;
   };
 }
 
-export interface GoalDistribution {
+interface GoalDistribution {
   goals: string;
   probability: number;
 }
 
-export interface AnalysisResult {
+export interface DerivedMarkets {
+  homeWin: number;
+  draw: number;
+  awayWin: number;
+  over15: number;
+  under15: number;
+  over25: number;
+  under25: number;
+  over35: number;
+  under35: number;
+  bttsYes: number;
+  bttsNo: number;
+}
+
+export interface ExactScoreProb {
+  home: number;
+  away: number;
   probability: number;
-  homeStats: { name: string };
-  awayStats: { name: string };
+}
+
+export interface ModelDiagnostics {
+  rho: number;
+  homeAdvantage: number;
+  homeAttack: number;
+  homeDefense: number;
+  awayAttack: number;
+  awayDefense: number;
+  homeSampleMatches: number;
+  awaySampleMatches: number;
+  dataProvider: 'API_FOOTBALL' | 'FOOTBALL_DATA_CSV' | 'STATIC_PRIOR';
+}
+
+export interface AnalysisResult {
+  homeStats: { name: string; displayName?: string };
+  awayStats: { name: string; displayName?: string };
   homeExpectedGoals: number;
   awayExpectedGoals: number;
   predictionType: 'OVER_25' | 'UNDER_25' | 'NO_BET';
-  predictionLabel: string;
   rawProbability: number;
   marketOdds: number | null;
   marketImpliedProb: number | null;
@@ -75,10 +101,31 @@ export interface AnalysisResult {
   dataSource: 'LIVE' | 'FALLBACK_STATIC';
   modelSource: 'MLE_FITTED' | 'HEURISTIC_FALLBACK';
   isLowConfidence?: boolean;
-  degraded: boolean;
   kickoff?: string;
   goalDistribution?: GoalDistribution[];
   scoreMatrix?: number[][];
+  markets?: DerivedMarkets;
+  topScorelines?: ExactScoreProb[];
+  diagnostics?: ModelDiagnostics;
+}
+
+export interface TeamRatingRow {
+  id: string;
+  displayName: string;
+  attack: number;
+  defense: number;
+  netRating: number;
+  matchCount: number;
+  lowConfidence: boolean;
+}
+
+export interface LeagueRatingsResponse {
+  league: string;
+  rho: number;
+  homeAdvantage: number;
+  matchesUsed: number;
+  dataProvider: 'API_FOOTBALL' | 'FOOTBALL_DATA_CSV' | 'STATIC_PRIOR';
+  teams: TeamRatingRow[];
 }
 
 export interface FixtureMatch {
@@ -92,16 +139,15 @@ export interface FixtureMatch {
 }
 
 export interface BacktestMatch {
+  date?: string;
   match: {
     homeTeam: string;
     awayTeam: string;
     actualScore: [number, number];
     league: string;
-    isReal: boolean;
   };
   prediction: {
     predictionType: string;
-    probability: number;
     rawProbability: number;
   };
   modelSource?: 'MLE_FITTED' | 'HEURISTIC_FALLBACK';
@@ -114,6 +160,23 @@ export interface BacktestMatch {
   stake: number;
   takenOdds: number | null;
   closingOdds?: number | null;
+}
+
+export interface EquityCurvePoint {
+  index: number;
+  date: string;
+  cumPnl: number;
+  drawdown: number;
+}
+
+export interface LeagueBacktestStats {
+  league: string;
+  evaluated: number;
+  bets: number;
+  pnl: number;
+  yieldPct: number;
+  avgClv: number;
+  brier: number;
 }
 
 export interface BacktestSummary {
@@ -168,6 +231,8 @@ export interface BacktestSummary {
     avgEdge: number;
     avgClv: number;
   }[];
+  leagueBreakdown?: LeagueBacktestStats[];
+  equityCurve?: EquityCurvePoint[];
   matches: BacktestMatch[];
   error?: string;
 }

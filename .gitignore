@@ -12,10 +12,6 @@ dist-ssr/
 # Coverage
 coverage/
 
-# Firebase
-.firebase/
-service-account*.json
-
 # Security
 *.pem
 

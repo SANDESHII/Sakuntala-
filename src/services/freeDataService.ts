@@ -1,4 +1,4 @@
-import { resolveTeam, resolveById } from '../data/teamIds';
+import { resolveTeam, resolveByApiFootballId } from '../data/teamIds';
 import { FixtureMatch, HistoricalMatch, InternalTeamData, DataSource } from '../types';
 import { inferSeason, getLeagueConfig } from '../data/utils';
 import { LEAGUE_CONFIGS, BASE_GOALS } from '../core/constants';
@@ -10,7 +10,6 @@ const cache = new Map<string, { data: unknown; timestamp: number }>();
 const LIVE_ODDS_TTL = 5 * 60 * 1000;       // 5 minutes
 const TEAM_STATS_TTL = 24 * 60 * 60 * 1000; // 24 hours
 const FIXTURES_TTL = 30 * 60 * 1000;        // 30 minutes
-const DEFAULT_TTL = 3600000;                // 1 hour
 
 const apiHealth = new Map<string, { healthy: boolean; lastCheck: number }>();
 
@@ -126,7 +125,7 @@ async function fetchWithRetry<T>(
 
 const promiseCache = new Map<string, Promise<any>>();
 
-async function withCache<T>(key: string, fetcher: () => Promise<T>, ttl: number = DEFAULT_TTL): Promise<T> {
+async function withCache<T>(key: string, fetcher: () => Promise<T>, ttl: number): Promise<T> {
   const entry = cache.get(key);
   if (entry && Date.now() - entry.timestamp < ttl) return entry.data as T;
   if (promiseCache.has(key)) return promiseCache.get(key);
@@ -189,10 +188,8 @@ async function fetchApiFootballFixtures(league: string, limit: number, status: '
         return {
           id: f.fixture.id,
           date: f.fixture.date,
-          home: resolveById('apiFootball', f.teams.home.id).id,
-          away: resolveById('apiFootball', f.teams.away.id).id,
-          homeId: f.teams.home.id,
-          awayId: f.teams.away.id,
+          home: resolveByApiFootballId(f.teams.home.id).id,
+          away: resolveByApiFootballId(f.teams.away.id).id,
           homeLogo: f.teams.home.logo,
           awayLogo: f.teams.away.logo,
           homeGoals: f.goals?.home,
@@ -215,7 +212,7 @@ export async function getTeamStats(teamName: string, league: string): Promise<In
   return withCache(`stats_${teamName}_${league}`, async () => {
     try {
       const { baseUrl, headers } = getApiFootballConfig();
-      const teamId = resolveTeam(teamName).externalIds.apiFootball;
+      const teamId = resolveTeam(teamName).apiFootballId;
       if (!teamId) return null;
 
       const data = await fetchWithRetry<{ response: any }>('api-football', `${baseUrl}/teams/statistics`, {
@@ -295,8 +292,6 @@ export async function getHistoricalFixtures(league: string, limit = 150): Promis
       awayGoals: f.awayGoals ?? 0,
       date: f.date,
       league: f.league,
-      homeId: f.homeId,
-      awayId: f.awayId,
     }));
   } catch (err: unknown) {
     logger.warn('getHistoricalFixtures', `Historical fixtures unavailable for ${league}: ${err instanceof Error ? err.message : String(err)}`);

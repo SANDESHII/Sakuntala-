@@ -7,9 +7,21 @@ import { LEAGUE_CONFIGS } from './src/core/constants';
 import { logger } from './src/services/logger';
 import { BacktestSummary } from './src/types';
 
+function getCliArg(flag: string): string | undefined {
+  const idx = process.argv.indexOf(flag);
+  return idx !== -1 && idx + 1 < process.argv.length ? process.argv[idx + 1] : undefined;
+}
+
 async function startServer() {
   const app = express();
-  const port = process.env.PORT || 3000;
+  const isProd = process.env.NODE_ENV === 'production';
+  const cliPort = Number(getCliArg('--port'));
+  const port = Number.isFinite(cliPort) && cliPort > 0
+    ? cliPort
+    : isProd
+      ? Number(process.env.PORT) || 3000
+      : Number(process.env.DEFAULT_APP_PORT) || 3000;
+  const host = getCliArg('--host') || '0.0.0.0';
 
   app.use(compression());
   app.use(express.json());
@@ -139,7 +151,7 @@ async function startServer() {
     }
   });
 
-  if (process.env.NODE_ENV === 'production') {
+  if (isProd) {
     app.use(express.static('dist'));
     app.get('/{*splat}', (_req: Request, res: Response) => {
       res.sendFile('dist/index.html', { root: '.' });
@@ -147,14 +159,14 @@ async function startServer() {
   } else {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, hmr: false },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   }
 
-  app.listen(port, () => {
-    logger.info('Server', `Quantitative Football AI active on port ${port} (${process.env.NODE_ENV || 'development'})`);
+  app.listen(port, host, () => {
+    logger.info('Server', `Quantitative Football AI active on http://${host}:${port} (${process.env.NODE_ENV || 'development'})`);
   });
 }
 

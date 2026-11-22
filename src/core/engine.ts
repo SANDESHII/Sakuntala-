@@ -322,6 +322,7 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
   let brierSum = 0;
   let marketBrierSum = 0;
   let marketBrierCount = 0;
+  let modelBrierMatchedSum = 0; // model Brier on the SAME matches that have closing prices
   let clvSum = 0;
   let clvCount = 0;
   let clvNoVigSum = 0;
@@ -335,8 +336,7 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
   const betPnls: { ts: number; date: string; pnl: number }[] = [];
 
   const segments = [
-    { segment: 'Low Edge (0-2%)', min: 0, max: 2, count: 0, hits: 0, avgEdge: 0, avgClv: 0, edgeSum: 0, clvSum: 0, clvCount: 0, hitRate: 0 },
-    { segment: 'Mid Edge (2-5%)', min: 2, max: 5, count: 0, hits: 0, avgEdge: 0, avgClv: 0, edgeSum: 0, clvSum: 0, clvCount: 0, hitRate: 0 },
+    { segment: 'Threshold Edge (3-5%)', min: 3, max: 5, count: 0, hits: 0, avgEdge: 0, avgClv: 0, edgeSum: 0, clvSum: 0, clvCount: 0, hitRate: 0 },
     { segment: 'High Edge (5-8%)', min: 5, max: 8, count: 0, hits: 0, avgEdge: 0, avgClv: 0, edgeSum: 0, clvSum: 0, clvCount: 0, hitRate: 0 },
     { segment: 'Elite Edge (8%+)', min: 8, max: 100, count: 0, hits: 0, avgEdge: 0, avgClv: 0, edgeSum: 0, clvSum: 0, clvCount: 0, hitRate: 0 },
   ];
@@ -436,6 +436,7 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
           if (closeOver && closeOver > 1 && closeUnder && closeUnder > 1) {
             const pMarket = 1 / closeOver / (1 / closeOver + 1 / closeUnder);
             marketBrierSum += Math.pow(pMarket - (isOver25Correct ? 1 : 0), 2);
+            modelBrierMatchedSum += brierVal;
             marketBrierCount++;
           }
 
@@ -584,7 +585,8 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
 
   const brierScore = matchesEvaluated > 0 ? brierSum / matchesEvaluated : 0;
   const marketBrier = marketBrierCount > 0 ? marketBrierSum / marketBrierCount : null;
-  const brierVsMarket = marketBrier !== null ? brierScore - marketBrier : null;
+  const modelBrierMatched = marketBrierCount > 0 ? modelBrierMatchedSum / marketBrierCount : null;
+  const brierVsMarket = marketBrier !== null && modelBrierMatched !== null ? modelBrierMatched - marketBrier : null;
   const totalYield = totalStake > 0 ? (totalPnl / totalStake) * 100 : 0;
   const avgClv = clvCount > 0 ? clvSum / clvCount : 0;
 

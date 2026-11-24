@@ -396,8 +396,14 @@ export function predictGoals(
   let lambdaHome = homeParams.attack * awayParams.defense * fitted.homeAdvantage * leagueBase;
   let muAway = awayParams.attack * homeParams.defense * leagueBase;
 
+  const rawLambda = lambdaHome;
+  const rawMu = muAway;
   lambdaHome = Math.max(MODEL_CONFIG.MIN_LAMBDA, Math.min(MODEL_CONFIG.MAX_LAMBDA, lambdaHome));
   muAway = Math.max(MODEL_CONFIG.MIN_MU, Math.min(MODEL_CONFIG.MAX_MU, muAway));
+  if (lambdaHome !== rawLambda || muAway !== rawMu) {
+    logger.warn('predictGoals_clamp',
+      `expected-goals clamped for ${homeTeam} vs ${awayTeam}: λ ${rawLambda.toFixed(3)}→${lambdaHome.toFixed(3)}, μ ${rawMu.toFixed(3)}→${muAway.toFixed(3)}`);
+  }
 
   return {
     lambdaHome,

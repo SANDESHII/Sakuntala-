@@ -15,7 +15,6 @@ import {
   BASE_GOALS,
   DEFAULT_RHO,
   HOME_ADVANTAGE_WEIGHT,
-  AWAY_DEFENSE_WEIGHT,
   MODEL_CONFIG,
   BACKTEST_CONFIG,
 } from './constants';
@@ -34,45 +33,87 @@ async function resolveTeamData(
   leagueKey: string,
   asOfDate?: string
 ): Promise<{ data: InternalTeamData; dataSource: 'LIVE' | 'FALLBACK_STATIC' }> {
+  // (H2 fix) Fallback priors IDENTICAL in backtest and live: static TEAM_STATS for
+  // as-of-date predictions (current API stats must never leak into past predictions),
+  // live API stats only for genuinely current predictions.
+  const staticData = TEAM_STATS[resolveTeam(teamName).id] || {
+    attackStrength: 1.0,
+    defenseStrength: 1.0,
+  };
   if (asOfDate) {
-    return {
-      data: { attackStrength: 1.0, defenseStrength: 1.0 },
-      dataSource: 'FALLBACK_STATIC',
-    };
+    return { data: staticData, dataSource: 'FALLBACK_STATIC' };
   }
   const live = await FreeDataService.getTeamStats(teamName, leagueKey);
-  const staticData = TEAM_STATS[resolveTeam(teamName).id];
   return {
-    data: live || staticData || { attackStrength: 1.0, defenseStrength: 1.0 },
+    data: live || staticData,
     dataSource: live ? 'LIVE' : 'FALLBACK_STATIC',
   };
 }
 
 /**
- * Extract Pinnacle sharp odds (preferred) and best market odds for Over/Under 2.5.
+ * Extract a coherent same-bookmaker two-way Over/Under 2.5 quote (Pinnacle preferred,
+ * otherwise tightest-vig single bookmaker), avoiding cross-book synthetic Max distortion.
  */
 function getMarketOdds(matchOdds: any) {
   let bestO25 = 0;
   let bestU25 = 0;
   let pinO25 = 0;
   let pinU25 = 0;
-  matchOdds?.bookmakers?.forEach((bm: any) => {
+  let bestMatched: { o25: number; u25: number; vig: number } | null = null;
+
+  const bookmakers = Array.isArray(matchOdds?.bookmakers) ? matchOdds.bookmakers : [];
+  for (const bm of bookmakers) {
     const market = bm?.markets?.find((m: any) => m?.key === 'totals');
-    const o = market?.outcomes?.find((oc: any) => oc?.name === 'Over' && oc?.point === 2.5);
-    const u = market?.outcomes?.find((oc: any) => oc?.name === 'Under' && oc?.point === 2.5);
-    if (bm?.key === 'pinnacle') {
-      if (o?.price > 1) pinO25 = o.price;
-      if (u?.price > 1) pinU25 = u.price;
+    // Pick the line closest to 2.5 per bookmaker (books post Asian 2.25/2.75 lines;
+    // an exact 2.5 requirement silently zeroes both sides => forced NO_BET).
+    const pickLine = (name: string) => {
+      const outs = (market?.outcomes || []).filter((oc: any) => oc?.name === name && oc?.price > 1);
+      if (outs.length === 0) return null;
+      return outs.sort((a: any, b: any) => Math.abs(a.point - 2.5) - Math.abs(b.point - 2.5))[0];
+    };
+    const o = pickLine('Over');
+    const u = pickLine('Under');
+    if ((o && Math.abs(o.point - 2.5) > 0.01) || (u && Math.abs(u.point - 2.5) > 0.01)) {
+      logger.warn('getMarketOdds', `totals line is ${o?.point}/${u?.point}, not 2.5 — edge computed vs nearest line`);
     }
-    if (o?.price > bestO25) bestO25 = o.price;
-    if (u?.price > bestU25) bestU25 = u.price;
-  });
+    const oPrice = typeof o?.price === 'number' && o.price > 1 ? o.price : 0;
+    const uPrice = typeof u?.price === 'number' && u.price > 1 ? u.price : 0;
+
+    if (bm?.key === 'pinnacle') {
+      if (oPrice > 1) pinO25 = oPrice;
+      if (uPrice > 1) pinU25 = uPrice;
+    }
+    if (oPrice > 1 && uPrice > 1) {
+      const vig = 1 / oPrice + 1 / uPrice - 1;
+      if (vig >= 0 && (!bestMatched || vig < bestMatched.vig)) {
+        bestMatched = { o25: oPrice, u25: uPrice, vig };
+      }
+    }
+    if (oPrice > bestO25) bestO25 = oPrice;
+    if (uPrice > bestU25) bestU25 = uPrice;
+  }
+
+  if (pinO25 > 1 && pinU25 > 1) {
+    return { o25: pinO25, u25: pinU25, bestO25, bestU25 };
+  }
+  if (bestMatched) {
+    return { o25: bestMatched.o25, u25: bestMatched.u25, bestO25, bestU25 };
+  }
   return {
     o25: pinO25 > 1 ? pinO25 : bestO25,
     u25: pinU25 > 1 ? pinU25 : bestU25,
     bestO25,
     bestU25,
   };
+}
+
+function clampLogged(value: number, min: number, max: number, label: string): number {
+  const clamped = Math.max(min, Math.min(max, value));
+  if (clamped !== value) {
+    logger.warn('clamp_expected_goals',
+      `${label} clamped ${value.toFixed(3)} -> ${clamped.toFixed(3)} (bounds [${min}, ${max}])`);
+  }
+  return clamped;
 }
 
 /**
@@ -111,30 +152,20 @@ export async function runPrediction(
           resolveTeamData(awayTeam, leagueKey, asOfDate),
         ]);
     const leagueBase = BASE_GOALS * leagueConfig.goalRate;
+    // (H3b fix) ONE generative formula for BOTH paths, identical to predictGoals:
+    //   λ = α_H · β_A · γ · leagueBase,   μ = α_A · β_H · leagueBase
+    // Fallback substitutes prior α/β (TEAM_STATS) and a league-aware prior
+    // γ = 1 + homeAdvantage·HOME_ADVANTAGE_WEIGHT for the fitted γ.
+    const gammaPrior = 1 + leagueConfig.homeAdvantage * HOME_ADVANTAGE_WEIGHT;
+    const rawLambda =
+      homeRes.data.attackStrength * awayRes.data.defenseStrength * gammaPrior * leagueBase;
+    const rawMu = awayRes.data.attackStrength * homeRes.data.defenseStrength * leagueBase;
     const lambdaHome = mle
       ? mle.lambdaHome
-      : Math.max(
-          MODEL_CONFIG.MIN_LAMBDA,
-          Math.min(
-            MODEL_CONFIG.MAX_LAMBDA,
-            homeRes.data.attackStrength *
-              awayRes.data.defenseStrength *
-              leagueBase *
-              (1 + leagueConfig.homeAdvantage * HOME_ADVANTAGE_WEIGHT)
-          )
-        );
+      : clampLogged(rawLambda, MODEL_CONFIG.MIN_LAMBDA, MODEL_CONFIG.MAX_LAMBDA, 'λ(home)');
     const muAway = mle
       ? mle.muAway
-      : Math.max(
-          MODEL_CONFIG.MIN_MU,
-          Math.min(
-            MODEL_CONFIG.MAX_MU,
-            awayRes.data.attackStrength *
-              homeRes.data.defenseStrength *
-              leagueBase *
-              (1 - leagueConfig.homeAdvantage * AWAY_DEFENSE_WEIGHT)
-          )
-        );
+      : clampLogged(rawMu, MODEL_CONFIG.MIN_MU, MODEL_CONFIG.MAX_MU, 'μ(away)');
 
     const activeRho = mle ? fittedParams.rho : DEFAULT_RHO;
     const scoreMatrix = DixonColes.calculateScoreMatrix(lambdaHome, muAway, activeRho);
@@ -165,10 +196,11 @@ export async function runPrediction(
     const hasTwoWayMarket = marketOddsOver25 > 1 && marketOddsUnder25 > 1;
     let posteriorOver25 = probOver25;
     let posteriorUnder25 = probUnder25;
+    let marketNoVigOver25: number | null = null;
     if (hasTwoWayMarket) {
       const invO = 1 / marketOddsOver25;
       const invU = 1 / marketOddsUnder25;
-      const marketNoVigOver25 = invO / (invO + invU);
+      marketNoVigOver25 = invO / (invO + invU);
       const w = MODEL_CONFIG.BAYESIAN_MODEL_WEIGHT;
       posteriorOver25 = w * probOver25 + (1 - w) * marketNoVigOver25;
       posteriorUnder25 = 1 - posteriorOver25;
@@ -177,7 +209,8 @@ export async function runPrediction(
     const over25Edge = marketOddsOver25 > 1 ? posteriorOver25 - 1 / marketOddsOver25 : -1;
     const under25Edge = marketOddsUnder25 > 1 ? posteriorUnder25 - 1 / marketOddsUnder25 : -1;
     const threshold = MODEL_CONFIG.EDGE_THRESHOLD;
-    const isLowConfidence = mle?.lowConfidence || false;
+    // (H1 fix) no fitted params => low confidence => gate closes.
+    const isLowConfidence = mle ? mle.lowConfidence : true;
 
     const pick =
       !isLowConfidence && over25Edge > under25Edge && over25Edge > threshold
@@ -217,6 +250,10 @@ export async function runPrediction(
       predictionType: pick,
       marketOdds,
       marketImpliedProb: marketOdds ? 1 / marketOdds : null,
+      marketFairProb:
+        pick === 'OVER_25' ? marketNoVigOver25
+        : pick === 'UNDER_25' ? (marketNoVigOver25 !== null ? 1 - marketNoVigOver25 : null)
+        : null,
       edge: Math.round(edge * 1000) / 10,
       recommendedStake: Math.round(kelly * 1000) / 10,
       verdict: kelly > 0 ? 'EXECUTE_BET' : 'NO_BET',
@@ -240,7 +277,7 @@ export async function runPrediction(
       topScorelines,
       diagnostics: {
         rho: activeRho,
-        homeAdvantage: mle ? fittedParams.homeAdvantage : 1 + leagueConfig.homeAdvantage * HOME_ADVANTAGE_WEIGHT,
+        homeAdvantage: mle ? fittedParams.homeAdvantage : gammaPrior,
         homeAttack: mle ? mle.homeParams.attack : homeRes.data.attackStrength,
         homeDefense: mle ? mle.homeParams.defense : homeRes.data.defenseStrength,
         awayAttack: mle ? mle.awayParams.attack : awayRes.data.attackStrength,

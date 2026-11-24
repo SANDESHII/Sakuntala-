@@ -30,17 +30,17 @@ export function assertDistinctSnapshots(
   }
 }
 
-const OPENING_OVER_COLS = ['P>2.5', 'Max>2.5', 'B365>2.5', 'Avg>2.5'] as const;
-const OPENING_UNDER_COLS = ['P<2.5', 'Max<2.5', 'B365<2.5', 'Avg<2.5'] as const;
-const CLOSING_OVER_COLS = ['PC>2.5', 'PSC>2.5', 'MaxC>2.5', 'B365C>2.5', 'AvgC>2.5'] as const;
-const CLOSING_UNDER_COLS = ['PC<2.5', 'PSC<2.5', 'MaxC<2.5', 'B365C<2.5', 'AvgC<2.5'] as const;
+const OPENING_OVER_COLS = ['P>2.5', 'B365>2.5', 'Avg>2.5', 'Max>2.5'] as const;
+const OPENING_UNDER_COLS = ['P<2.5', 'B365<2.5', 'Avg<2.5', 'Max<2.5'] as const;
+const CLOSING_OVER_COLS = ['PC>2.5', 'PSC>2.5', 'B365C>2.5', 'AvgC>2.5', 'MaxC>2.5'] as const;
+const CLOSING_UNDER_COLS = ['PC<2.5', 'PSC<2.5', 'B365C<2.5', 'AvgC<2.5', 'MaxC<2.5'] as const;
 
 const MATCHED_BOOKMAKER_PAIRS = [
   { openOver: 'P>2.5', openUnder: 'P<2.5', closeOver: 'PC>2.5', closeUnder: 'PC<2.5' },
   { openOver: 'P>2.5', openUnder: 'P<2.5', closeOver: 'PSC>2.5', closeUnder: 'PSC<2.5' },
-  { openOver: 'Max>2.5', openUnder: 'Max<2.5', closeOver: 'MaxC>2.5', closeUnder: 'MaxC<2.5' },
   { openOver: 'B365>2.5', openUnder: 'B365<2.5', closeOver: 'B365C>2.5', closeUnder: 'B365C<2.5' },
   { openOver: 'Avg>2.5', openUnder: 'Avg<2.5', closeOver: 'AvgC>2.5', closeUnder: 'AvgC<2.5' },
+  { openOver: 'Max>2.5', openUnder: 'Max<2.5', closeOver: 'MaxC>2.5', closeUnder: 'MaxC<2.5' },
 ] as const;
 
 function parseCsvLine(line: string): string[] {

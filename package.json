@@ -12,7 +12,8 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "verify:backtest": "tsx scripts/verify_backtest.ts",
-    "verify:xg": "tsx scripts/verify_xg_scale.ts",
+    "verify:calibration": "tsx scripts/verify_calibration.ts",
+    "verify:math": "tsx scripts/verify_math_accuracy.ts",
     "verify:fit": "tsx scripts/verify_fit_convergence.ts"
   },
   "dependencies": {

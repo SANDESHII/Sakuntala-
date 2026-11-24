@@ -100,6 +100,7 @@ export interface AnalysisResult {
   posteriorProbability?: number;
   marketOdds: number | null;
   marketImpliedProb: number | null;
+  marketFairProb?: number | null;
   edge: number | null;
   recommendedStake: number;
   verdict: 'EXECUTE_BET' | 'NO_BET';

@@ -49,19 +49,30 @@ async function resolveTeamData(
 }
 
 /**
- * Extract best market odds for Over/Under 2.5.
+ * Extract Pinnacle sharp odds (preferred) and best market odds for Over/Under 2.5.
  */
-function getBestOdds(matchOdds: any) {
-  let o25 = 0;
-  let u25 = 0;
+function getMarketOdds(matchOdds: any) {
+  let bestO25 = 0;
+  let bestU25 = 0;
+  let pinO25 = 0;
+  let pinU25 = 0;
   matchOdds?.bookmakers?.forEach((bm: any) => {
-    const market = bm.markets.find((m: any) => m.key === 'totals');
-    const o = market?.outcomes.find((oc: any) => oc.name === 'Over' && oc.point === 2.5);
-    const u = market?.outcomes.find((oc: any) => oc.name === 'Under' && oc.point === 2.5);
-    if (o?.price > o25) o25 = o.price;
-    if (u?.price > u25) u25 = u.price;
+    const market = bm?.markets?.find((m: any) => m?.key === 'totals');
+    const o = market?.outcomes?.find((oc: any) => oc?.name === 'Over' && oc?.point === 2.5);
+    const u = market?.outcomes?.find((oc: any) => oc?.name === 'Under' && oc?.point === 2.5);
+    if (bm?.key === 'pinnacle') {
+      if (o?.price > 1) pinO25 = o.price;
+      if (u?.price > 1) pinU25 = u.price;
+    }
+    if (o?.price > bestO25) bestO25 = o.price;
+    if (u?.price > bestU25) bestU25 = u.price;
   });
-  return { o25, u25 };
+  return {
+    o25: pinO25 > 1 ? pinO25 : bestO25,
+    u25: pinU25 > 1 ? pinU25 : bestU25,
+    bestO25,
+    bestU25,
+  };
 }
 
 /**
@@ -82,20 +93,23 @@ export async function runPrediction(
     const resolvedHome = resolveTeam(homeTeam);
     const resolvedAway = resolveTeam(awayTeam);
 
-    const [homeRes, awayRes, liveOdds, fittedParams] = await Promise.all([
-      fittedParamsOverride
-        ? Promise.resolve({ data: { attackStrength: 1.0, defenseStrength: 1.0 }, dataSource: 'FALLBACK_STATIC' as const })
-        : resolveTeamData(homeTeam, leagueKey, asOfDate),
-      fittedParamsOverride
-        ? Promise.resolve({ data: { attackStrength: 1.0, defenseStrength: 1.0 }, dataSource: 'FALLBACK_STATIC' as const })
-        : resolveTeamData(awayTeam, leagueKey, asOfDate),
-      historicalOddsOverride ? Promise.resolve([]) : FreeDataService.getLiveOdds(leagueKey),
+    const [liveOdds, fittedParams] = await Promise.all([
+      historicalOddsOverride || asOfDate ? Promise.resolve([]) : FreeDataService.getLiveOdds(leagueKey),
       fittedParamsOverride
         ? Promise.resolve(fittedParamsOverride)
         : Calibration.fitFromAPI(leagueKey, asOfDate, fixtureCache?.[leagueKey]),
     ]);
 
     const mle = Calibration.predictGoals(fittedParams, homeTeam, awayTeam);
+    const [homeRes, awayRes] = mle
+      ? [
+          { data: { attackStrength: 1.0, defenseStrength: 1.0 }, dataSource: 'FALLBACK_STATIC' as const },
+          { data: { attackStrength: 1.0, defenseStrength: 1.0 }, dataSource: 'FALLBACK_STATIC' as const },
+        ]
+      : await Promise.all([
+          resolveTeamData(homeTeam, leagueKey, asOfDate),
+          resolveTeamData(awayTeam, leagueKey, asOfDate),
+        ]);
     const leagueBase = BASE_GOALS * leagueConfig.goalRate;
     const lambdaHome = mle
       ? mle.lambdaHome
@@ -136,14 +150,32 @@ export async function runPrediction(
       marketOddsOver25 = historicalOddsOverride.over25?.bestPrice || 0;
       marketOddsUnder25 = historicalOddsOverride.under25?.bestPrice || 0;
     } else {
-      const liveMatchOdds = liveOdds.find((o: any) => resolveTeam(o.home_team).id === resolvedHome.id);
-      const best = getBestOdds(liveMatchOdds);
-      marketOddsOver25 = best.o25;
-      marketOddsUnder25 = best.u25;
+      const liveMatchOdds = liveOdds.find(
+        (o: any) =>
+          o?.home_team &&
+          o?.away_team &&
+          resolveTeam(o.home_team).id === resolvedHome.id &&
+          resolveTeam(o.away_team).id === resolvedAway.id
+      );
+      const market = getMarketOdds(liveMatchOdds);
+      marketOddsOver25 = market.o25;
+      marketOddsUnder25 = market.u25;
     }
 
-    const over25Edge = marketOddsOver25 > 1 ? probOver25 - 1 / marketOddsOver25 : -1;
-    const under25Edge = marketOddsUnder25 > 1 ? probUnder25 - 1 / marketOddsUnder25 : -1;
+    const hasTwoWayMarket = marketOddsOver25 > 1 && marketOddsUnder25 > 1;
+    let posteriorOver25 = probOver25;
+    let posteriorUnder25 = probUnder25;
+    if (hasTwoWayMarket) {
+      const invO = 1 / marketOddsOver25;
+      const invU = 1 / marketOddsUnder25;
+      const marketNoVigOver25 = invO / (invO + invU);
+      const w = MODEL_CONFIG.BAYESIAN_MODEL_WEIGHT;
+      posteriorOver25 = w * probOver25 + (1 - w) * marketNoVigOver25;
+      posteriorUnder25 = 1 - posteriorOver25;
+    }
+
+    const over25Edge = marketOddsOver25 > 1 ? posteriorOver25 - 1 / marketOddsOver25 : -1;
+    const under25Edge = marketOddsUnder25 > 1 ? posteriorUnder25 - 1 / marketOddsUnder25 : -1;
     const threshold = MODEL_CONFIG.EDGE_THRESHOLD;
     const isLowConfidence = mle?.lowConfidence || false;
 
@@ -157,7 +189,7 @@ export async function runPrediction(
     const edge = pick === 'OVER_25' ? over25Edge : pick === 'UNDER_25' ? under25Edge : 0;
     const marketOdds = pick === 'OVER_25' ? marketOddsOver25 : pick === 'UNDER_25' ? marketOddsUnder25 : null;
 
-    const p = pick === 'OVER_25' ? probOver25 : pick === 'UNDER_25' ? probUnder25 : 0;
+    const p = pick === 'OVER_25' ? posteriorOver25 : pick === 'UNDER_25' ? posteriorUnder25 : 0;
     const kelly =
       marketOdds && edge > threshold
         ? Math.min(MODEL_CONFIG.MAX_KELLY_STAKE, ((p * marketOdds - 1) / (marketOdds - 1)) * MODEL_CONFIG.KELLY_FRACTION)
@@ -177,6 +209,7 @@ export async function runPrediction(
 
     return {
       rawProbability: probOver25,
+      posteriorProbability: posteriorOver25,
       homeStats: { name: resolvedHome.id, displayName: formatTeamName(resolvedHome.id) },
       awayStats: { name: resolvedAway.id, displayName: formatTeamName(resolvedAway.id) },
       homeExpectedGoals: lambdaHome,
@@ -194,7 +227,11 @@ export async function runPrediction(
           pinnacleUnder25: marketOddsUnder25 > 1 ? marketOddsUnder25 : null,
         },
       },
-      dataSource: homeRes.dataSource,
+      dataSource: mle
+        ? fittedParams.dataProvider === 'STATIC_PRIOR'
+          ? 'FALLBACK_STATIC'
+          : 'LIVE'
+        : homeRes.dataSource,
       modelSource: mle ? 'MLE_FITTED' : 'HEURISTIC_FALLBACK',
       isLowConfidence,
       goalDistribution,

@@ -16,6 +16,11 @@ export interface HistoricalMatch {
   away: string;
   homeGoals: number;
   awayGoals: number;
+  homeShots?: number;
+  awayShots?: number;
+  homeShotsOnTarget?: number;
+  awayShotsOnTarget?: number;
+  hasRedCard?: boolean;
   date: string;
   league: string;
   season?: string;
@@ -92,6 +97,7 @@ export interface AnalysisResult {
   awayExpectedGoals: number;
   predictionType: 'OVER_25' | 'UNDER_25' | 'NO_BET';
   rawProbability: number;
+  posteriorProbability?: number;
   marketOdds: number | null;
   marketImpliedProb: number | null;
   edge: number | null;

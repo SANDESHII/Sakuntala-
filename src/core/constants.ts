@@ -87,10 +87,14 @@ export const BASE_GOALS = 1.35;
 export const DEFAULT_RHO = -0.13;
 export const HOME_ADVANTAGE_WEIGHT = 0.5;
 export const AWAY_DEFENSE_WEIGHT = 0.3;
-export const REG_LAMBDA = 0.5;
+export const REG_LAMBDA = 2.5;
+export const XG_BLEND_WEIGHT = 0.6;
+export const OFF_TARGET_SHOT_WEIGHT = 0.15;
+export const RED_CARD_MATCH_WEIGHT = 0.5;
 
 export const MODEL_CONFIG = {
   EDGE_THRESHOLD: 0.03,
+  BAYESIAN_MODEL_WEIGHT: 0.45,
   MAX_LAMBDA: 4.0,
   MIN_LAMBDA: 0.3,
   MAX_MU: 3.5,
@@ -99,7 +103,7 @@ export const MODEL_CONFIG = {
   MAX_KELLY_STAKE: 0.05,
   HOME_ADVANTAGE_GAMMA: 1.25,
   DEFAULT_FIT_ITERATIONS: 2000,
-  DEFAULT_LEARNING_RATE: 0.3,
+  DEFAULT_LEARNING_RATE: 0.15,
   PROBABILITY_FLOOR: 1e-10,
 };
 
@@ -122,8 +126,8 @@ export const SEASON_START_MONTH: Record<string, number> = {
 export const DECISION_LEAD_MS = 24 * 60 * 60 * 1000;
 
 export const BACKTEST_CONFIG = {
-  TRAIN_SEASONS: ['2122', '2223', '2324'] as readonly string[],
-  EVAL_SEASONS: ['2324', '2425'] as readonly string[],
+  TRAIN_SEASONS: ['2223', '2324', '2425'] as readonly string[],
+  EVAL_SEASONS: ['2425', '2526'] as readonly string[],
   LEAGUES: ['EPL', 'LA_LIGA', 'BUNDESLIGA', 'SERIE_A', 'LIGUE_1'] as readonly string[],
   DIVISION_MAP: {
     EPL: 'E0',

@@ -96,6 +96,8 @@ export const ResultGrid: FC<ResultGridProps> = memo(({ analysis }) => {
     (Number.isFinite(parsedOver) && parsedOver > 1) ||
     (Number.isFinite(parsedUnder) && parsedUnder > 1);
 
+  let posteriorOver25 = analysis.posteriorProbability ?? probOver25;
+  let posteriorUnder25 = 1 - posteriorOver25;
   let effectivePick: 'OVER_25' | 'UNDER_25' | 'NO_BET' = analysis.predictionType;
   let effectiveEdgePct = analysis.edge;
   let effectiveOdds = analysis.marketOdds;
@@ -103,12 +105,28 @@ export const ResultGrid: FC<ResultGridProps> = memo(({ analysis }) => {
   let effectiveImpliedPct =
     analysis.marketImpliedProb !== null ? analysis.marketImpliedProb * 100 : null;
   let effectiveVerdict = analysis.verdict;
+  let isTwoWayAnchored =
+    (analysis.context.marketOdds.pinnacleOver25 ?? 0) > 1 &&
+    (analysis.context.marketOdds.pinnacleUnder25 ?? 0) > 1;
 
   if (hasCustomOdds) {
     const oPrice = Number.isFinite(parsedOver) && parsedOver > 1 ? parsedOver : 0;
     const uPrice = Number.isFinite(parsedUnder) && parsedUnder > 1 ? parsedUnder : 0;
-    const oEdge = oPrice > 1 ? probOver25 - 1 / oPrice : -1;
-    const uEdge = uPrice > 1 ? probUnder25 - 1 / uPrice : -1;
+    isTwoWayAnchored = oPrice > 1 && uPrice > 1;
+    if (isTwoWayAnchored) {
+      const invO = 1 / oPrice;
+      const invU = 1 / uPrice;
+      const marketNoVigOver25 = invO / (invO + invU);
+      const w = MODEL_CONFIG.BAYESIAN_MODEL_WEIGHT;
+      posteriorOver25 = w * probOver25 + (1 - w) * marketNoVigOver25;
+      posteriorUnder25 = 1 - posteriorOver25;
+    } else {
+      posteriorOver25 = probOver25;
+      posteriorUnder25 = probUnder25;
+    }
+
+    const oEdge = oPrice > 1 ? posteriorOver25 - 1 / oPrice : -1;
+    const uEdge = uPrice > 1 ? posteriorUnder25 - 1 / uPrice : -1;
 
     effectivePick =
       !analysis.isLowConfidence && oEdge > uEdge && oEdge > MODEL_CONFIG.EDGE_THRESHOLD
@@ -122,7 +140,7 @@ export const ResultGrid: FC<ResultGridProps> = memo(({ analysis }) => {
     effectiveOdds =
       effectivePick === 'OVER_25' ? oPrice : effectivePick === 'UNDER_25' ? uPrice : null;
     const pSide =
-      effectivePick === 'OVER_25' ? probOver25 : effectivePick === 'UNDER_25' ? probUnder25 : 0;
+      effectivePick === 'OVER_25' ? posteriorOver25 : effectivePick === 'UNDER_25' ? posteriorUnder25 : 0;
     const kelly =
       effectiveOdds && rawEdge > MODEL_CONFIG.EDGE_THRESHOLD
         ? Math.min(MODEL_CONFIG.MAX_KELLY_STAKE, ((pSide * effectiveOdds - 1) / (effectiveOdds - 1)) * MODEL_CONFIG.KELLY_FRACTION)
@@ -137,9 +155,11 @@ export const ResultGrid: FC<ResultGridProps> = memo(({ analysis }) => {
   const isExecute = effectiveVerdict === 'EXECUTE_BET';
   const effectiveLabel = effectivePick === 'NO_BET' ? 'NO EDGE' : effectivePick === 'OVER_25' ? 'OVER 2.5' : 'UNDER 2.5';
   const stakeAmount = (bankroll * effectiveStakePct) / 100;
+  const posteriorSidePct =
+    (effectivePick === 'UNDER_25' ? posteriorUnder25 : posteriorOver25) * 100;
   const evPct =
     effectiveOdds && effectivePick !== 'NO_BET'
-      ? ((effectivePick === 'OVER_25' ? probOver25 : probUnder25) * effectiveOdds - 1) * 100
+      ? ((effectivePick === 'OVER_25' ? posteriorOver25 : posteriorUnder25) * effectiveOdds - 1) * 100
       : null;
 
   const homeLabel = analysis.homeStats.displayName || analysis.homeStats.name;
@@ -251,6 +271,8 @@ export const ResultGrid: FC<ResultGridProps> = memo(({ analysis }) => {
           <p className="text-xs text-slate-600 dark:text-slate-400 tabular-nums">
             {isExecute && effectiveOdds !== null
               ? `Edge +${effectiveEdgePct?.toFixed(1)}% at ${effectiveOdds.toFixed(2)} · Stake ${effectiveStakePct.toFixed(1)}% (${stakeAmount.toFixed(0)} units)`
+              : analysis.isLowConfidence && hasCustomOdds
+              ? 'Blocked by low sample confidence (<6 prior matches per club).'
               : hasCustomOdds
               ? 'Edge below 3.0% threshold for entered odds.'
               : 'Enter bookmaker odds below to compute live edge & Kelly stake.'}
@@ -297,7 +319,7 @@ export const ResultGrid: FC<ResultGridProps> = memo(({ analysis }) => {
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
             {effectiveImpliedPct !== null
-              ? `Implied ${effectiveImpliedPct.toFixed(1)}%${evPct !== null ? ` · EV ${evPct > 0 ? '+' : ''}${evPct.toFixed(1)}%` : ''}`
+              ? `${isTwoWayAnchored ? `Bayes ${posteriorSidePct.toFixed(1)}% · ` : ''}Implied ${effectiveImpliedPct.toFixed(1)}%${evPct !== null ? ` · EV ${evPct > 0 ? '+' : ''}${evPct.toFixed(1)}%` : ''}`
               : 'No market odds quoted'}
           </p>
         </div>
@@ -320,7 +342,7 @@ export const ResultGrid: FC<ResultGridProps> = memo(({ analysis }) => {
             Market Edge & Fractional Kelly Calculator
           </h3>
           <p className="text-xs text-slate-600 dark:text-slate-400">
-            Compare decimal bookmaker odds against Dixon-Coles fair probabilities (0.35× Kelly, 5.0% cap, 3.0% min edge).
+            Shrinks model probability against two-way no-vig market odds ({(MODEL_CONFIG.BAYESIAN_MODEL_WEIGHT * 100).toFixed(0)}% model / {((1 - MODEL_CONFIG.BAYESIAN_MODEL_WEIGHT) * 100).toFixed(0)}% prior) before 0.35× Kelly sizing.
           </p>
         </div>
 

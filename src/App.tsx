@@ -25,7 +25,7 @@ const TAB_TITLES: Record<AppTab, { kicker: string; title: string }> = {
     title: 'League Power Ratings',
   },
   backtest: {
-    kicker: 'Walk-Forward Causal Audit · 2021–2025 European Seasons',
+    kicker: 'Walk-Forward Causal Audit · 2022–2026 European Seasons',
     title: 'Historical Audit',
   },
   methodology: {

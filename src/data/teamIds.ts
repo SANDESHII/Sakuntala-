@@ -60,37 +60,70 @@ const TEAM_ALIASES: Record<string, string> = {
   'LAS PALMAS': 'LAS_PALMAS',
   'UNION BERLIN': 'UNION_BERLIN',
   'LE HAVRE': 'LE_HAVRE',
+  'LEICESTER CITY': 'LEICESTER',
+  'IPSWICH TOWN': 'IPSWICH',
+  'LUTON TOWN': 'LUTON',
+  'DEPORTIVO ALAVES': 'ALAVES',
+  'REAL VALLADOLID': 'VALLADOLID',
+  'REAL OVIEDO': 'OVIEDO',
+  'BAYERN MUNCHEN': 'BAYERN',
+  'WERDER BREMEN': 'WERDER_BREMEN',
+  'SV WERDER BREMEN': 'WERDER_BREMEN',
+  'FC HEIDENHEIM': 'HEIDENHEIM',
+  '1 FC HEIDENHEIM': 'HEIDENHEIM',
+  'ST PAULI': 'ST_PAULI',
+  'FC ST PAULI': 'ST_PAULI',
+  'KIEL': 'HOLSTEIN_KIEL',
+  'HAMBURG': 'HAMBURGER_SV',
+  'AJ AUXERRE': 'AUXERRE',
+  'ANGERS SCO': 'ANGERS',
+  'STADE BRESTOIS': 'BREST',
+  'STADE BRESTOIS 29': 'BREST',
+  'OLYMPIQUE LYONNAIS': 'LYON',
+  'OLYMPIQUE DE MARSEILLE': 'MARSEILLE',
+  'AS MONACO': 'MONACO',
+  'RC LENS': 'LENS',
+  'OGC NICE': 'NICE',
+  'LOSC LILLE': 'LILLE',
+  'STADE RENNAIS': 'RENNES',
+  'RC STRASBOURG': 'STRASBOURG',
+  'RC STRASBOURG ALSACE': 'STRASBOURG',
 };
 
 export const LEAGUE_TEAMS: Record<string, string[]> = {
   EPL: [
     'ARSENAL', 'ASTON_VILLA', 'BOURNEMOUTH', 'BRENTFORD', 'BRIGHTON',
-    'CHELSEA', 'CRYSTAL_PALACE', 'EVERTON', 'FULHAM', 'LIVERPOOL',
-    'MAN_CITY', 'MAN_UTD', 'NEWCASTLE', 'NOTTINGHAM_FOREST', 'TOTTENHAM',
-    'WEST_HAM', 'WOLVES',
+    'BURNLEY', 'CHELSEA', 'CRYSTAL_PALACE', 'EVERTON', 'FULHAM',
+    'IPSWICH', 'LEEDS', 'LEICESTER', 'LIVERPOOL', 'MAN_CITY',
+    'MAN_UTD', 'NEWCASTLE', 'NOTTINGHAM_FOREST', 'SOUTHAMPTON', 'SUNDERLAND',
+    'TOTTENHAM', 'WEST_HAM', 'WOLVES',
   ],
   LA_LIGA: [
     'ALAVES', 'ATHLETIC_BILBAO', 'ATLETICO', 'BARCELONA', 'BETIS',
-    'CELTA_VIGO', 'ESPANYOL', 'GETAFE', 'GIRONA', 'LAS_PALMAS',
-    'MALLORCA', 'OSASUNA', 'RAYO_VALLECANO', 'REAL_MADRID', 'REAL_SOCIEDAD',
-    'SEVILLA', 'VALENCIA', 'VILLARREAL',
+    'CELTA_VIGO', 'ELCHE', 'ESPANYOL', 'GETAFE', 'GIRONA',
+    'LAS_PALMAS', 'LEGANES', 'LEVANTE', 'MALLORCA', 'OSASUNA',
+    'OVIEDO', 'RAYO_VALLECANO', 'REAL_MADRID', 'REAL_SOCIEDAD', 'SEVILLA',
+    'VALENCIA', 'VALLADOLID', 'VILLARREAL',
   ],
   BUNDESLIGA: [
     'AUGSBURG', 'BAYERN', 'BOCHUM', 'DORTMUND', 'FRANKFURT',
-    'FREIBURG', 'GLADBACH', 'HOFFENHEIM', 'KOLN', 'LEVERKUSEN',
-    'MAINZ', 'RB_LEIPZIG', 'STUTTGART', 'UNION_BERLIN', 'WOLFSBURG',
+    'FREIBURG', 'GLADBACH', 'HAMBURGER_SV', 'HEIDENHEIM', 'HOFFENHEIM',
+    'HOLSTEIN_KIEL', 'KOLN', 'LEVERKUSEN', 'MAINZ', 'RB_LEIPZIG',
+    'ST_PAULI', 'STUTTGART', 'UNION_BERLIN', 'WERDER_BREMEN', 'WOLFSBURG',
   ],
   SERIE_A: [
-    'ATALANTA', 'BOLOGNA', 'CAGLIARI', 'EMPOLI', 'FIORENTINA',
-    'GENOA', 'INTER', 'JUVENTUS', 'LAZIO', 'LECCE',
-    'MILAN', 'MONZA', 'NAPOLI', 'ROMA', 'SASSUOLO',
-    'TORINO', 'UDINESE', 'VERONA',
+    'ATALANTA', 'BOLOGNA', 'CAGLIARI', 'COMO', 'CREMONESE',
+    'EMPOLI', 'FIORENTINA', 'GENOA', 'INTER', 'JUVENTUS',
+    'LAZIO', 'LECCE', 'MILAN', 'MONZA', 'NAPOLI',
+    'PARMA', 'PISA', 'ROMA', 'SASSUOLO', 'TORINO',
+    'UDINESE', 'VENEZIA', 'VERONA',
   ],
   LIGUE_1: [
-    'BREST', 'CLERMONT', 'LE_HAVRE', 'LENS', 'LILLE',
-    'LORIENT', 'LYON', 'MARSEILLE', 'METZ', 'MONACO',
-    'MONTPELLIER', 'NANTES', 'NICE', 'PSG', 'REIMS',
-    'RENNES', 'STRASBOURG', 'TOULOUSE',
+    'ANGERS', 'AUXERRE', 'BREST', 'CLERMONT', 'LE_HAVRE',
+    'LENS', 'LILLE', 'LORIENT', 'LYON', 'MARSEILLE',
+    'METZ', 'MONACO', 'MONTPELLIER', 'NANTES', 'NICE',
+    'PARIS_FC', 'PSG', 'REIMS', 'RENNES', 'ST_ETIENNE',
+    'STRASBOURG', 'TOULOUSE',
   ],
 };
 
@@ -218,10 +251,14 @@ for (const [canonicalId, apiFootballId] of Object.entries(TEAM_API_FOOTBALL_IDS)
   apiFootballReverseMap.set(apiFootballId, canonicalId);
 }
 
-export function resolveByApiFootballId(id: number): TeamIdentity {
+export function resolveByApiFootballId(id: number, fallbackName?: string): TeamIdentity {
   const canonicalId = apiFootballReverseMap.get(id);
-  if (!canonicalId) return { id: String(id) };
-  return { id: canonicalId, apiFootballId: id };
+  if (canonicalId) return { id: canonicalId, apiFootballId: id };
+  if (fallbackName) {
+    const resolved = resolveTeam(fallbackName);
+    return { id: resolved.id, apiFootballId: id };
+  }
+  return { id: String(id) };
 }
 
 const resolveTeamCache = new Map<string, TeamIdentity>();
@@ -230,10 +267,13 @@ export function resolveTeam(name: string): TeamIdentity {
   const cached = resolveTeamCache.get(name);
   if (cached) return cached;
 
-  const normalized = name.toUpperCase()
+  const normalized = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
     .trim()
-    .replace(/[.&]/g, ' ')
-    .replace(/[']/g, '')
+    .replace(/[.&-]/g, ' ')
+    .replace(/['’]/g, '')
     .replace(/\s+/g, ' ');
 
   const underscoreName = normalized.replace(/ /g, '_');

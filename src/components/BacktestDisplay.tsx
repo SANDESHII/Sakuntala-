@@ -186,7 +186,7 @@ export const BacktestDisplay: FC<BacktestDisplayProps> = ({
             <span className="text-xs font-mono text-slate-500 dark:text-slate-400">football-data.co.uk</span>
           </div>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Downloading seasonal CSV files (2122–2425 across EPL, La Liga, Bundesliga, Serie A, and Ligue 1) and fitting Dixon-Coles MLE strictly prior to each matchday. Cold runs take ~60–120 seconds.
+            Downloading seasonal CSV files (2223–2526 across EPL, La Liga, Bundesliga, Serie A, and Ligue 1) and fitting Dixon-Coles MLE strictly prior to each matchday. Cold runs take ~60–120 seconds.
           </p>
         </div>
 

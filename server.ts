@@ -159,15 +159,18 @@ async function startServer() {
         inFlightBacktest.set(cacheKey, pending);
       }
 
-      const result = await pending;
-      inFlightBacktest.delete(cacheKey);
+      let result: BacktestSummary;
+      try {
+        result = await pending;
+      } finally {
+        inFlightBacktest.delete(cacheKey);
+      }
 
       if (result && result.totalMatches > 0) {
         backtestCache.set(cacheKey, { result, ts: Date.now() });
       }
       res.json(result);
     } catch (error: unknown) {
-      inFlightBacktest.clear();
       logger.error('GET /api/backtest', error instanceof Error ? error : new Error(String(error)));
       res.status(500).json({
         totalMatches: 0,

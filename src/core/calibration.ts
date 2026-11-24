@@ -5,7 +5,17 @@
 import * as FreeDataService from '../services/freeDataService';
 import { loadRecentLeagueCsvMatches } from '../services/footballDataCsv';
 import { HistoricalMatch } from '../types';
-import { TIME_DECAY_PHI, DEFAULT_RHO, BASE_GOALS, REG_LAMBDA, MODEL_CONFIG } from './constants';
+import {
+  TIME_DECAY_PHI,
+  DEFAULT_RHO,
+  BASE_GOALS,
+  REG_LAMBDA,
+  XG_BLEND_WEIGHT,
+  OFF_TARGET_SHOT_WEIGHT,
+  RED_CARD_MATCH_WEIGHT,
+  MODEL_CONFIG,
+  LEAGUE_CONFIGS,
+} from './constants';
 import { resolveTeam } from '../data/teamIds';
 import { logger } from '../services/logger';
 
@@ -19,6 +29,7 @@ export interface FittedTeamParams {
 export interface FittedLeagueParams {
   homeAdvantage: number;  // γ
   rho: number;            // ρ
+  leagueBase?: number;    // BASE_GOALS * leagueConfig.goalRate
   teams: Record<string, FittedTeamParams>;
   matchesUsed?: number;
   dataProvider?: 'API_FOOTBALL' | 'FOOTBALL_DATA_CSV' | 'STATIC_PRIOR';
@@ -29,15 +40,29 @@ interface MatchData {
   away: string;
   homeGoals: number;
   awayGoals: number;
+  homeShots?: number;
+  awayShots?: number;
+  homeShotsOnTarget?: number;
+  awayShotsOnTarget?: number;
+  hasRedCard?: boolean;
   daysAgo: number;
+}
+
+function getLeagueBase(league?: string): number {
+  if (!league) return BASE_GOALS;
+  const leagueKey = league.toUpperCase().replace(/ /g, '_');
+  const cfg = LEAGUE_CONFIGS[leagueKey] || LEAGUE_CONFIGS['STANDARD'];
+  return BASE_GOALS * cfg.goalRate;
 }
 
 /**
  * Fit attack/defense parameters via gradient ascent on
- * the Dixon-Coles log-likelihood with temporal weighting.
+ * the Dixon-Coles log-likelihood with temporal weighting
+ * and causal shot-quality xG blending when shot data exists.
  */
 function fitDixonColes(
   matches: MatchData[],
+  leagueBase = BASE_GOALS,
   iterations = MODEL_CONFIG.DEFAULT_FIT_ITERATIONS,
   lr = MODEL_CONFIG.DEFAULT_LEARNING_RATE
 ): FittedLeagueParams {
@@ -45,6 +70,7 @@ function fitDixonColes(
     return {
       homeAdvantage: MODEL_CONFIG.HOME_ADVANTAGE_GAMMA,
       rho: DEFAULT_RHO,
+      leagueBase,
       teams: {},
       matchesUsed: 0,
       dataProvider: 'STATIC_PRIOR',
@@ -68,24 +94,70 @@ function fitDixonColes(
   const n = matches.length;
   const hIdx = new Int32Array(n);
   const aIdx = new Int32Array(n);
-  const hgArr = new Int32Array(n);
-  const agArr = new Int32Array(n);
+  const hgIntArr = new Int32Array(n);
+  const agIntArr = new Int32Array(n);
+  const hgEffArr = new Float64Array(n);
+  const agEffArr = new Float64Array(n);
   const wArr = new Float64Array(n);
+
+  let weightedShotGoals = 0;
+  let weightedShotUnits = 0;
 
   for (let i = 0; i < n; i++) {
     const m = matches[i];
     const hi = idxOf(m.home);
     const ai = idxOf(m.away);
+    const w = Math.exp(-TIME_DECAY_PHI * m.daysAgo) * (m.hasRedCard ? RED_CARD_MATCH_WEIGHT : 1.0);
     hIdx[i] = hi;
     aIdx[i] = ai;
-    hgArr[i] = m.homeGoals;
-    agArr[i] = m.awayGoals;
-    wArr[i] = Math.exp(-TIME_DECAY_PHI * m.daysAgo);
+    hgIntArr[i] = m.homeGoals;
+    agIntArr[i] = m.awayGoals;
+    wArr[i] = w;
     matchCounts[hi]++;
     matchCounts[ai]++;
+
+    if (m.homeShotsOnTarget !== undefined && m.awayShotsOnTarget !== undefined) {
+      const hOff = Math.max(0, (m.homeShots ?? m.homeShotsOnTarget) - m.homeShotsOnTarget);
+      const aOff = Math.max(0, (m.awayShots ?? m.awayShotsOnTarget) - m.awayShotsOnTarget);
+      weightedShotGoals += w * (m.homeGoals + m.awayGoals);
+      weightedShotUnits += w * (m.homeShotsOnTarget + m.awayShotsOnTarget + OFF_TARGET_SHOT_WEIGHT * (hOff + aOff));
+    }
+  }
+
+  const shotConversionRate = weightedShotUnits > 0 ? weightedShotGoals / weightedShotUnits : 0;
+
+  for (let i = 0; i < n; i++) {
+    const m = matches[i];
+    let effH = m.homeGoals;
+    let effA = m.awayGoals;
+    if (
+      XG_BLEND_WEIGHT > 0 &&
+      shotConversionRate > 0 &&
+      m.homeShotsOnTarget !== undefined &&
+      m.awayShotsOnTarget !== undefined
+    ) {
+      const hOff = Math.max(0, (m.homeShots ?? m.homeShotsOnTarget) - m.homeShotsOnTarget);
+      const aOff = Math.max(0, (m.awayShots ?? m.awayShotsOnTarget) - m.awayShotsOnTarget);
+      const xgH = Math.min(8.0, shotConversionRate * (m.homeShotsOnTarget + OFF_TARGET_SHOT_WEIGHT * hOff));
+      const xgA = Math.min(8.0, shotConversionRate * (m.awayShotsOnTarget + OFF_TARGET_SHOT_WEIGHT * aOff));
+      effH = (1 - XG_BLEND_WEIGHT) * m.homeGoals + XG_BLEND_WEIGHT * xgH;
+      effA = (1 - XG_BLEND_WEIGHT) * m.awayGoals + XG_BLEND_WEIGHT * xgA;
+    }
+    hgEffArr[i] = effH;
+    agEffArr[i] = effA;
   }
 
   const numTeams = teams.length;
+  const teamWeight = new Float64Array(numTeams);
+  let totalWeight = 0;
+  for (let i = 0; i < n; i++) {
+    const w = wArr[i];
+    teamWeight[hIdx[i]] += w;
+    teamWeight[aIdx[i]] += w;
+    totalWeight += w;
+  }
+  const safeTotalWeight = Math.max(totalWeight, 1.0);
+
   const atk = new Float64Array(numTeams).fill(1.0);
   const def = new Float64Array(numTeams).fill(1.0);
   const gradientAttack = new Float64Array(numTeams);
@@ -93,7 +165,7 @@ function fitDixonColes(
   let gamma = MODEL_CONFIG.HOME_ADVANTAGE_GAMMA;
   let rho = DEFAULT_RHO;
 
-  let prevLL = -Infinity;
+  let prevObjective = -Infinity;
   for (let iter = 0; iter < iterations; iter++) {
     gradientAttack.fill(0);
     gradientDefense.fill(0);
@@ -104,59 +176,83 @@ function fitDixonColes(
     for (let i = 0; i < n; i++) {
       const home = hIdx[i];
       const away = aIdx[i];
-      const homeGoals = hgArr[i];
-      const awayGoals = agArr[i];
+      const homeInt = hgIntArr[i];
+      const awayInt = agIntArr[i];
+      const homeTarget = hgEffArr[i];
+      const awayTarget = agEffArr[i];
       const weight = wArr[i];
-      const homeExp = Math.max(atk[home] * def[away] * gamma * BASE_GOALS, MODEL_CONFIG.PROBABILITY_FLOOR);
-      const awayExp = Math.max(atk[away] * def[home] * BASE_GOALS, MODEL_CONFIG.PROBABILITY_FLOOR);
+      const homeExp = Math.max(atk[home] * def[away] * gamma * leagueBase, MODEL_CONFIG.PROBABILITY_FLOOR);
+      const awayExp = Math.max(atk[away] * def[home] * leagueBase, MODEL_CONFIG.PROBABILITY_FLOOR);
 
-      currentLL += weight * (homeGoals * Math.log(homeExp) - homeExp + awayGoals * Math.log(awayExp) - awayExp);
-
-      const dL_home = homeGoals / homeExp - 1;
-      const dL_away = awayGoals / awayExp - 1;
+      const dL_home = homeTarget / homeExp - 1;
+      const dL_away = awayTarget / awayExp - 1;
 
       let dt_home = 0;
       let dt_away = 0;
+      let tauVal = 1;
+      let dr = 0;
       const minRhoMatch = -1 / Math.max(homeExp, awayExp, 1);
-      const safeRhoMatch = Math.max(minRhoMatch + 0.001, rho);
+      const maxRhoMatch = Math.min(1, 1 / (homeExp * awayExp || 1));
+      const safeRhoMatch = Math.max(minRhoMatch + 0.001, Math.min(maxRhoMatch - 0.001, rho));
 
-      if (homeGoals === 0 && awayGoals === 0) {
-        const d = 1 - homeExp * awayExp * safeRhoMatch;
-        dt_home = (-awayExp * safeRhoMatch) / d;
-        dt_away = (-homeExp * safeRhoMatch) / d;
-      } else if (homeGoals === 0 && awayGoals === 1) {
-        dt_home = safeRhoMatch / (1 + homeExp * safeRhoMatch);
-      } else if (homeGoals === 1 && awayGoals === 0) {
-        dt_away = safeRhoMatch / (1 + awayExp * safeRhoMatch);
+      if (homeInt === 0 && awayInt === 0) {
+        tauVal = 1 - homeExp * awayExp * safeRhoMatch;
+        dt_home = (-awayExp * safeRhoMatch) / tauVal;
+        dt_away = (-homeExp * safeRhoMatch) / tauVal;
+        dr = weight * ((-homeExp * awayExp) / tauVal);
+      } else if (homeInt === 0 && awayInt === 1) {
+        tauVal = 1 + homeExp * safeRhoMatch;
+        dt_home = safeRhoMatch / tauVal;
+        dr = weight * (homeExp / tauVal);
+      } else if (homeInt === 1 && awayInt === 0) {
+        tauVal = 1 + awayExp * safeRhoMatch;
+        dt_away = safeRhoMatch / tauVal;
+        dr = weight * (awayExp / tauVal);
+      } else if (homeInt === 1 && awayInt === 1) {
+        tauVal = 1 - safeRhoMatch;
+        dr = weight * (-1 / tauVal);
       }
+
+      currentLL +=
+        weight *
+        (homeTarget * Math.log(homeExp) -
+          homeExp +
+          awayTarget * Math.log(awayExp) -
+          awayExp +
+          Math.log(Math.max(tauVal, MODEL_CONFIG.PROBABILITY_FLOOR)));
 
       const gradHome = weight * (dL_home + dt_home);
       const gradAway = weight * (dL_away + dt_away);
 
-      gradientAttack[home] += gradHome * def[away] * gamma * BASE_GOALS;
-      gradientDefense[away] += gradHome * atk[home] * gamma * BASE_GOALS;
-      gradientAttack[away] += gradAway * def[home] * BASE_GOALS;
-      gradientDefense[home] += gradAway * atk[away] * BASE_GOALS;
+      gradientAttack[home] += gradHome * def[away] * gamma * leagueBase;
+      gradientDefense[away] += gradHome * atk[home] * gamma * leagueBase;
+      gradientAttack[away] += gradAway * def[home] * leagueBase;
+      gradientDefense[home] += gradAway * atk[away] * leagueBase;
 
-      gradientGamma += gradHome * atk[home] * def[away] * BASE_GOALS;
-
-      let dr = 0;
-      if (homeGoals === 0 && awayGoals === 0) dr = weight * ((-homeExp * awayExp) / (1 - homeExp * awayExp * safeRhoMatch));
-      else if (homeGoals === 0 && awayGoals === 1) dr = weight * (homeExp / (1 + homeExp * safeRhoMatch));
-      else if (homeGoals === 1 && awayGoals === 0) dr = weight * (awayExp / (1 + awayExp * safeRhoMatch));
-      else if (homeGoals === 1 && awayGoals === 1) dr = weight * (-1 / (1 - safeRhoMatch));
+      gradientGamma += gradHome * atk[home] * def[away] * leagueBase;
       gradientRho += dr;
     }
 
-    if (Math.abs(currentLL - prevLL) < 1e-6) break;
-    prevLL = currentLL;
+    let meanDef = 0;
+    for (let t = 0; t < numTeams; t++) meanDef += def[t];
+    meanDef /= numTeams;
+
+    let regPenalty = 0;
+    for (let t = 0; t < numTeams; t++) {
+      regPenalty += REG_LAMBDA * (Math.pow(atk[t] - 1, 2) + Math.pow(def[t] - meanDef, 2));
+    }
+
+    const currentObjective = currentLL - regPenalty;
+    if (iter > 10 && Math.abs(currentObjective - prevObjective) < 1e-6) break;
+    prevObjective = currentObjective;
 
     for (let t = 0; t < numTeams; t++) {
+      const denom = Math.max(teamWeight[t], 1.0);
       const penaltyA = -2 * REG_LAMBDA * (atk[t] - 1);
-      const penaltyD = -2 * REG_LAMBDA * (def[t] - 1);
+      const penaltyD = -2 * REG_LAMBDA * (def[t] - meanDef);
 
-      atk[t] = Math.max(0.2, Math.min(3.0, atk[t] + lr * (gradientAttack[t] + penaltyA) / n));
-      def[t] = Math.max(0.2, Math.min(3.0, def[t] + lr * (gradientDefense[t] + penaltyD) / n));
+      atk[t] = Math.max(0.2, Math.min(3.0, atk[t] + lr * (gradientAttack[t] + penaltyA) / denom));
+      def[t] = Math.max(0.2, Math.min(3.0, def[t] + lr * (gradientDefense[t] + penaltyD) / denom));
     }
 
     let sumA = 0;
@@ -167,8 +263,8 @@ function fitDixonColes(
       def[t] *= currentAvgA;
     }
 
-    gamma = Math.max(0.8, Math.min(2.0, gamma + lr * gradientGamma / n));
-    rho = Math.max(-0.5, Math.min(0.0, rho + lr * gradientRho / n));
+    gamma = Math.max(0.8, Math.min(2.0, gamma + lr * gradientGamma / safeTotalWeight));
+    rho = Math.max(-0.5, Math.min(0.0, rho + lr * gradientRho / safeTotalWeight));
     lr *= 0.998;
   }
 
@@ -183,7 +279,7 @@ function fitDixonColes(
     };
   }
 
-  return { homeAdvantage: gamma, rho, teams: result, matchesUsed: n };
+  return { homeAdvantage: gamma, rho, leagueBase, teams: result, matchesUsed: n };
 }
 
 const fittedCache = new Map<string, { params: FittedLeagueParams; ts: number }>();
@@ -197,6 +293,7 @@ export async function fitFromAPI(
   asOfDate?: string,
   historicalMatches?: HistoricalMatch[]
 ): Promise<FittedLeagueParams> {
+  const leagueBase = getLeagueBase(league);
   const isLive = !asOfDate && !historicalMatches;
   if (isLive) {
     const cached = fittedCache.get(league);
@@ -233,6 +330,7 @@ export async function fitFromAPI(
     return {
       homeAdvantage: MODEL_CONFIG.HOME_ADVANTAGE_GAMMA,
       rho: DEFAULT_RHO,
+      leagueBase,
       teams: {},
       matchesUsed: 0,
       dataProvider: 'STATIC_PRIOR',
@@ -246,6 +344,7 @@ export async function fitFromAPI(
     return {
       homeAdvantage: MODEL_CONFIG.HOME_ADVANTAGE_GAMMA,
       rho: DEFAULT_RHO,
+      leagueBase,
       teams: {},
       matchesUsed: 0,
       dataProvider: 'STATIC_PRIOR',
@@ -257,10 +356,15 @@ export async function fitFromAPI(
     away: resolveTeam(m.away).id,
     homeGoals: m.homeGoals || 0,
     awayGoals: m.awayGoals || 0,
+    homeShots: m.homeShots,
+    awayShots: m.awayShots,
+    homeShotsOnTarget: m.homeShotsOnTarget,
+    awayShotsOnTarget: m.awayShotsOnTarget,
+    hasRedCard: m.hasRedCard,
     daysAgo: Math.max(0, (cutoff - new Date(m.date).getTime()) / (1000 * 60 * 60 * 24)),
   }));
 
-  const params = fitDixonColes(matches);
+  const params = fitDixonColes(matches, leagueBase);
   params.dataProvider = dataProvider;
   if (isLive) fittedCache.set(league, { params, ts: Date.now() });
   return params;
@@ -288,8 +392,9 @@ export function predictGoals(
 
   if (!homeParams || !awayParams) return null;
 
-  let lambdaHome = homeParams.attack * awayParams.defense * fitted.homeAdvantage * BASE_GOALS;
-  let muAway = awayParams.attack * homeParams.defense * BASE_GOALS;
+  const leagueBase = fitted.leagueBase ?? BASE_GOALS;
+  let lambdaHome = homeParams.attack * awayParams.defense * fitted.homeAdvantage * leagueBase;
+  let muAway = awayParams.attack * homeParams.defense * leagueBase;
 
   lambdaHome = Math.max(MODEL_CONFIG.MIN_LAMBDA, Math.min(MODEL_CONFIG.MAX_LAMBDA, lambdaHome));
   muAway = Math.max(MODEL_CONFIG.MIN_MU, Math.min(MODEL_CONFIG.MAX_MU, muAway));

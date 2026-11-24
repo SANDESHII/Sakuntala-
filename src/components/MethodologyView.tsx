@@ -1,6 +1,6 @@
 import { FC, useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { MODEL_CONFIG, TIME_DECAY_PHI, REG_LAMBDA, BASE_GOALS, DEFAULT_RHO } from '../core/constants';
+import { MODEL_CONFIG, TIME_DECAY_PHI, REG_LAMBDA, BASE_GOALS, DEFAULT_RHO, XG_BLEND_WEIGHT } from '../core/constants';
 
 interface HealthStatus {
   status: string;
@@ -42,10 +42,11 @@ export const MethodologyView: FC = () => {
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
             Match scorelines are modeled as correlated Poisson random variables with home expected goals{' '}
-            <span className="font-mono text-slate-900 dark:text-slate-100">λ = α_H · β_A · γ · BASE</span> and away expected goals{' '}
-            <span className="font-mono text-slate-900 dark:text-slate-100">μ = α_A · β_H · BASE</span>.
+            <span className="font-mono text-slate-900 dark:text-slate-100">λ = α_H · β_A · γ · BASE_L</span> and away expected goals{' '}
+            <span className="font-mono text-slate-900 dark:text-slate-100">μ = α_A · β_H · BASE_L</span>, where{' '}
+            <span className="font-mono">BASE_L</span> scales by each league&apos;s goal rate.
             The low-score dependence parameter <span className="font-mono">ρ</span> adjusts joint probabilities on{' '}
-            <span className="font-mono">0–0, 0–1, 1–0, 1–1</span> outcomes to correct standard independent Poisson under-dispersion of draws.
+            <span className="font-mono">0–0, 0–1, 1–0, 1–1</span> outcomes to correct independent Poisson draw bias.
           </p>
           <div className="pt-3 border-t border-slate-200 dark:border-slate-800 grid grid-cols-2 gap-4 text-xs font-mono tabular-nums">
             <div>
@@ -61,13 +62,13 @@ export const MethodologyView: FC = () => {
 
         <section className="bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-4">
           <h2 className="text-base font-semibold text-slate-950 dark:text-slate-100">
-            02. Time-Decayed MLE & L2 Regularization
+            02. Time-Decayed Shot-Quality MLE &amp; L2 Shrinkage
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-            Team attack (<span className="font-mono">α</span>) and defense (<span className="font-mono">β</span>) strengths, home advantage (<span className="font-mono">γ</span>), and <span className="font-mono">ρ</span> are fit via gradient ascent on the exponentially weighted log-likelihood{' '}
-            <span className="font-mono text-slate-900 dark:text-slate-100">w(t) = exp(−φ · Δdays)</span> with L2 shrinkage toward league average (<span className="font-mono">1.0</span>) to curb small-sample overfitting.
+            Team attack (<span className="font-mono">α</span>) and defense (<span className="font-mono">β</span>) strengths blend goals with a causal shot-quality xG proxy (<span className="font-mono">{(XG_BLEND_WEIGHT * 100).toFixed(0)}%</span> weight when shots on target are available), fit via exponentially weighted MLE{' '}
+            <span className="font-mono text-slate-900 dark:text-slate-100">w(t) = exp(−φ · Δdays)</span> with mean-centered L2 shrinkage to prevent small-sample overfitting.
           </p>
-          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 grid grid-cols-2 gap-4 text-xs font-mono tabular-nums">
+          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 grid grid-cols-3 gap-4 text-xs font-mono tabular-nums">
             <div>
               <span className="text-slate-500 dark:text-slate-400 block">Decay Rate (φ / day)</span>
               <span className="text-slate-900 dark:text-slate-100 font-semibold">{TIME_DECAY_PHI.toFixed(6)}</span>
@@ -75,6 +76,10 @@ export const MethodologyView: FC = () => {
             <div>
               <span className="text-slate-500 dark:text-slate-400 block">L2 Shrinkage (λ)</span>
               <span className="text-slate-900 dark:text-slate-100 font-semibold">{REG_LAMBDA}</span>
+            </div>
+            <div>
+              <span className="text-slate-500 dark:text-slate-400 block">xG Shot Blend</span>
+              <span className="text-slate-900 dark:text-slate-100 font-semibold">{(XG_BLEND_WEIGHT * 100).toFixed(0)}%</span>
             </div>
           </div>
         </section>
@@ -84,10 +89,14 @@ export const MethodologyView: FC = () => {
             03. Fractional Kelly Staking & Edge Gate
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-            Wagers are triggered only when the model probability exceeds bookmaker implied probability by at least{' '}
-            <span className="font-mono text-slate-900 dark:text-slate-100">{(MODEL_CONFIG.EDGE_THRESHOLD * 100).toFixed(1)}%</span> and both teams satisfy the minimum sample gate (≥ 6 prior matches). Stake sizing uses{' '}
+            When two-way bookmaker odds are quoted, pure Dixon-Coles probabilities are shrunk toward the no-vig market prior (
+            <span className="font-mono text-slate-900 dark:text-slate-100">
+              {(MODEL_CONFIG.BAYESIAN_MODEL_WEIGHT * 100).toFixed(0)}% model / {((1 - MODEL_CONFIG.BAYESIAN_MODEL_WEIGHT) * 100).toFixed(0)}% prior
+            </span>
+            ) to guard against unmodeled lineup or injury news. Wagers trigger only when Bayesian edge exceeds{' '}
+            <span className="font-mono text-slate-900 dark:text-slate-100">{(MODEL_CONFIG.EDGE_THRESHOLD * 100).toFixed(1)}%</span> and both clubs satisfy ≥ 6 prior matches, sized at{' '}
             <span className="font-mono text-slate-900 dark:text-slate-100">{MODEL_CONFIG.KELLY_FRACTION}×</span> Kelly capped at{' '}
-            <span className="font-mono text-slate-900 dark:text-slate-100">{(MODEL_CONFIG.MAX_KELLY_STAKE * 100).toFixed(1)}%</span> of bankroll.
+            <span className="font-mono text-slate-900 dark:text-slate-100">{(MODEL_CONFIG.MAX_KELLY_STAKE * 100).toFixed(1)}%</span>.
           </p>
           <div className="pt-3 border-t border-slate-200 dark:border-slate-800 grid grid-cols-3 gap-4 text-xs font-mono tabular-nums">
             <div>

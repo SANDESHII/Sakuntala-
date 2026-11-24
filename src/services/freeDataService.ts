@@ -21,6 +21,10 @@ export async function checkApiHealth(api: DataSource): Promise<boolean> {
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
     if (api === 'api-football') {
+      if (!hasApiFootballKey()) {
+        apiHealth.set(api, { healthy: false, lastCheck: Date.now() });
+        return false;
+      }
       const { baseUrl, headers } = getApiFootballConfig();
       const res = await fetch(`${baseUrl}/status`, { headers, signal: controller.signal });
       if (!res.ok) {
@@ -169,13 +173,30 @@ const getApiFootballConfig = () => {
 };
 
 const getOddsApiKey = () => cleanKey(process.env.ODDS_API_KEY);
+const hasApiFootballKey = () => !!cleanKey(process.env.API_FOOTBALL_KEY);
+const hasOddsApiKey = () => !!getOddsApiKey();
 
-async function fetchApiFootballFixtures(league: string, limit: number, status: 'NS' | 'FT' = 'NS') {
+async function fetchApiFootballFixtures(
+  league: string,
+  limit: number,
+  status: 'NS' | 'FT' = 'NS',
+  seasonOverride?: number
+) {
   const { baseUrl, headers } = getApiFootballConfig();
   const { apiId: leagueId } = getLeagueConfig(league);
+  const season = seasonOverride ?? inferSeason(league);
+  const params: Record<string, string | number | boolean> = {
+    league: leagueId,
+    season,
+    status,
+  };
+  if (status === 'NS') {
+    params.next = Math.min(limit, 99);
+  }
+
   const data = await fetchWithRetry<{ response: any[] }>('api-football', `${baseUrl}/fixtures`, {
     headers,
-    params: { league: leagueId, season: inferSeason(league), [status === 'NS' ? 'next' : 'last']: limit, status },
+    params,
   });
 
   if (!data || !Array.isArray(data.response)) return [];
@@ -188,8 +209,8 @@ async function fetchApiFootballFixtures(league: string, limit: number, status: '
         return {
           id: f.fixture.id,
           date: f.fixture.date,
-          home: resolveByApiFootballId(f.teams.home.id).id,
-          away: resolveByApiFootballId(f.teams.away.id).id,
+          home: resolveByApiFootballId(f.teams.home.id, f.teams.home.name).id,
+          away: resolveByApiFootballId(f.teams.away.id, f.teams.away.name).id,
           homeLogo: f.teams.home.logo,
           awayLogo: f.teams.away.logo,
           homeGoals: f.goals?.home,
@@ -204,10 +225,8 @@ async function fetchApiFootballFixtures(league: string, limit: number, status: '
     .filter((f): f is NonNullable<typeof f> => f !== null);
 }
 
-const isLiveCapable = () => !!cleanKey(process.env.API_FOOTBALL_KEY) && !!getOddsApiKey();
-
 export async function getTeamStats(teamName: string, league: string): Promise<InternalTeamData | null> {
-  if (!isLiveCapable()) return null;
+  if (!hasApiFootballKey()) return null;
   if (!(await checkApiHealth('api-football'))) return null;
   return withCache(`stats_${teamName}_${league}`, async () => {
     try {
@@ -240,7 +259,7 @@ export async function getTeamStats(teamName: string, league: string): Promise<In
 }
 
 export async function getLiveOdds(league: string) {
-  if (!isLiveCapable()) return [];
+  if (!hasOddsApiKey()) return [];
   if (!(await checkApiHealth('the-odds-api'))) return [];
   try {
     return await withCache(`live_odds_${league}`, async () => {
@@ -258,7 +277,7 @@ export async function getLiveOdds(league: string) {
 }
 
 export async function getUpcomingFixtures(league: string, limit = 10): Promise<FixtureMatch[]> {
-  if (!isLiveCapable()) return [];
+  if (!hasApiFootballKey()) return [];
   if (!(await checkApiHealth('api-football'))) return [];
   try {
     return await withCache(`fixtures_${league}_${limit}`, async () => {
@@ -280,19 +299,37 @@ export async function getUpcomingFixtures(league: string, limit = 10): Promise<F
 }
 
 export async function getHistoricalFixtures(league: string, limit = 150): Promise<HistoricalMatch[]> {
-  if (!isLiveCapable()) return [];
+  if (!hasApiFootballKey()) return [];
   if (!(await checkApiHealth('api-football'))) return [];
 
   try {
-    const fixtures = await fetchApiFootballFixtures(league, limit, 'FT');
-    return fixtures.map((f) => ({
-      home: f.home,
-      away: f.away,
-      homeGoals: f.homeGoals ?? 0,
-      awayGoals: f.awayGoals ?? 0,
-      date: f.date,
-      league: f.league,
-    }));
+    return await withCache(`historical_${league}_${limit}`, async () => {
+      const currentSeason = inferSeason(league);
+      const seasonsToFetch = limit > 150 ? [currentSeason - 1, currentSeason] : [currentSeason];
+      const settled = await Promise.allSettled(
+        seasonsToFetch.map((s) => fetchApiFootballFixtures(league, limit, 'FT', s))
+      );
+
+      const merged = new Map<number, HistoricalMatch>();
+      for (const res of settled) {
+        if (res.status !== 'fulfilled') continue;
+        for (const f of res.value) {
+          merged.set(f.id, {
+            home: f.home,
+            away: f.away,
+            homeGoals: f.homeGoals ?? 0,
+            awayGoals: f.awayGoals ?? 0,
+            date: f.date,
+            league: f.league,
+          });
+        }
+      }
+
+      const sorted = Array.from(merged.values()).sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      );
+      return sorted.slice(-limit);
+    }, FIXTURES_TTL);
   } catch (err: unknown) {
     logger.warn('getHistoricalFixtures', `Historical fixtures unavailable for ${league}: ${err instanceof Error ? err.message : String(err)}`);
     return [];

@@ -7,6 +7,17 @@ export function inferSeason(league: string = 'EPL'): number {
   return month < startMonth ? year - 1 : year;
 }
 
+export function getRecentCsvSeasons(count: number = 3, league: string = 'EPL'): string[] {
+  const currentStartYear = inferSeason(league);
+  const seasons: string[] = [];
+  for (let offset = count - 1; offset >= 0; offset--) {
+    const y1 = (currentStartYear - offset) % 100;
+    const y2 = (currentStartYear - offset + 1) % 100;
+    seasons.push(`${String(y1).padStart(2, '0')}${String(y2).padStart(2, '0')}`);
+  }
+  return seasons;
+}
+
 export function getLeagueConfig(league: string) {
   const normalized = league.toUpperCase().trim();
   if (normalized.includes('PREMIER') || normalized === 'EPL') return LEAGUE_MAP.EPL;

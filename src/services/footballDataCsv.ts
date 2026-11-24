@@ -1,6 +1,7 @@
 import { HistoricalMatch } from '../types';
 import { BACKTEST_CONFIG, DECISION_LEAD_MS } from '../core/constants';
 import { resolveTeam } from '../data/teamIds';
+import { getRecentCsvSeasons } from '../data/utils';
 import { logger } from './logger';
 
 export interface CsvHistoricalMatch extends HistoricalMatch {
@@ -29,10 +30,18 @@ export function assertDistinctSnapshots(
   }
 }
 
-const OPENING_OVER_COLS = ['Max>2.5', 'P>2.5', 'B365>2.5', 'Avg>2.5'] as const;
-const OPENING_UNDER_COLS = ['Max<2.5', 'P<2.5', 'B365<2.5', 'Avg<2.5'] as const;
-const CLOSING_OVER_COLS = ['MaxC>2.5', 'PSC>2.5', 'PC>2.5', 'B365C>2.5', 'AvgC>2.5'] as const;
-const CLOSING_UNDER_COLS = ['MaxC<2.5', 'PSC<2.5', 'PC<2.5', 'B365C<2.5', 'AvgC<2.5'] as const;
+const OPENING_OVER_COLS = ['P>2.5', 'Max>2.5', 'B365>2.5', 'Avg>2.5'] as const;
+const OPENING_UNDER_COLS = ['P<2.5', 'Max<2.5', 'B365<2.5', 'Avg<2.5'] as const;
+const CLOSING_OVER_COLS = ['PC>2.5', 'PSC>2.5', 'MaxC>2.5', 'B365C>2.5', 'AvgC>2.5'] as const;
+const CLOSING_UNDER_COLS = ['PC<2.5', 'PSC<2.5', 'MaxC<2.5', 'B365C<2.5', 'AvgC<2.5'] as const;
+
+const MATCHED_BOOKMAKER_PAIRS = [
+  { openOver: 'P>2.5', openUnder: 'P<2.5', closeOver: 'PC>2.5', closeUnder: 'PC<2.5' },
+  { openOver: 'P>2.5', openUnder: 'P<2.5', closeOver: 'PSC>2.5', closeUnder: 'PSC<2.5' },
+  { openOver: 'Max>2.5', openUnder: 'Max<2.5', closeOver: 'MaxC>2.5', closeUnder: 'MaxC<2.5' },
+  { openOver: 'B365>2.5', openUnder: 'B365<2.5', closeOver: 'B365C>2.5', closeUnder: 'B365C<2.5' },
+  { openOver: 'Avg>2.5', openUnder: 'Avg<2.5', closeOver: 'AvgC>2.5', closeUnder: 'AvgC<2.5' },
+] as const;
 
 function parseCsvLine(line: string): string[] {
   const fields: string[] = [];
@@ -156,10 +165,43 @@ export function parseFootballDataCsv(
     const home = resolveTeam(homeRaw).id;
     const away = resolveTeam(awayRaw).id;
 
-    const openOver = pickFirstValidPrice(row, headerIndex, OPENING_OVER_COLS);
-    const openUnder = pickFirstValidPrice(row, headerIndex, OPENING_UNDER_COLS);
-    const closeOver = pickFirstValidPrice(row, headerIndex, CLOSING_OVER_COLS);
-    const closeUnder = pickFirstValidPrice(row, headerIndex, CLOSING_UNDER_COLS);
+    const hsRaw = getField(row, 'HS');
+    const asRaw = getField(row, 'AS');
+    const hstRaw = getField(row, 'HST');
+    const astRaw = getField(row, 'AST');
+    const hrRaw = getField(row, 'HR');
+    const arRaw = getField(row, 'AR');
+    const homeShots = /^\d+$/.test(hsRaw) ? Number(hsRaw) : undefined;
+    const awayShots = /^\d+$/.test(asRaw) ? Number(asRaw) : undefined;
+    const homeShotsOnTarget = /^\d+$/.test(hstRaw) ? Number(hstRaw) : undefined;
+    const awayShotsOnTarget = /^\d+$/.test(astRaw) ? Number(astRaw) : undefined;
+    const hasRedCard =
+      (/^\d+$/.test(hrRaw) && Number(hrRaw) > 0) ||
+      (/^\d+$/.test(arRaw) && Number(arRaw) > 0);
+
+    let openOver: number | undefined;
+    let openUnder: number | undefined;
+    let closeOver: number | undefined;
+    let closeUnder: number | undefined;
+
+    for (const pair of MATCHED_BOOKMAKER_PAIRS) {
+      const oo = pickFirstValidPrice(row, headerIndex, [pair.openOver]);
+      const ou = pickFirstValidPrice(row, headerIndex, [pair.openUnder]);
+      const co = pickFirstValidPrice(row, headerIndex, [pair.closeOver]);
+      const cu = pickFirstValidPrice(row, headerIndex, [pair.closeUnder]);
+      if (oo && ou && co && cu) {
+        openOver = oo;
+        openUnder = ou;
+        closeOver = co;
+        closeUnder = cu;
+        break;
+      }
+    }
+
+    if (!openOver) openOver = pickFirstValidPrice(row, headerIndex, OPENING_OVER_COLS);
+    if (!openUnder) openUnder = pickFirstValidPrice(row, headerIndex, OPENING_UNDER_COLS);
+    if (!closeOver) closeOver = pickFirstValidPrice(row, headerIndex, CLOSING_OVER_COLS);
+    if (!closeUnder) closeUnder = pickFirstValidPrice(row, headerIndex, CLOSING_UNDER_COLS);
 
     const kickoffMs = new Date(dateIso).getTime();
     const match: CsvHistoricalMatch = {
@@ -167,6 +209,11 @@ export function parseFootballDataCsv(
       away,
       homeGoals,
       awayGoals,
+      ...(homeShots !== undefined ? { homeShots } : {}),
+      ...(awayShots !== undefined ? { awayShots } : {}),
+      ...(homeShotsOnTarget !== undefined ? { homeShotsOnTarget } : {}),
+      ...(awayShotsOnTarget !== undefined ? { awayShotsOnTarget } : {}),
+      ...(hasRedCard ? { hasRedCard: true } : {}),
       date: dateIso,
       league: leagueKey,
       season,
@@ -263,14 +310,14 @@ export async function fetchLeagueSeasonCsv(league: string, season: string): Prom
 }
 
 /**
- * Load recent historical match CSVs for a single league (2324, 2425, 2526) for MLE fitting.
+ * Load recent historical match CSVs for a single league (rolling 3 seasons) for MLE fitting.
  * Gracefully degrades if any individual season is unavailable.
  */
 export async function loadRecentLeagueCsvMatches(league: string): Promise<CsvHistoricalMatch[]> {
   const leagueKey = league.toUpperCase().replace(/ /g, '_');
   if (!BACKTEST_CONFIG.DIVISION_MAP[leagueKey]) return [];
 
-  const candidateSeasons = ['2324', '2425', '2526'];
+  const candidateSeasons = getRecentCsvSeasons(3, leagueKey);
   const settled = await Promise.allSettled(
     candidateSeasons.map((s) => fetchLeagueSeasonCsv(leagueKey, s))
   );

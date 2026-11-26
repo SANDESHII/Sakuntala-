@@ -9,8 +9,13 @@ import { logger } from './src/services/logger';
 import { BacktestSummary } from './src/types';
 
 function getCliArg(flag: string): string | undefined {
-  const idx = process.argv.indexOf(flag);
-  return idx !== -1 && idx + 1 < process.argv.length ? process.argv[idx + 1] : undefined;
+  const prefix = `${flag}=`;
+  for (let i = 0; i < process.argv.length; i++) {
+    const arg = process.argv[i];
+    if (arg === flag && i + 1 < process.argv.length) return process.argv[i + 1];
+    if (arg.startsWith(prefix)) return arg.slice(prefix.length);
+  }
+  return undefined;
 }
 
 async function startServer() {
@@ -199,23 +204,61 @@ async function startServer() {
     }
   });
 
+  let viteServer: { close: () => Promise<void> } | null = null;
+  let viteReady: Promise<{ middlewares: express.RequestHandler; close: () => Promise<void> }> | null = null;
+
   if (isProd) {
     app.use(express.static('dist'));
     app.get('/{*splat}', (_req: Request, res: Response) => {
       res.sendFile('dist/index.html', { root: '.' });
     });
   } else {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: false },
-      appType: 'spa',
+    viteReady = import('vite').then(({ createServer: createViteServer }) =>
+      createViteServer({
+        server: { middlewareMode: true, hmr: false, ws: false, allowedHosts: true },
+        appType: 'spa',
+      })
+    );
+    app.use((req: Request, res: Response, next: express.NextFunction) => {
+      viteReady!
+        .then((vite) => vite.middlewares(req, res, next))
+        .catch(next);
     });
-    app.use(vite.middlewares);
   }
 
-  app.listen(port, host, () => {
+  const httpServer = app.listen(port, host, () => {
     logger.info('Server', `Quantitative Football AI active on http://${host}:${port} (${process.env.NODE_ENV || 'development'})`);
   });
+
+  if (viteReady) {
+    viteReady
+      .then((vite) => {
+        viteServer = vite;
+      })
+      .catch((err: unknown) => {
+        logger.error('ViteInit', err instanceof Error ? err : new Error(String(err)));
+        httpServer.close(() => process.exit(1));
+        setTimeout(() => process.exit(1), 1000).unref();
+      });
+  }
+
+  httpServer.on('error', (err: Error) => {
+    logger.error('Server', err);
+    process.exit(1);
+  });
+
+  const shutdown = () => {
+    httpServer.close(() => {
+      if (viteServer) {
+        viteServer.close().finally(() => process.exit(0));
+      } else {
+        process.exit(0);
+      }
+    });
+    setTimeout(() => process.exit(0), 2000).unref();
+  };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
 }
 
 startServer().catch((err: unknown) => {

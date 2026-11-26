@@ -86,7 +86,6 @@ export const TIME_DECAY_PHI = 0.0065 / 3.5; // 0.001857/day — Dixon & Coles (1
 export const BASE_GOALS = 1.35;
 export const DEFAULT_RHO = -0.13;
 export const HOME_ADVANTAGE_WEIGHT = 0.5;
-export const AWAY_DEFENSE_WEIGHT = 0.3;
 export const REG_LAMBDA = 2.5;
 export const XG_BLEND_WEIGHT = 0.6;
 export const OFF_TARGET_SHOT_WEIGHT = 0.15;

@@ -94,16 +94,14 @@ function getMarketOdds(matchOdds: any) {
   }
 
   if (pinO25 > 1 && pinU25 > 1) {
-    return { o25: pinO25, u25: pinU25, bestO25, bestU25 };
+    return { o25: pinO25, u25: pinU25 };
   }
   if (bestMatched) {
-    return { o25: bestMatched.o25, u25: bestMatched.u25, bestO25, bestU25 };
+    return { o25: bestMatched.o25, u25: bestMatched.u25 };
   }
   return {
     o25: pinO25 > 1 ? pinO25 : bestO25,
     u25: pinU25 > 1 ? pinU25 : bestU25,
-    bestO25,
-    bestU25,
   };
 }
 
@@ -455,12 +453,10 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
         histCursor++;
       }
 
-      const priorHistory = leagueHistory.slice(0, histCursor);
-      const priorFixtureCache = { [league]: priorHistory };
-
       const cacheKey = `${league}_${dayKey}`;
       let fittedParams = matchdayFitCache.get(cacheKey);
       if (!fittedParams) {
+        const priorHistory = leagueHistory.slice(0, histCursor);
         fittedParams = await Calibration.fitFromAPI(league, cutoffIso, priorHistory);
         matchdayFitCache.set(cacheKey, fittedParams);
       }
@@ -476,7 +472,7 @@ export async function runBacktest(options?: BacktestOptions): Promise<BacktestSu
               under25: { bestPrice: match.takenPrices?.under25 || 0 },
             },
             cutoffIso,
-            priorFixtureCache,
+            undefined,
             fittedParams
           );
 

@@ -11,10 +11,6 @@ export interface CsvHistoricalMatch extends HistoricalMatch {
 const csvCache = new Map<string, { rows: CsvHistoricalMatch[]; ts: number }>();
 const CSV_TTL = 6 * 60 * 60 * 1000; // 6 hours
 
-export function clearCsvCache(): void {
-  csvCache.clear();
-}
-
 export function assertDistinctSnapshots(
   takenPrices: HistoricalMatch['takenPrices'] | null | undefined,
   closingPrices: HistoricalMatch['closingPrices'] | null | undefined,

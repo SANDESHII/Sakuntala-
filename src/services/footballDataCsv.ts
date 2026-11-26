@@ -9,6 +9,7 @@ export interface CsvHistoricalMatch extends HistoricalMatch {
 }
 
 const csvCache = new Map<string, { rows: CsvHistoricalMatch[]; ts: number }>();
+const csvInFlight = new Map<string, Promise<CsvHistoricalMatch[]>>();
 const CSV_TTL = 6 * 60 * 60 * 1000; // 6 hours
 
 export function assertDistinctSnapshots(
@@ -26,10 +27,20 @@ export function assertDistinctSnapshots(
   }
 }
 
-const OPENING_OVER_COLS = ['P>2.5', 'B365>2.5', 'Avg>2.5', 'Max>2.5'] as const;
-const OPENING_UNDER_COLS = ['P<2.5', 'B365<2.5', 'Avg<2.5', 'Max<2.5'] as const;
-const CLOSING_OVER_COLS = ['PC>2.5', 'PSC>2.5', 'B365C>2.5', 'AvgC>2.5', 'MaxC>2.5'] as const;
-const CLOSING_UNDER_COLS = ['PC<2.5', 'PSC<2.5', 'B365C<2.5', 'AvgC<2.5', 'MaxC<2.5'] as const;
+const OPENING_BOOK_PAIRS = [
+  { over: 'P>2.5', under: 'P<2.5' },
+  { over: 'B365>2.5', under: 'B365<2.5' },
+  { over: 'Avg>2.5', under: 'Avg<2.5' },
+  { over: 'Max>2.5', under: 'Max<2.5' },
+] as const;
+
+const CLOSING_BOOK_PAIRS = [
+  { over: 'PC>2.5', under: 'PC<2.5' },
+  { over: 'PSC>2.5', under: 'PSC<2.5' },
+  { over: 'B365C>2.5', under: 'B365C<2.5' },
+  { over: 'AvgC>2.5', under: 'AvgC<2.5' },
+  { over: 'MaxC>2.5', under: 'MaxC<2.5' },
+] as const;
 
 const MATCHED_BOOKMAKER_PAIRS = [
   { openOver: 'P>2.5', openUnder: 'P<2.5', closeOver: 'PC>2.5', closeUnder: 'PC<2.5' },
@@ -98,22 +109,30 @@ function parseFootballDataDate(dateStr: string, timeStr?: string): string | null
   return dt.toISOString();
 }
 
-function pickFirstValidPrice(
+function readValidPrice(
   row: string[],
   headerIndex: Map<string, number>,
-  cols: readonly string[]
+  col: string
 ): number | undefined {
-  for (const col of cols) {
-    const idx = headerIndex.get(col);
-    if (idx === undefined || idx >= row.length) continue;
-    const raw = row[idx];
-    if (!raw) continue;
-    const val = Number(raw);
-    if (Number.isFinite(val) && val > 1.0) {
-      return val;
-    }
+  const idx = headerIndex.get(col);
+  if (idx === undefined || idx >= row.length) return undefined;
+  const raw = row[idx];
+  if (!raw) return undefined;
+  const val = Number(raw);
+  return Number.isFinite(val) && val > 1.0 ? val : undefined;
+}
+
+function pickTwoWayPair(
+  row: string[],
+  headerIndex: Map<string, number>,
+  pairs: readonly { over: string; under: string }[]
+): { over?: number; under?: number } {
+  for (const pair of pairs) {
+    const over = readValidPrice(row, headerIndex, pair.over);
+    const under = readValidPrice(row, headerIndex, pair.under);
+    if (over && under) return { over, under };
   }
-  return undefined;
+  return {};
 }
 
 /**
@@ -181,10 +200,10 @@ export function parseFootballDataCsv(
     let closeUnder: number | undefined;
 
     for (const pair of MATCHED_BOOKMAKER_PAIRS) {
-      const oo = pickFirstValidPrice(row, headerIndex, [pair.openOver]);
-      const ou = pickFirstValidPrice(row, headerIndex, [pair.openUnder]);
-      const co = pickFirstValidPrice(row, headerIndex, [pair.closeOver]);
-      const cu = pickFirstValidPrice(row, headerIndex, [pair.closeUnder]);
+      const oo = readValidPrice(row, headerIndex, pair.openOver);
+      const ou = readValidPrice(row, headerIndex, pair.openUnder);
+      const co = readValidPrice(row, headerIndex, pair.closeOver);
+      const cu = readValidPrice(row, headerIndex, pair.closeUnder);
       if (oo && ou && co && cu) {
         openOver = oo;
         openUnder = ou;
@@ -194,10 +213,17 @@ export function parseFootballDataCsv(
       }
     }
 
-    if (!openOver) openOver = pickFirstValidPrice(row, headerIndex, OPENING_OVER_COLS);
-    if (!openUnder) openUnder = pickFirstValidPrice(row, headerIndex, OPENING_UNDER_COLS);
-    if (!closeOver) closeOver = pickFirstValidPrice(row, headerIndex, CLOSING_OVER_COLS);
-    if (!closeUnder) closeUnder = pickFirstValidPrice(row, headerIndex, CLOSING_UNDER_COLS);
+    if (!openOver || !openUnder) {
+      const fallbackOpen = pickTwoWayPair(row, headerIndex, OPENING_BOOK_PAIRS);
+      openOver = fallbackOpen.over;
+      openUnder = fallbackOpen.under;
+    }
+
+    if (!closeOver || !closeUnder) {
+      const fallbackClose = pickTwoWayPair(row, headerIndex, CLOSING_BOOK_PAIRS);
+      closeOver = fallbackClose.over;
+      closeUnder = fallbackClose.under;
+    }
 
     const kickoffMs = new Date(dateIso).getTime();
     const match: CsvHistoricalMatch = {
@@ -216,22 +242,22 @@ export function parseFootballDataCsv(
       closingPrices: null,
     };
 
-    if (openOver || openUnder) {
+    if (openOver && openUnder) {
       match.takenPrices = {
         over25: openOver,
         under25: openUnder,
-        over25NoVig: openOver && openUnder ? 1 + openOver / openUnder : undefined,
-        under25NoVig: openOver && openUnder ? 1 + openUnder / openOver : undefined,
+        over25NoVig: 1 + openOver / openUnder,
+        under25NoVig: 1 + openUnder / openOver,
       };
       match.takenAt = new Date(kickoffMs - DECISION_LEAD_MS).toISOString();
     }
 
-    if (closeOver || closeUnder) {
+    if (closeOver && closeUnder) {
       match.closingPrices = {
         over25: closeOver,
         under25: closeUnder,
-        over25NoVig: closeOver && closeUnder ? 1 + closeOver / closeUnder : undefined,
-        under25NoVig: closeOver && closeUnder ? 1 + closeUnder / closeOver : undefined,
+        over25NoVig: 1 + closeOver / closeUnder,
+        under25NoVig: 1 + closeUnder / closeOver,
       };
       match.closedAt = dateIso;
     }
@@ -260,7 +286,16 @@ async function fetchCsvWithRetry(
       clearTimeout(timer);
 
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status} downloading ${url}`);
+        const retryable = res.status === 429 || res.status >= 500;
+        const err = new Error(`HTTP ${res.status} downloading ${url}`);
+        if (!retryable) throw err;
+        lastError = err;
+        if (attempt < retries) {
+          logger.warn('footballDataCsv', `Retry ${attempt + 1}/${retries} for ${url}: ${err.message}`);
+          await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+          continue;
+        }
+        throw err;
       }
 
       const text = await res.text();
@@ -272,10 +307,12 @@ async function fetchCsvWithRetry(
     } catch (err: unknown) {
       clearTimeout(timer);
       lastError = err instanceof Error ? err : new Error(String(err));
-      if (attempt < retries) {
-        logger.warn('footballDataCsv', `Retry ${attempt + 1}/${retries} for ${url}: ${lastError.message}`);
-        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      const isHttpPermanent = /^HTTP 4\d\d\b/.test(lastError.message) && !lastError.message.startsWith('HTTP 429');
+      if (isHttpPermanent || attempt >= retries) {
+        break;
       }
+      logger.warn('footballDataCsv', `Retry ${attempt + 1}/${retries} for ${url}: ${lastError.message}`);
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
     }
   }
 
@@ -293,16 +330,37 @@ export async function fetchLeagueSeasonCsv(league: string, season: string): Prom
   const cached = csvCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < CSV_TTL) return cached.rows;
 
+  const pending = csvInFlight.get(cacheKey);
+  if (pending) return pending;
+
   const url = `${BACKTEST_CONFIG.CSV_BASE_URL}/${season}/${division}.csv`;
-  const csvText = await fetchCsvWithRetry(url);
-  const parsed = parseFootballDataCsv(csvText, leagueKey, season);
+  const job = (async () => {
+    const csvText = await fetchCsvWithRetry(url);
+    const parsed = parseFootballDataCsv(csvText, leagueKey, season);
 
-  if (parsed.length === 0) {
-    throw new Error(`[CSV Parse Error] Zero completed matches parsed from ${url}`);
+    if (parsed.length === 0) {
+      throw new Error(`[CSV Parse Error] Zero completed matches parsed from ${url}`);
+    }
+
+    csvCache.set(cacheKey, { rows: parsed, ts: Date.now() });
+    return parsed;
+  })().finally(() => {
+    csvInFlight.delete(cacheKey);
+  });
+
+  csvInFlight.set(cacheKey, job);
+  return job;
+}
+
+function dedupeAndSortMatches(rows: CsvHistoricalMatch[]): CsvHistoricalMatch[] {
+  const seen = new Map<string, CsvHistoricalMatch>();
+  for (const row of rows) {
+    const key = `${row.date.slice(0, 10)}|${row.home}|${row.away}`;
+    seen.set(key, row);
   }
-
-  csvCache.set(cacheKey, { rows: parsed, ts: Date.now() });
-  return parsed;
+  return Array.from(seen.values()).sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
 }
 
 /**
@@ -319,14 +377,19 @@ export async function loadRecentLeagueCsvMatches(league: string): Promise<CsvHis
   );
 
   const combined: CsvHistoricalMatch[] = [];
-  for (const res of settled) {
+  for (let i = 0; i < settled.length; i++) {
+    const res = settled[i];
     if (res.status === 'fulfilled') {
       combined.push(...res.value);
+    } else {
+      logger.warn(
+        'loadRecentLeagueCsvMatches',
+        `Skipping unavailable ${leagueKey} season ${candidateSeasons[i]}: ${res.reason instanceof Error ? res.reason.message : String(res.reason)}`
+      );
     }
   }
 
-  combined.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  return combined;
+  return dedupeAndSortMatches(combined);
 }
 
 export async function loadBacktestDataset(
@@ -337,25 +400,42 @@ export async function loadBacktestDataset(
   matchesDownloaded: number;
 }> {
   const matchesByLeague: Record<string, CsvHistoricalMatch[]> = {};
-  let matchesDownloaded = 0;
+  const jobs: Array<{ league: string; season: string; promise: Promise<CsvHistoricalMatch[]> }> = [];
 
-  const jobs: Promise<void>[] = [];
   for (const league of leagues) {
     matchesByLeague[league] = [];
     for (const season of seasons) {
-      jobs.push(
-        fetchLeagueSeasonCsv(league, season).then((rows) => {
-          matchesByLeague[league].push(...rows);
-          matchesDownloaded += rows.length;
-        })
+      jobs.push({
+        league,
+        season,
+        promise: fetchLeagueSeasonCsv(league, season),
+      });
+    }
+  }
+
+  const settled = await Promise.allSettled(jobs.map((j) => j.promise));
+  let matchesDownloaded = 0;
+
+  for (let i = 0; i < settled.length; i++) {
+    const res = settled[i];
+    const { league, season } = jobs[i];
+    if (res.status === 'fulfilled') {
+      matchesByLeague[league].push(...res.value);
+    } else {
+      logger.warn(
+        'loadBacktestDataset',
+        `Skipping ${league} ${season}: ${res.reason instanceof Error ? res.reason.message : String(res.reason)}`
       );
     }
   }
 
-  await Promise.all(jobs);
-
   for (const league of leagues) {
-    matchesByLeague[league].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    matchesByLeague[league] = dedupeAndSortMatches(matchesByLeague[league]);
+    matchesDownloaded += matchesByLeague[league].length;
+  }
+
+  if (matchesDownloaded === 0) {
+    throw new Error('[Backtest Dataset] Unable to download any historical season CSVs.');
   }
 
   return { matchesByLeague, matchesDownloaded };

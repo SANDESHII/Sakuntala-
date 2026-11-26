@@ -19,7 +19,7 @@ export function getRecentCsvSeasons(count: number = 3, league: string = 'EPL'): 
 }
 
 export function getLeagueConfig(league: string) {
-  const normalized = league.toUpperCase().trim();
+  const normalized = league.toUpperCase().trim().replace(/ /g, '_');
   if (normalized.includes('PREMIER') || normalized === 'EPL') return LEAGUE_MAP.EPL;
   if (normalized.includes('LIGA') || normalized === 'LA_LIGA') return LEAGUE_MAP.LA_LIGA;
   if (normalized.includes('BUNDES') || normalized === 'BUNDESLIGA') return LEAGUE_MAP.BUNDESLIGA;

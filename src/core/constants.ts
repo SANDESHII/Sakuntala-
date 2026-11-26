@@ -126,7 +126,7 @@ export const DECISION_LEAD_MS = 24 * 60 * 60 * 1000;
 
 export const BACKTEST_CONFIG = {
   TRAIN_SEASONS: ['2223', '2324', '2425'] as readonly string[],
-  EVAL_SEASONS: ['2425', '2526'] as readonly string[],
+  EVAL_SEASONS: ['2425', '2526', '2627'] as readonly string[],
   LEAGUES: ['EPL', 'LA_LIGA', 'BUNDESLIGA', 'SERIE_A', 'LIGUE_1'] as readonly string[],
   DIVISION_MAP: {
     EPL: 'E0',

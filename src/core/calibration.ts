@@ -283,91 +283,138 @@ function fitDixonColes(
 }
 
 const fittedCache = new Map<string, { params: FittedLeagueParams; ts: number }>();
+const fittedInFlight = new Map<string, Promise<FittedLeagueParams>>();
 const FITTED_TTL = 6 * 60 * 60 * 1000;
 
+async function loadLiveCalibrationHistory(leagueKey: string): Promise<{
+  matches: HistoricalMatch[];
+  provider: FittedLeagueParams['dataProvider'];
+}> {
+  let csvRows: HistoricalMatch[] = [];
+  try {
+    csvRows = await loadRecentLeagueCsvMatches(leagueKey);
+  } catch (err: unknown) {
+    logger.warn('fitFromAPI_csv', `CSV history unavailable for ${leagueKey}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  let apiRows: HistoricalMatch[] = [];
+  if (FreeDataService.hasApiFootballKey()) {
+    try {
+      apiRows = await FreeDataService.getHistoricalFixtures(leagueKey, 300);
+    } catch (err: unknown) {
+      logger.warn('fitFromAPI_fetch', `API-Football unavailable for ${leagueKey}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  if (csvRows.length >= 20) {
+    if (apiRows.length === 0) {
+      return { matches: csvRows, provider: 'FOOTBALL_DATA_CSV' };
+    }
+    const merged = new Map<string, HistoricalMatch>();
+    for (const m of csvRows) {
+      const key = `${m.date.slice(0, 10)}|${resolveTeam(m.home).id}|${resolveTeam(m.away).id}`;
+      merged.set(key, m);
+    }
+    for (const m of apiRows) {
+      const key = `${m.date.slice(0, 10)}|${resolveTeam(m.home).id}|${resolveTeam(m.away).id}`;
+      if (!merged.has(key)) merged.set(key, m);
+    }
+    return {
+      matches: Array.from(merged.values()).sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      ),
+      provider: 'FOOTBALL_DATA_CSV',
+    };
+  }
+
+  if (apiRows.length >= 20) {
+    return { matches: apiRows, provider: 'API_FOOTBALL' };
+  }
+
+  return { matches: [], provider: 'STATIC_PRIOR' };
+}
+
 /**
- * Fit parameters from real historical data via API-Football or football-data.co.uk CSVs.
+ * Fit parameters from real historical data via football-data.co.uk CSVs and/or API-Football.
  */
 export async function fitFromAPI(
   league: string,
   asOfDate?: string,
   historicalMatches?: HistoricalMatch[]
 ): Promise<FittedLeagueParams> {
-  const leagueBase = getLeagueBase(league);
+  const leagueKey = league.toUpperCase().trim().replace(/ /g, '_');
+  const leagueBase = getLeagueBase(leagueKey);
   const isLive = !asOfDate && !historicalMatches;
+
   if (isLive) {
-    const cached = fittedCache.get(league);
+    const cached = fittedCache.get(leagueKey);
     if (cached && Date.now() - cached.ts < FITTED_TTL) return cached.params;
+
+    const inflight = fittedInFlight.get(leagueKey);
+    if (inflight) return inflight;
   }
 
-  let dataProvider: FittedLeagueParams['dataProvider'] = 'API_FOOTBALL';
-  let raw = historicalMatches;
+  const runFit = async (): Promise<FittedLeagueParams> => {
+    let dataProvider: FittedLeagueParams['dataProvider'] = 'FOOTBALL_DATA_CSV';
+    let raw = historicalMatches;
 
-  if (!raw) {
-    try {
-      raw = await FreeDataService.getHistoricalFixtures(league, 300);
-    } catch (err: unknown) {
-      logger.warn('fitFromAPI_fetch', `API-Football unavailable for ${league}: ${err instanceof Error ? err.message : String(err)}`);
-      raw = [];
+    if (!raw) {
+      const loaded = await loadLiveCalibrationHistory(leagueKey);
+      raw = loaded.matches;
+      dataProvider = loaded.provider;
     }
 
-    if (raw.length < 20) {
-      try {
-        const csvMatches = await loadRecentLeagueCsvMatches(league);
-        if (csvMatches.length >= 20) {
-          raw = csvMatches;
-          dataProvider = 'FOOTBALL_DATA_CSV';
-        }
-      } catch (err: unknown) {
-        logger.warn('fitFromAPI_csv', `CSV fallback unavailable for ${league}: ${err instanceof Error ? err.message : String(err)}`);
-      }
+    if (!raw || raw.length < 20) {
+      return {
+        homeAdvantage: MODEL_CONFIG.HOME_ADVANTAGE_GAMMA,
+        rho: DEFAULT_RHO,
+        leagueBase,
+        teams: {},
+        matchesUsed: 0,
+        dataProvider: 'STATIC_PRIOR',
+      };
     }
-  } else {
-    dataProvider = 'FOOTBALL_DATA_CSV';
-  }
 
-  if (!raw || raw.length < 20) {
-    return {
-      homeAdvantage: MODEL_CONFIG.HOME_ADVANTAGE_GAMMA,
-      rho: DEFAULT_RHO,
-      leagueBase,
-      teams: {},
-      matchesUsed: 0,
-      dataProvider: 'STATIC_PRIOR',
-    };
-  }
+    const cutoff = asOfDate ? new Date(asOfDate).getTime() : Date.now();
+    const filtered = raw.filter((m) => new Date(m.date).getTime() < cutoff);
 
-  const cutoff = asOfDate ? new Date(asOfDate).getTime() : Date.now();
-  const filtered = raw.filter((m) => new Date(m.date).getTime() < cutoff);
+    if (filtered.length < 20) {
+      return {
+        homeAdvantage: MODEL_CONFIG.HOME_ADVANTAGE_GAMMA,
+        rho: DEFAULT_RHO,
+        leagueBase,
+        teams: {},
+        matchesUsed: 0,
+        dataProvider: 'STATIC_PRIOR',
+      };
+    }
 
-  if (filtered.length < 20) {
-    return {
-      homeAdvantage: MODEL_CONFIG.HOME_ADVANTAGE_GAMMA,
-      rho: DEFAULT_RHO,
-      leagueBase,
-      teams: {},
-      matchesUsed: 0,
-      dataProvider: 'STATIC_PRIOR',
-    };
-  }
+    const matches: MatchData[] = filtered.map((m) => ({
+      home: resolveTeam(m.home).id,
+      away: resolveTeam(m.away).id,
+      homeGoals: m.homeGoals || 0,
+      awayGoals: m.awayGoals || 0,
+      homeShots: m.homeShots,
+      awayShots: m.awayShots,
+      homeShotsOnTarget: m.homeShotsOnTarget,
+      awayShotsOnTarget: m.awayShotsOnTarget,
+      hasRedCard: m.hasRedCard,
+      daysAgo: Math.max(0, (cutoff - new Date(m.date).getTime()) / (1000 * 60 * 60 * 24)),
+    }));
 
-  const matches: MatchData[] = filtered.map((m) => ({
-    home: resolveTeam(m.home).id,
-    away: resolveTeam(m.away).id,
-    homeGoals: m.homeGoals || 0,
-    awayGoals: m.awayGoals || 0,
-    homeShots: m.homeShots,
-    awayShots: m.awayShots,
-    homeShotsOnTarget: m.homeShotsOnTarget,
-    awayShotsOnTarget: m.awayShotsOnTarget,
-    hasRedCard: m.hasRedCard,
-    daysAgo: Math.max(0, (cutoff - new Date(m.date).getTime()) / (1000 * 60 * 60 * 24)),
-  }));
+    const params = fitDixonColes(matches, leagueBase);
+    params.dataProvider = dataProvider;
+    if (isLive) fittedCache.set(leagueKey, { params, ts: Date.now() });
+    return params;
+  };
 
-  const params = fitDixonColes(matches, leagueBase);
-  params.dataProvider = dataProvider;
-  if (isLive) fittedCache.set(league, { params, ts: Date.now() });
-  return params;
+  if (!isLive) return runFit();
+
+  const job = runFit().finally(() => {
+    fittedInFlight.delete(leagueKey);
+  });
+  fittedInFlight.set(leagueKey, job);
+  return job;
 }
 
 /**
